@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path
 
 from boards.views import board_dashboard
@@ -46,4 +48,4 @@ urlpatterns = [
     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),
     path('staff-admin/access/<int:access_id>/remove/', staff_access_delete, name='staff_access_delete'),
     path('admin/', admin.site.urls),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
