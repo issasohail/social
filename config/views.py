@@ -20,6 +20,10 @@ from people.models import Person
 from sharing.services import open_share
 
 
+def health(request):
+    return HttpResponse('ok', content_type='text/plain')
+
+
 @login_required
 def dashboard(request):
     context = {

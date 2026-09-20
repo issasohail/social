@@ -22,9 +22,10 @@ from django.urls import path
 
 from boards.views import board_dashboard
 from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users
-from .views import create_form_invitation, dashboard, harmony_create, harmony_delete, harmony_detail, harmony_edit, harmony_list, organization_overview, people_list, person_create, person_delete, person_detail, person_edit, public_form, shared_profile
+from .views import create_form_invitation, dashboard, harmony_create, harmony_delete, harmony_detail, harmony_edit, harmony_list, health, organization_overview, people_list, person_create, person_delete, person_detail, person_edit, public_form, shared_profile
 
 urlpatterns = [
+    path('health/', health, name='health'),
     path('', dashboard, name='dashboard'),
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
