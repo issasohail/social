@@ -99,3 +99,65 @@ class Consent(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='consents_revoked')
     revocation_reason = models.TextField(blank=True)
+
+
+class PublicFormInvitation(models.Model):
+    profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name='form_invitations')
+    token_hash = models.CharField(max_length=64, unique=True)
+    candidate_name = models.CharField(max_length=180, blank=True)
+    candidate_phone = models.CharField(max_length=40, blank=True)
+    preselected_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
+    preselected_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
+    preselected_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.SET_NULL)
+    expires_at = models.DateTimeField()
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_available(self):
+        return self.submitted_at is None and self.expires_at > timezone.now()
+
+
+class CrossJurisdictionRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        APPROVED = 'APPROVED', 'Approved'
+        REJECTED = 'REJECTED', 'Rejected'
+        MORE_INFO = 'MORE_INFO', 'More information requested'
+
+    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    requester_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+    requester_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+    requester_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+    target_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+    target_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+    target_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='cross_requests_source')
+    target_profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_target')
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='cross_requests_reviewed')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+
+class Introduction(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        MUTUAL_INTEREST = 'MUTUAL_INTEREST', 'Mutual interest'
+        IN_DISCUSSION = 'IN_DISCUSSION', 'In discussion'
+        FAMILY_MEETING = 'FAMILY_MEETING', 'Family meeting'
+        ENGAGED = 'ENGAGED', 'Engaged'
+        MARRIED = 'MARRIED', 'Married'
+        CLOSED = 'CLOSED', 'Closed'
+
+    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_started')
+    target_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_received')
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    contact_released_at = models.DateTimeField(null=True, blank=True)
+    contact_released_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='contact_releases')
+    marriage_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

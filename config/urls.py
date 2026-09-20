@@ -18,7 +18,8 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from .views import dashboard, harmony_list, organization_overview, people_list
+from boards.views import board_dashboard
+from .views import create_form_invitation, dashboard, harmony_list, organization_overview, people_list, public_form, shared_profile
 
 urlpatterns = [
     path('', dashboard, name='dashboard'),
@@ -27,5 +28,9 @@ urlpatterns = [
     path('organization/', organization_overview, name='organization'),
     path('people/', people_list, name='people'),
     path('family-harmony/', harmony_list, name='family_harmony'),
+    path('family-harmony/form/<str:token>/', public_form, name='public_form'),
+    path('family-harmony/form-invitation/new/', create_form_invitation, name='create_form_invitation'),
+    path('family-harmony/share/<str:token>/', shared_profile, name='shared_profile'),
+    path('boards/<str:code>/', board_dashboard, name='board_dashboard'),
     path('admin/', admin.site.urls),
 ]
