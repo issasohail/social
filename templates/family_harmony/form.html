@@ -1,1 +1,152 @@
-{% extends 'base.html' %}{% block title %}{{ title }} | Social Welfare{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">FAMILY HARMONY</p><h1>{{ title }}</h1></section><section class="panel form-panel"><form method="post" enctype="multipart/form-data">{% csrf_token %}<h2>Person details</h2>{{ person_form.as_p }}<h2>Harmony profile</h2>{{ profile_form.as_p }}<button class="primary">Save profile</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ title }} | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">FAMILY HARMONY</p>
+  <h1>{{ title }}</h1>
+</section>
+
+<section class="panel form-panel">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <div class="form-layout">
+      <div class="form-section">
+        <h2>Person details</h2>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.title.label_tag }} {{ person_form.title }} {{ person_form.title.errors }}</div>
+          <div class="form-field">{{ person_form.first_name.label_tag }} {{ person_form.first_name }} {{ person_form.first_name.errors }}</div>
+          <div class="form-field">{{ person_form.middle_name.label_tag }} {{ person_form.middle_name }} {{ person_form.middle_name.errors }}</div>
+          <div class="form-field">{{ person_form.last_name.label_tag }} {{ person_form.last_name }} {{ person_form.last_name.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.gender.label_tag }} {{ person_form.gender }} {{ person_form.gender.errors }}</div>
+          <div class="form-field">{{ person_form.date_of_birth.label_tag }} {{ person_form.date_of_birth }} {{ person_form.date_of_birth.errors }}</div>
+          <div class="form-field">{{ person_form.nationality.label_tag }} {{ person_form.nationality }} {{ person_form.nationality.errors }}</div>
+          <div class="form-field">{{ person_form.marital_status.label_tag }} {{ person_form.marital_status }} {{ person_form.marital_status.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.identity_type.label_tag }} {{ person_form.identity_type }} {{ person_form.identity_type.errors }}</div>
+          <div class="form-field">{{ person_form.identity_number.label_tag }} {{ person_form.identity_number }} {{ person_form.identity_number.errors }}</div>
+          <div class="form-field">{{ person_form.mobile.label_tag }} {{ person_form.mobile }} {{ person_form.mobile.errors }}</div>
+          <div class="form-field">{{ person_form.whatsapp_number.label_tag }} {{ person_form.whatsapp_number }} {{ person_form.whatsapp_number.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.email.label_tag }} {{ person_form.email }} {{ person_form.email.errors }}</div>
+          <div class="form-field">{{ person_form.city.label_tag }} {{ person_form.city }} {{ person_form.city.errors }}</div>
+          <div class="form-field">{{ person_form.province.label_tag }} {{ person_form.province }} {{ person_form.province.errors }}</div>
+          <div class="form-field">{{ person_form.country.label_tag }} {{ person_form.country }} {{ person_form.country.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ person_form.current_address.label_tag }} {{ person_form.current_address }} {{ person_form.current_address.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ person_form.permanent_address.label_tag }} {{ person_form.permanent_address }} {{ person_form.permanent_address.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.region.label_tag }} {{ person_form.region }} {{ person_form.region.errors }}</div>
+          <div class="form-field">{{ person_form.local_council.label_tag }} {{ person_form.local_council }} {{ person_form.local_council.errors }}</div>
+          <div class="form-field">{{ person_form.jamatkhana.label_tag }} {{ person_form.jamatkhana }} {{ person_form.jamatkhana.errors }}</div>
+          <div class="form-field">{{ person_form.photo.label_tag }} {{ person_form.photo }} {{ person_form.photo.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.education.label_tag }} {{ person_form.education }} {{ person_form.education.errors }}</div>
+          <div class="form-field">{{ person_form.occupation.label_tag }} {{ person_form.occupation }} {{ person_form.occupation.errors }}</div>
+          <div class="form-field">{{ person_form.employer_or_business.label_tag }} {{ person_form.employer_or_business }} {{ person_form.employer_or_business.errors }}</div>
+          <div class="form-field">{{ person_form.income_range.label_tag }} {{ person_form.income_range }} {{ person_form.income_range.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ person_form.interests.label_tag }} {{ person_form.interests }} {{ person_form.interests.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ person_form.facebook_url.label_tag }} {{ person_form.facebook_url }} {{ person_form.facebook_url.errors }}</div>
+          <div class="form-field">{{ person_form.instagram_url.label_tag }} {{ person_form.instagram_url }} {{ person_form.instagram_url.errors }}</div>
+          <div class="form-field">{{ person_form.linkedin_url.label_tag }} {{ person_form.linkedin_url }} {{ person_form.linkedin_url.errors }}</div>
+          <div class="form-field">{{ person_form.other_social_url.label_tag }} {{ person_form.other_social_url }} {{ person_form.other_social_url.errors }}</div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Harmony profile</h2>
+
+        <div class="form-row">
+          <div class="form-field">{{ profile_form.status.label_tag }} {{ profile_form.status }} {{ profile_form.status.errors }}</div>
+          <div class="form-field">{{ profile_form.height_cm.label_tag }} {{ profile_form.height_cm }} {{ profile_form.height_cm.errors }}</div>
+          <div class="form-field">{{ profile_form.education_level.label_tag }} {{ profile_form.education_level }} {{ profile_form.education_level.errors }}</div>
+          <div class="form-field">{{ profile_form.years_experience.label_tag }} {{ profile_form.years_experience }} {{ profile_form.years_experience.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ profile_form.qualification.label_tag }} {{ profile_form.qualification }} {{ profile_form.qualification.errors }}</div>
+          <div class="form-field">{{ profile_form.institution.label_tag }} {{ profile_form.institution }} {{ profile_form.institution.errors }}</div>
+          <div class="form-field">{{ profile_form.profession.label_tag }} {{ profile_form.profession }} {{ profile_form.profession.errors }}</div>
+          <div class="form-field">{{ profile_form.income_range.label_tag }} {{ profile_form.income_range }} {{ profile_form.income_range.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ profile_form.place_of_origin.label_tag }} {{ profile_form.place_of_origin }} {{ profile_form.place_of_origin.errors }}</div>
+          <div class="form-field">{{ profile_form.languages.label_tag }} {{ profile_form.languages }} {{ profile_form.languages.errors }}</div>
+          <div class="form-field">{{ profile_form.smoking.label_tag }} {{ profile_form.smoking }} {{ profile_form.smoking.errors }}</div>
+          <div class="form-field">{{ profile_form.financial_status.label_tag }} {{ profile_form.financial_status }} {{ profile_form.financial_status.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.family_background.label_tag }} {{ profile_form.family_background }} {{ profile_form.family_background.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.family_values.label_tag }} {{ profile_form.family_values }} {{ profile_form.family_values.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.personality.label_tag }} {{ profile_form.personality }} {{ profile_form.personality.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.interests.label_tag }} {{ profile_form.interests }} {{ profile_form.interests.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ profile_form.marital_status.label_tag }} {{ profile_form.marital_status }} {{ profile_form.marital_status.errors }}</div>
+          <div class="form-field">{{ profile_form.children_count.label_tag }} {{ profile_form.children_count }} {{ profile_form.children_count.errors }}</div>
+          <div class="form-field">{{ profile_form.owning_region.label_tag }} {{ profile_form.owning_region }} {{ profile_form.owning_region.errors }}</div>
+          <div class="form-field">{{ profile_form.owning_local_council.label_tag }} {{ profile_form.owning_local_council }} {{ profile_form.owning_local_council.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">{{ profile_form.owning_jamatkhana.label_tag }} {{ profile_form.owning_jamatkhana }} {{ profile_form.owning_jamatkhana.errors }}</div>
+          <div class="form-field">{{ profile_form.assigned_officer.label_tag }} {{ profile_form.assigned_officer }} {{ profile_form.assigned_officer.errors }}</div>
+          <div class="form-field">{{ profile_form.facebook_url.label_tag }} {{ profile_form.facebook_url }} {{ profile_form.facebook_url.errors }}</div>
+          <div class="form-field">{{ profile_form.instagram_url.label_tag }} {{ profile_form.instagram_url }} {{ profile_form.instagram_url.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.personal_statement.label_tag }} {{ profile_form.personal_statement }} {{ profile_form.personal_statement.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.expectations.label_tag }} {{ profile_form.expectations }} {{ profile_form.expectations.errors }}</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field field-full">{{ profile_form.notes.label_tag }} {{ profile_form.notes }} {{ profile_form.notes.errors }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="primary">Save profile</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

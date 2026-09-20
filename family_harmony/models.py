@@ -65,6 +65,10 @@ class FamilyHarmonyProfile(models.Model):
         permissions = [('share_profile', 'Can share profile'), ('release_contact', 'Can release contact'), ('approve_cross_region', 'Can approve cross-jurisdiction introductions')]
         indexes = [models.Index(fields=['status']), models.Index(fields=['owning_region', 'owning_local_council', 'owning_jamatkhana']), models.Index(fields=['assigned_officer', 'status'])]
 
+    @property
+    def serial_number(self):
+        return f'FH-{self.pk:05d}' if self.pk else 'FH-00000'
+
     def clean(self):
         if self.status == self.Status.ACTIVE:
             if not self.person.date_of_birth or (self.person.age or 0) < 18:

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Settings | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">SYSTEM SETTINGS</p>
+  <h1>Settings</h1>
+</section>
+
+<section class="panel form-panel">
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="form-layout">
+      <div class="form-section">
+        <h2>Education levels</h2>
+        <div class="form-row">
+          <div class="form-field field-full">
+            <label for="education_levels">One item per line</label>
+            <textarea id="education_levels" name="education_levels" rows="8">{% for item in settings.education_levels %}{{ item }}
+{% endfor %}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Title options</h2>
+        <div class="form-row">
+          <div class="form-field field-full">
+            <label for="title_options">One item per line</label>
+            <textarea id="title_options" name="title_options" rows="8">{% for item in settings.title_options %}{{ item }}
+{% endfor %}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Share defaults</h2>
+        <div class="form-row">
+          <div class="form-field"><label for="default_expiry_days">Default expiry days</label><input id="default_expiry_days" name="default_expiry_days" type="number" value="{{ settings.default_expiry_days }}"></div>
+          <div class="form-field"><label for="minimum_expiry_days">Minimum expiry days</label><input id="minimum_expiry_days" name="minimum_expiry_days" type="number" value="{{ settings.minimum_expiry_days }}"></div>
+          <div class="form-field"><label for="maximum_expiry_days">Maximum expiry days</label><input id="maximum_expiry_days" name="maximum_expiry_days" type="number" value="{{ settings.maximum_expiry_days }}"></div>
+          <div class="form-field"><label for="default_max_views">Default max views</label><input id="default_max_views" name="default_max_views" type="number" value="{{ settings.default_max_views }}"></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="photo_visibility">Photo visibility</label>
+            <select id="photo_visibility" name="photo_visibility">
+              <option value="after_interest" {% if settings.photo_visibility == 'after_interest' %}selected{% endif %}>After interest</option>
+              <option value="always" {% if settings.photo_visibility == 'always' %}selected{% endif %}>Always</option>
+              <option value="never" {% if settings.photo_visibility == 'never' %}selected{% endif %}>Never</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="name_visibility">Name visibility</label>
+            <select id="name_visibility" name="name_visibility">
+              <option value="full_name" {% if settings.name_visibility == 'full_name' %}selected{% endif %}>Full name</option>
+              <option value="first_name" {% if settings.name_visibility == 'first_name' %}selected{% endif %}>First name</option>
+              <option value="initials" {% if settings.name_visibility == 'initials' %}selected{% endif %}>Initials</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="checkbox-row"><input type="checkbox" name="require_last_four_cnic" {% if settings.require_last_four_cnic %}checked{% endif %}> Require last four CNIC digits</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="primary" type="submit">Save settings</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

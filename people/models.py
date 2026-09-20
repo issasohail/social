@@ -1,9 +1,30 @@
+import re
 from datetime import date
 
 from django.conf import settings
 from django.db import models
 
 from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
+
+
+def normalize_phone_number(value):
+    digits = re.sub(r'\D', '', value or '')
+    if not digits:
+        return ''
+    if digits.startswith('92'):
+        digits = digits[2:]
+    if digits.startswith('0'):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f'+92{digits}'
+    return f'+92{digits[-10:]}' if len(digits) >= 10 else f'+92{digits}'
+
+
+def normalize_cnic(value):
+    digits = re.sub(r'\D', '', value or '')
+    if len(digits) != 13:
+        return (value or '').strip()
+    return f'{digits[:5]}-{digits[5:12]}-{digits[12]}'
 
 
 class Person(models.Model):
@@ -64,8 +85,20 @@ class Person(models.Model):
         indexes = [models.Index(fields=['full_name']), models.Index(fields=['mobile']), models.Index(fields=['date_of_birth']), models.Index(fields=['region', 'local_council', 'jamatkhana'])]
 
     def save(self, *args, **kwargs):
+        self.first_name = (self.first_name or '').strip()
+        self.middle_name = (self.middle_name or '').strip()
+        self.last_name = (self.last_name or '').strip()
         self.full_name = ' '.join(part for part in [self.first_name, self.middle_name, self.last_name] if part).strip()
-        self.normalized_identity_number = ''.join(self.identity_number.split()).upper() or None
+        self.identity_number = normalize_cnic(self.identity_number)
+        self.mobile = normalize_phone_number(self.mobile)
+        self.alternate_mobile = normalize_phone_number(self.alternate_mobile)
+        self.whatsapp_number = normalize_phone_number(self.whatsapp_number)
+        self.normalized_identity_number = ''.join((self.identity_number or '').split()).upper() or None
+        if self.photo and hasattr(self.photo, 'name') and self.photo.name and self.photo.name not in ('', 'None'):
+            if not self.photo.name.lower().endswith('.jpg') and not self.photo.name.lower().endswith('.jpeg'):
+                base_name = self.normalized_identity_number or self.full_name or 'person'
+                cleaned = re.sub(r'[^a-zA-Z0-9_\-]+', '-', base_name).strip('-') or 'person'
+                self.photo.name = f'{cleaned}.jpg'
         super().save(*args, **kwargs)
 
     @property
@@ -80,6 +113,10 @@ class Person(models.Model):
         if len(value) <= 5:
             return '*' * len(value)
         return f'{value[:5]}-*****-{value[-1:]}' if self.identity_type == self.IdentityType.CNIC else f'{value[:2]}***{value[-2:]}'
+
+    @property
+    def serial_number(self):
+        return f'P-{self.pk:05d}' if self.pk else 'P-00000'
 
     def __str__(self):
         return self.full_name
