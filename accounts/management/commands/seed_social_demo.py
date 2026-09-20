@@ -23,15 +23,22 @@ class Command(BaseCommand):
             raise CommandError('Pass --confirm to create demo data.')
         for name, code in [('Family Harmony', 'FAMILY_HARMONY'), ('Seniors', 'SENIORS'), ('Economic Support', 'ECONOMIC_SUPPORT'), ('Children', 'CHILDREN')]:
             Board.objects.get_or_create(code=code, defaults={'name': name})
-        national = NationalCouncil.objects.create(name='Demo National Council', code='DEMO-NATIONAL')
+        first_names = ['Amina', 'Zara', 'Mariam', 'Sana', 'Hiba', 'Fatima', 'Sarah', 'Nadia', 'Hassan', 'Ibrahim', 'Saad', 'Danish', 'Bilal', 'Arman', 'Rayan', 'Owais']
+        last_names = ['Khan', 'Hussain', 'Shah', 'Merchant', 'Kassam', 'Bakhshi', 'Ali', 'Momin', 'Rizvi', 'Qureshi', 'Siddiqui', 'Jaffar']
+        cities = ['Islamabad', 'Karachi', 'Lahore', 'Rawalpindi', 'Peshawar', 'Multan', 'Hyderabad', 'Faisalabad']
+        professions = ['Public health officer', 'Software engineer', 'Chartered accountant', 'Teacher', 'Architect', 'Business owner', 'Project manager', 'Research associate']
+        educations = ['Masters in Economics', 'BS Computer Science', 'MBA Finance', 'Masters in Education', 'Bachelors in Architecture', 'MBBS', 'LLB', 'Bachelors in Business']
+        national = NationalCouncil.objects.create(name='National Social Welfare Council', code='DEMO-NATIONAL')
         for region_no in range(1, 5):
-            region = RegionalCouncil.objects.create(national_council=national, name=f'Demo Region {region_no}', code=f'DEMO-R{region_no}')
+            region = RegionalCouncil.objects.create(national_council=national, name=['Northern Region', 'Central Region', 'Southern Region', 'Western Region'][region_no - 1], code=f'DEMO-R{region_no}')
             for local_no in range(1, 4):
-                local = LocalCouncil.objects.create(regional_council=region, name=f'Demo Local {region_no}-{local_no}', code=f'DEMO-R{region_no}-L{local_no}')
+                local = LocalCouncil.objects.create(regional_council=region, name=f'{cities[(region_no + local_no) % len(cities)]} Local Council', code=f'DEMO-R{region_no}-L{local_no}')
                 for jk_no in range(1, options['jks_per_local'] + 1):
-                    jk = Jamatkhana.objects.create(local_council=local, name=f'Demo JK {region_no}-{local_no}-{jk_no}', short_name=f'JK {region_no}-{local_no}-{jk_no}', code=f'DEMO-R{region_no}-L{local_no}-J{jk_no}')
+                    jk = Jamatkhana.objects.create(local_council=local, name=f'{cities[(region_no + local_no + jk_no) % len(cities)]} Jamatkhana', short_name=f'JK {region_no}-{local_no}-{jk_no}', code=f'DEMO-R{region_no}-L{local_no}-J{jk_no}')
                     for profile_no in range(1, options['profiles_per_jk'] + 1):
-                        person = Person.objects.create(first_name=f'Demo', last_name=f'Candidate {region_no}{local_no}{jk_no}{profile_no}', gender='Female' if profile_no % 2 else 'Male', date_of_birth=date(1985 + profile_no, 1, 1), city=f'Demo City {region_no}', jamatkhana=jk, local_council=local, region=region, is_demo=True)
-                        profile = FamilyHarmonyProfile.objects.create(person=person, status='ACTIVE', owning_jamatkhana=jk, owning_local_council=local, owning_region=region, profession='Demo professional', is_demo=True)
-                        FamilyHarmonyPreference.objects.create(profile=profile, minimum_age=25, maximum_age=45)
+                        index = (region_no * 100 + local_no * 10 + jk_no * 3 + profile_no) % len(first_names)
+                        gender = 'Female' if profile_no % 2 else 'Male'
+                        person = Person.objects.create(first_name=first_names[index], last_name=last_names[(index + region_no) % len(last_names)], gender=gender, date_of_birth=date(1982 + profile_no, (profile_no % 9) + 1, (profile_no % 26) + 1), nationality='Pakistani', mobile=f'+92 300 55{region_no:02d}{local_no}{jk_no}{profile_no:02d}', email=f'candidate{region_no}{local_no}{jk_no}{profile_no}@example.test', current_address=f'{cities[(region_no + local_no) % len(cities)]}, Pakistan', city=cities[(region_no + local_no) % len(cities)], province='Punjab' if region_no in (1, 2) else 'Sindh', marital_status='Never Married', education=educations[index % len(educations)], occupation=professions[index % len(professions)], income_range='PKR 150,000 - 250,000', languages='English, Urdu', interests='Reading, community work, travel', jamatkhana=jk, local_council=local, region=region, is_demo=True)
+                        profile = FamilyHarmonyProfile.objects.create(person=person, status='ACTIVE', owning_jamatkhana=jk, owning_local_council=local, owning_region=region, height_cm=155 + (index % 25), education_level='Masters' if index % 2 else 'Bachelors', qualification=educations[index % len(educations)], profession=professions[index % len(professions)], years_experience=f'{3 + index % 12} years', financial_status='Financially stable', family_background='Respectable, educated family with strong community values.', family_values='Mutual respect, kindness, and family responsibility.', personality='Honest, thoughtful, caring, and family-oriented.', personal_statement='Interested in building a peaceful and respectful family life.', expectations='Seeking a mature, responsible, and emotionally intelligent partner.', is_demo=True)
+                        FamilyHarmonyPreference.objects.create(profile=profile, minimum_age=25, maximum_age=45, preferred_locations=[person.city], preferred_education='Well educated', preferred_professions=['Professional or business owner'], preferred_marital_status='Never Married preferred', preferred_family_values='Respectful and family-oriented', preferred_personality='Kind, mature, responsible', willingness_to_relocate=True, preferred_languages=['English', 'Urdu'], free_text_seeking_description='Please contact only if serious about marriage.')
         self.stdout.write(self.style.SUCCESS('Fictional demo data created.'))

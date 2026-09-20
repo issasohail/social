@@ -20,7 +20,7 @@ from django.urls import path
 
 from boards.views import board_dashboard
 from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users
-from .views import create_form_invitation, dashboard, harmony_list, organization_overview, people_list, public_form, shared_profile
+from .views import create_form_invitation, dashboard, harmony_create, harmony_delete, harmony_detail, harmony_edit, harmony_list, organization_overview, people_list, person_create, person_delete, person_detail, person_edit, public_form, shared_profile
 
 urlpatterns = [
     path('', dashboard, name='dashboard'),
@@ -28,7 +28,15 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('organization/', organization_overview, name='organization'),
     path('people/', people_list, name='people'),
+    path('people/new/', person_create, name='person_create'),
+    path('people/<int:person_id>/', person_detail, name='person_detail'),
+    path('people/<int:person_id>/edit/', person_edit, name='person_edit'),
+    path('people/<int:person_id>/delete/', person_delete, name='person_delete'),
     path('family-harmony/', harmony_list, name='family_harmony'),
+    path('family-harmony/new/', harmony_create, name='harmony_create'),
+    path('family-harmony/<int:profile_id>/', harmony_detail, name='harmony_detail'),
+    path('family-harmony/<int:profile_id>/edit/', harmony_edit, name='harmony_edit'),
+    path('family-harmony/<int:profile_id>/delete/', harmony_delete, name='harmony_delete'),
     path('family-harmony/form/<str:token>/', public_form, name='public_form'),
     path('family-harmony/form-invitation/new/', create_form_invitation, name='create_form_invitation'),
     path('family-harmony/share/<str:token>/', shared_profile, name='shared_profile'),

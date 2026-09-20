@@ -41,3 +41,13 @@ class FamilyHarmonyTests(TestCase):
         profile = FamilyHarmonyProfile.objects.create(person=person, status=FamilyHarmonyProfile.Status.ACTIVE)
         share = ProfileShare.objects.create(profile=profile, created_by=user, token_hash='a' * 64, expires_at=timezone.now() - timedelta(minutes=1))
         self.assertFalse(share.is_available())
+
+    def test_family_harmony_table_filter_and_pdf_export(self):
+        user = get_user_model().objects.create_user(username='harmony-table', password='pass-12345')
+        person = Person.objects.create(first_name='Nadia', last_name='Shah', city='Lahore', gender='Female', date_of_birth=date(1990, 1, 1))
+        FamilyHarmonyProfile.objects.create(person=person, status=FamilyHarmonyProfile.Status.ACTIVE, profession='Architect')
+        self.client.force_login(user)
+        response = self.client.get('/family-harmony/?city=Lahore')
+        self.assertContains(response, 'Nadia Shah')
+        export = self.client.get('/family-harmony/?format=pdf')
+        self.assertEqual(export['Content-Type'], 'application/pdf')
