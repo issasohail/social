@@ -1,0 +1,16 @@
+git clone https://github.com/issasohail/social.git
+cd social
+git checkout main
+
+python3.12 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+
+# Create production .env separately
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py check --deploy
+
+cd E:\social
+$env:DJANGO_ALLOWED_HOSTS="127.0.0.1,localhost,192.168.100.28"
+.\.venv\Scripts\python.exe manage.py runserver 0.0.0.0:8080
