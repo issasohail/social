@@ -13,19 +13,23 @@ Copy-Item .env.example .env
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py seed_social_demo --confirm
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8080
 ```
 
-Open `http://127.0.0.1:8000/`. The default configuration uses SQLite so the project can be verified immediately. For local MySQL, set `DB_ENGINE=django.db.backends.mysql`, `DB_NAME=social_welfare`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. Do not reuse TMS or IVS credentials/databases.
+Open `http://127.0.0.1:8080/` on the development computer. TMS remains on `8000` and IVS remains on `8443`. To open Social Welfare from a phone on the same Wi-Fi/LAN, use the computer's LAN address, for example `http://192.168.100.28:8080/`.
+
+The default configuration uses SQLite so the project can be verified immediately. For local MySQL, set `DB_ENGINE=django.db.backends.mysql`, `DB_NAME=social_welfare`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_PORT` in `.env`. Do not reuse TMS or IVS credentials/databases. `DJANGO_ALLOWED_HOSTS` must include the computer's LAN IP.
 
 After starting the server, open these local pages:
 
-- `http://127.0.0.1:8000/login/` for staff login
-- `http://127.0.0.1:8000/` for the dashboard
-- `http://127.0.0.1:8000/organization/` for the hierarchy
-- `http://127.0.0.1:8000/people/` for the central registry
-- `http://127.0.0.1:8000/family-harmony/` for profiles
-- `http://127.0.0.1:8000/admin/` for administration
+- `http://127.0.0.1:8080/login/` for staff login
+- `http://127.0.0.1:8080/` for the dashboard
+- `http://127.0.0.1:8080/organization/` for the hierarchy
+- `http://127.0.0.1:8080/people/` for the central registry
+- `http://127.0.0.1:8080/family-harmony/` for profiles
+- `http://127.0.0.1:8080/admin/` for administration
+
+For phone access, allow Python through Windows Defender Firewall on private networks, ensure the phone and computer are on the same LAN, and browse to `http://<computer-lan-ip>:8080/`. Do not expose this development server directly to the internet.
 
 Create a local account with `python manage.py createsuperuser`. The demo command creates fictional data only; it does not create a password or admin account.
 
