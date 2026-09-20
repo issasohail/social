@@ -29,6 +29,18 @@
     </select>
     <input name="city" value="{{ city }}" placeholder="City" onchange="this.form.submit()">
     <input name="profession" value="{{ profession }}" placeholder="Profession" onchange="this.form.submit()">
+    <select name="portfolio" onchange="this.form.submit()">
+      <option value="">All portfolios</option>
+      {% for option in portfolio_options %}<option value="{{ option }}" {% if portfolio == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+    </select>
+    <select name="local_council" class="select2-filter" data-searchable="true" aria-label="Filter by current local council">
+      <option value="">All local councils</option>
+      {% for local in local_councils %}<option value="{{ local.id }}" {% if local_council == local.id|stringformat:'s' %}selected{% endif %}>{{ local.name }}</option>{% endfor %}
+    </select>
+    <select name="jamatkhana" class="select2-filter" data-searchable="true" aria-label="Filter by current Jamatkhana">
+      <option value="">All Jamatkhanas</option>
+      {% for jk in jamatkhanas %}<option value="{{ jk.id }}" {% if jamatkhana == jk.id|stringformat:'s' %}selected{% endif %}>{{ jk.name }}{% if jk.local_council %} · {{ jk.local_council.name }}{% endif %}</option>{% endfor %}
+    </select>
     <button class="primary">Filter</button>
   </form>
 </section>
@@ -37,8 +49,10 @@
   <table>
     <thead>
       <tr>
+        <th>S.N</th>
         <th>Photo</th>
         <th>Serial</th>
+        <th>Portfolio</th>
         <th>Name</th>
         <th>Age</th>
         <th>Gender</th>
@@ -53,8 +67,10 @@
     <tbody>
       {% for profile in profiles %}
       <tr>
+        <td>{{ forloop.counter }}</td>
         <td>{% if profile.person.photo %}<img class="table-avatar" src="{{ profile.person.photo.url }}" alt="Avatar">{% else %}<span class="table-avatar initials">{{ profile.person.first_name|first }}</span>{% endif %}</td>
         <td>{{ profile.serial_number }}</td>
+        <td>{{ profile.portfolio|default:'Family Harmony' }}</td>
         <td><a href="{% url 'harmony_detail' profile.id %}"><strong>{{ profile.person.full_name }}</strong></a><small>{{ profile.person.email|default:'No email' }}</small></td>
         <td>{{ profile.person.age|default:'—' }}</td>
         <td>{{ profile.person.gender|default:'—' }}</td>
@@ -63,15 +79,17 @@
         <td>{{ profile.owning_jamatkhana|default:'—' }}</td>
         <td><input class="inline-edit" data-inline-url="{% url 'harmony_inline_update' %}" data-record-id="{{ profile.id }}" data-inline-field="profession" value="{{ profile.profession }}" aria-label="Profession for {{ profile.person.full_name }}"></td>
         <td><select class="inline-edit" data-inline-url="{% url 'harmony_inline_update' %}" data-record-id="{{ profile.id }}" data-inline-field="status" aria-label="Status for {{ profile.person.full_name }}">{% for value,label in statuses %}<option value="{{ value }}" {% if profile.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
-        <td>
-          <a href="{% url 'harmony_detail' profile.id %}">View</a>
-          <a href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank" rel="noopener">WhatsApp</a>
+        <td class="row-actions">
+          <a class="action-button view" href="{% url 'harmony_detail' profile.id %}" title="View profile"><span aria-hidden="true">◉</span> View</a>
+          <a class="action-button edit" href="{% url 'harmony_edit' profile.id %}" title="Edit profile"><span aria-hidden="true">✎</span> Edit</a>
+          <a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a>
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="11" class="muted">No family harmony profiles found.</td></tr>
+      <tr><td colspan="12" class="muted">No family harmony profiles found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
+{% include 'partials/pagination.html' %}
 {% endblock %}

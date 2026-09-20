@@ -20,11 +20,19 @@ class Command(BaseCommand):
         parser.add_argument('--confirm', action='store_true')
         parser.add_argument('--jks-per-local', type=int, default=2)
         parser.add_argument('--profiles-per-jk', type=int, default=5)
+        parser.add_argument('--force', action='store_true', help='Allow loading after existing demo data; use remove_social_demo first for a clean reload.')
 
     @transaction.atomic
     def handle(self, *args, **options):
         if not options['confirm']:
             raise CommandError('Pass --confirm to create demo data.')
+        existing_count = Person.objects.filter(is_demo=True).count()
+        if existing_count and not options['force']:
+            self.stdout.write(self.style.WARNING(
+                f'{existing_count} demo people already exist; nothing was changed. '
+                'Use remove_social_demo --confirm before a clean reload.'
+            ))
+            return
         for name, code in [('Family Harmony', 'FAMILY_HARMONY'), ('Seniors', 'SENIORS'), ('Economic Support', 'ECONOMIC_SUPPORT'), ('Children', 'CHILDREN')]:
             Board.objects.get_or_create(code=code, defaults={'name': name})
         first_names = ['Amina', 'Zara', 'Mariam', 'Sana', 'Hiba', 'Fatima', 'Sarah', 'Nadia', 'Hassan', 'Ibrahim', 'Saad', 'Danish', 'Bilal', 'Arman', 'Rayan', 'Owais']

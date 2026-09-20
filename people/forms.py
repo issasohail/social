@@ -13,6 +13,18 @@ class PersonForm(forms.ModelForm):
         settings = FamilyHarmonySettings.current()
         choices = [(value, value) for value in settings.title_options or ['Mr', 'Mrs', 'Miss', 'Ms', 'Dr', 'Prof', 'Other']]
         self.fields['title'].choices = [('', 'Select title')] + choices
+        for field_name, values, label in (
+            ('education', settings.education_levels, 'Select education'),
+            ('occupation', settings.occupation_options, 'Select occupation'),
+            ('employer_or_business', settings.employer_options, 'Select employer or business'),
+            ('income_range', settings.income_ranges, 'Select income range'),
+        ):
+            field = self.fields[field_name]
+            current_value = getattr(self.instance, field_name, '') if self.instance else ''
+            options = list(values or [])
+            if current_value and current_value not in options:
+                options.append(current_value)
+            field.choices = [('', label)] + [(value, value) for value in options]
         if self.instance and self.instance.title and self.instance.title not in {value for value, _ in choices}:
             self.initial['title'] = 'Other'
             self.initial['title_other'] = self.instance.title

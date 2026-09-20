@@ -32,4 +32,49 @@
     field.addEventListener('blur', save);
     field.addEventListener('change', save);
   });
+
+  document.querySelectorAll('select[data-searchable="true"]').forEach((select) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'select2-lite';
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'select2-lite-input';
+    input.placeholder = select.options[0]?.text || 'Search';
+    input.value = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
+    input.autocomplete = 'off';
+    const menu = document.createElement('div');
+    menu.className = 'select2-lite-menu';
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'select2-lite-option';
+      item.dataset.value = option.value;
+      item.textContent = option.text;
+      item.addEventListener('mousedown', (event) => event.preventDefault());
+      item.addEventListener('click', () => {
+        select.value = option.value;
+        input.value = option.text;
+        menu.classList.remove('is-open');
+        select.dispatchEvent(new Event('change', {bubbles: true}));
+      });
+      menu.appendChild(item);
+    });
+    select.parentNode.insertBefore(wrapper, select);
+    wrapper.appendChild(input);
+    wrapper.appendChild(menu);
+    wrapper.appendChild(select);
+    select.classList.add('select2-native');
+    input.addEventListener('focus', () => menu.classList.add('is-open'));
+    input.addEventListener('input', () => {
+      const needle = input.value.toLowerCase();
+      menu.classList.add('is-open');
+      menu.querySelectorAll('.select2-lite-option').forEach((item) => {
+        item.hidden = !item.textContent.toLowerCase().includes(needle);
+      });
+    });
+    document.addEventListener('click', (event) => {
+      if (!wrapper.contains(event.target)) menu.classList.remove('is-open');
+    });
+  });
 })();

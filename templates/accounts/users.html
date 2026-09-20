@@ -1,1 +1,42 @@
-{% extends 'base.html' %}{% block title %}User access | Social Welfare{% endblock %}{% block content %}<section class="page-head inline"><div><p class="eyebrow">ADMINISTRATION</p><h1>User access</h1><p class="muted">Create staff accounts and assign least-privilege roles and jurisdictions.</p></div><a class="primary" href="{% url 'staff_user_create' %}">Create user</a></section><section class="panel table-wrap"><table><thead><tr><th>User</th><th>Status</th><th>Groups</th><th>Jurisdiction access</th><th></th></tr></thead><tbody>{% for user in users %}<tr><td><strong>{{ user.username }}</strong><small>{{ user.email }}</small></td><td>{% if user.is_active %}Active{% else %}Inactive{% endif %}</td><td>{% for group in user.groups.all %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}No role{% endfor %}</td><td>{% for access in user.jurisdiction_access.all %}<div>{{ access.get_level_display }}{% if access.jamatkhana %}: {{ access.jamatkhana }}{% elif access.local_council %}: {{ access.local_council }}{% elif access.regional_council %}: {{ access.regional_council }}{% endif %}{% if access.is_active %} <small>active</small>{% else %} <small>inactive</small>{% endif %}</div>{% empty %}<span class="muted">None</span>{% endfor %}</td><td><a href="{% url 'staff_access_create' user.id %}">Assign access</a></td></tr>{% endfor %}</tbody></table></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}User access | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head inline">
+  <div><p class="eyebrow">ADMINISTRATION</p><h1>User access</h1><p class="muted">Create staff accounts and assign least-privilege roles and jurisdictions.</p></div>
+  <a class="primary" href="{% url 'staff_user_create' %}">Create user</a>
+</section>
+<section class="panel form-panel">
+  <form method="get" class="filter-bar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Search users" aria-label="Search users">
+    <select name="level" aria-label="Filter by access level"><option value="">All access levels</option>{% for value, label in levels %}<option value="{{ value }}" {% if filters.level == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <select name="national_council" aria-label="Filter by national council"><option value="">All NCs</option>{% for council in national_councils %}<option value="{{ council.id }}" {% if filters.national_council == council.id|stringformat:'s' %}selected{% endif %}>{{ council.name }}</option>{% endfor %}</select>
+    <select name="regional_council" aria-label="Filter by regional council"><option value="">All RCs</option>{% for council in regional_councils %}<option value="{{ council.id }}" {% if filters.regional_council == council.id|stringformat:'s' %}selected{% endif %}>{{ council.name }}</option>{% endfor %}</select>
+    <select name="local_council" aria-label="Filter by local council"><option value="">All LCs</option>{% for council in local_councils %}<option value="{{ council.id }}" {% if filters.local_council == council.id|stringformat:'s' %}selected{% endif %}>{{ council.name }}</option>{% endfor %}</select>
+    <select name="jamatkhana" aria-label="Filter by jamatkhana"><option value="">All JKs</option>{% for council in jamatkhanas %}<option value="{{ council.id }}" {% if filters.jamatkhana == council.id|stringformat:'s' %}selected{% endif %}>{{ council.name }}</option>{% endfor %}</select>
+    <button class="primary" type="submit">Filter</button>
+    {% if filters.q or filters.level or filters.national_council or filters.regional_council or filters.local_council or filters.jamatkhana %}<a class="secondary" href="{% url 'staff_users' %}">Clear</a>{% endif %}
+  </form>
+</section>
+<section class="panel table-wrap">
+  <table>
+    <thead><tr><th>S.No</th><th>User</th><th>Phone</th><th>Status</th><th>Groups</th><th>NC</th><th>RC</th><th>LC</th><th>JK</th><th>Access level</th><th></th></tr></thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td><strong>{{ user.username }}</strong><small>{{ user.email }}</small></td>
+        <td>{{ user.phone_number|default:'No phone configured' }}</td>
+        <td>{% if user.is_active %}Active{% else %}Inactive{% endif %}</td>
+        <td>{% for group in user.groups.all %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}No role{% endfor %}</td>
+        <td>{% for access in user.jurisdiction_access.all %}{% if access.national_council %}<div>{{ access.national_council.name }}</div>{% endif %}{% endfor %}</td>
+        <td>{% for access in user.jurisdiction_access.all %}{% if access.regional_council %}<div>{{ access.regional_council.name }}</div>{% endif %}{% endfor %}</td>
+        <td>{% for access in user.jurisdiction_access.all %}{% if access.local_council %}<div>{{ access.local_council.name }}</div>{% endif %}{% endfor %}</td>
+        <td>{% for access in user.jurisdiction_access.all %}{% if access.jamatkhana %}<div>{{ access.jamatkhana.name }}</div>{% endif %}{% endfor %}</td>
+        <td>{% for access in user.jurisdiction_access.all %}<div>{{ access.get_level_display }}{% if access.is_active %} <small>active</small>{% else %} <small>inactive</small>{% endif %}</div>{% empty %}<span class="muted">None</span>{% endfor %}</td>
+        <td><a href="{% url 'staff_access_create' user.id %}">Assign access</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

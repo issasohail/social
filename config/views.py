@@ -6,20 +6,21 @@ from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.core.paginator import Paginator
 
 from family_harmony.models import FamilyHarmonyProfile
 from family_harmony.models import PublicFormInvitation
 from family_harmony.forms import FamilyHarmonyPreferenceForm, FamilyHarmonyProfileForm
 from organization.models import Jamatkhana, LocalCouncil, NationalCouncil, RegionalCouncil
 from people.forms import PersonForm
-from people.models import Person
+from people.models import Person, normalize_phone_number
 from sharing.services import open_share
-from sharing.models import ProfileShare
+from sharing.models import PersonShare, ProfileShare
 from settings_app.models import FamilyHarmonySettings
 
 
@@ -45,16 +46,102 @@ def organization_overview(request):
 
 
 @login_required
+def regional_councils(request):
+    query = (request.GET.get('q') or '').strip()
+    regional_councils_qs = RegionalCouncil.objects.filter(is_active=True).select_related('national_council')
+    if query:
+        regional_councils_qs = regional_councils_qs.filter(Q(name__icontains=query) | Q(code__icontains=query))
+    page = Paginator(regional_councils_qs.order_by('name'), 25).get_page(request.GET.get('page'))
+    context = {
+        'page_obj': page,
+        'items': page,
+        'query': query,
+        'title': 'Regional Council',
+        'subtitle': 'Manage RCs and their local coverage.',
+        'stats': {
+            'total': RegionalCouncil.objects.filter(is_active=True).count(),
+            'active': RegionalCouncil.objects.filter(is_active=True).count(),
+            'linked': LocalCouncil.objects.filter(is_active=True).count(),
+        },
+    }
+    return render(request, 'organization/regional_councils.html', context)
+
+
+@login_required
+def local_councils(request):
+    query = (request.GET.get('q') or '').strip()
+    region_filter = request.GET.get('region', '')
+    local_councils_qs = LocalCouncil.objects.filter(is_active=True).select_related('regional_council', 'regional_council__national_council')
+    if query:
+        local_councils_qs = local_councils_qs.filter(Q(name__icontains=query) | Q(code__icontains=query))
+    if region_filter:
+        local_councils_qs = local_councils_qs.filter(regional_council_id=region_filter)
+    page = Paginator(local_councils_qs.order_by('name'), 25).get_page(request.GET.get('page'))
+    context = {
+        'page_obj': page,
+        'items': page,
+        'query': query,
+        'region': region_filter,
+        'regions': RegionalCouncil.objects.filter(is_active=True).order_by('name'),
+        'title': 'Local Council',
+        'subtitle': 'Manage LC structures and their JK memberships.',
+        'stats': {
+            'total': LocalCouncil.objects.filter(is_active=True).count(),
+            'active': LocalCouncil.objects.filter(is_active=True).count(),
+            'linked': Jamatkhana.objects.filter(is_active=True).count(),
+        },
+    }
+    return render(request, 'organization/local_councils.html', context)
+
+
+@login_required
+def jamatkhanas(request):
+    query = (request.GET.get('q') or '').strip()
+    local_filter = request.GET.get('local_council', '')
+    jamatkhanas_qs = Jamatkhana.objects.filter(is_active=True).select_related('local_council', 'local_council__regional_council', 'local_council__regional_council__national_council')
+    if query:
+        jamatkhanas_qs = jamatkhanas_qs.filter(Q(name__icontains=query) | Q(code__icontains=query) | Q(short_name__icontains=query))
+    if local_filter:
+        jamatkhanas_qs = jamatkhanas_qs.filter(local_council_id=local_filter)
+    page = Paginator(jamatkhanas_qs.order_by('name'), 25).get_page(request.GET.get('page'))
+    context = {
+        'page_obj': page,
+        'items': page,
+        'query': query,
+        'local_council': local_filter,
+        'local_councils': LocalCouncil.objects.filter(is_active=True).select_related('regional_council').order_by('name'),
+        'title': 'Jamatkhana',
+        'subtitle': 'Manage JK assignments, coverage, and membership details.',
+        'stats': {
+            'total': Jamatkhana.objects.filter(is_active=True).count(),
+            'active': Jamatkhana.objects.filter(is_active=True).count(),
+            'linked': Person.objects.filter(is_active=True).count(),
+        },
+    }
+    return render(request, 'organization/jamatkhanas.html', context)
+
+
+@login_required
 def people_list(request):
     query = request.GET.get('q', '').strip()
-    people = Person.objects.filter(is_active=True).select_related('region', 'local_council', 'jamatkhana')
+    people = Person.objects.filter(is_active=True).select_related('region', 'local_council', 'jamatkhana', 'harmony_profile')
     if query:
         people = people.filter(full_name__icontains=query) | people.filter(mobile__icontains=query) | people.filter(city__icontains=query)
     if request.GET.get('gender'):
         people = people.filter(gender=request.GET['gender'])
     if request.GET.get('city'):
         people = people.filter(city__icontains=request.GET['city'])
-    return _people_response(request, people.distinct().order_by('full_name'), query)
+    if request.GET.get('local_council'):
+        people = people.filter(local_council_id=request.GET['local_council'])
+    if request.GET.get('jamatkhana'):
+        people = people.filter(jamatkhana_id=request.GET['jamatkhana'])
+    context = {
+        'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
+        'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
+        'local_council': request.GET.get('local_council', ''),
+        'jamatkhana': request.GET.get('jamatkhana', ''),
+    }
+    return _people_response(request, people.distinct().order_by('full_name'), query, context)
 
 
 @login_required
@@ -69,11 +156,32 @@ def harmony_list(request):
         profiles = profiles.filter(person__city__icontains=request.GET['city'])
     if request.GET.get('profession'):
         profiles = profiles.filter(profession__icontains=request.GET['profession'])
-    return _harmony_response(request, profiles.order_by('person__full_name'), status)
+    if request.GET.get('portfolio'):
+        profiles = profiles.filter(portfolio=request.GET['portfolio'])
+    if request.GET.get('local_council'):
+        profiles = profiles.filter(owning_local_council_id=request.GET['local_council'])
+    if request.GET.get('jamatkhana'):
+        profiles = profiles.filter(owning_jamatkhana_id=request.GET['jamatkhana'])
+    return _harmony_response(request, profiles.order_by('person__full_name'), status, {
+        'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
+        'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
+        'portfolio_options': FamilyHarmonySettings.current().portfolio_options,
+        'portfolio': request.GET.get('portfolio', ''),
+        'local_council': request.GET.get('local_council', ''),
+        'jamatkhana': request.GET.get('jamatkhana', ''),
+    })
 
 
-def _export_response(request, rows, headers, title):
+def _filter_subtitle(request):
+    labels = {'q': 'Search', 'gender': 'Gender', 'city': 'City', 'local_council': 'LC', 'jamatkhana': 'JK', 'portfolio': 'Portfolio', 'status': 'Status', 'profession': 'Profession'}
+    values = [f'{labels[key]}: {request.GET[key]}' for key in labels if request.GET.get(key)]
+    return ' | '.join(values) or 'All records'
+
+
+def _export_response(request, rows, headers, title, subtitle=''):
     export_format = request.GET.get('format')
+    subtitle = subtitle or _filter_subtitle(request)
+    stamp = timezone.localtime().strftime('%d %b %Y %H:%M')
     if export_format == 'xlsx':
         from openpyxl import Workbook
         workbook = Workbook()
@@ -88,36 +196,72 @@ def _export_response(request, rows, headers, title):
         response['Content-Disposition'] = f'attachment; filename="{title.lower().replace(" ", "-")}.xlsx"'
         return response
     if export_format == 'pdf':
-        from reportlab.lib.pagesizes import landscape, letter
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
         from reportlab.pdfgen import canvas
+        from reportlab.platypus import Paragraph, Table, TableStyle
+        from xml.sax.saxutils import escape
         output = BytesIO()
-        pdf = canvas.Canvas(output, pagesize=landscape(letter))
-        pdf.setFont('Helvetica-Bold', 12)
-        pdf.drawString(36, 560, title)
-        pdf.setFont('Helvetica', 8)
-        y = 540
-        pdf.drawString(36, y, ' | '.join(headers))
-        y -= 16
-        for row in rows:
-            pdf.drawString(36, y, ' | '.join(str(value or '')[:35] for value in row))
-            y -= 13
-            if y < 30:
-                pdf.showPage()
-                y = 560
+        page_width, page_height = landscape(A4)
+        rows_per_page = 27
+        page_count = max(1, (len(rows) + rows_per_page - 1) // rows_per_page)
+        pdf = canvas.Canvas(output, pagesize=(page_width, page_height))
+        content_width = page_width - (28 * mm)
+        header_style = ParagraphStyle('export_header', fontName='Helvetica-Bold', fontSize=7, leading=8, textColor=colors.white)
+        cell_style = ParagraphStyle('export_cell', fontName='Helvetica', fontSize=6.7, leading=8, textColor=colors.HexColor('#18313b'))
+        for page_number in range(page_count):
+            pdf.setFillColorRGB(0.07, 0.42, 0.41)
+            pdf.rect(0, page_height - 72, page_width, 72, fill=1, stroke=0)
+            pdf.setFillColorRGB(1, 1, 1)
+            pdf.setFont('Helvetica-Bold', 16)
+            pdf.drawString(36, page_height - 32, title)
+            pdf.setFont('Helvetica', 9)
+            pdf.drawString(36, page_height - 51, subtitle)
+
+            table_rows = [[Paragraph(escape(str(header)), header_style) for header in headers]]
+            for row in rows[page_number * rows_per_page:(page_number + 1) * rows_per_page]:
+                table_rows.append([Paragraph(escape(str(value or '—')), cell_style) for value in row])
+            column_width = content_width / len(headers)
+            table = Table(table_rows, colWidths=[column_width] * len(headers), repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#126b68')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#eef5f1')]),
+                ('GRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#dce5df')),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            table_width, table_height = table.wrapOn(pdf, content_width, page_height)
+            table.drawOn(pdf, 14 * mm, page_height - 92 - table_height)
+            pdf.setFillColorRGB(0.40, 0.45, 0.46)
+            pdf.setFont('Helvetica', 8)
+            pdf.drawString(36, 22, stamp)
+            pdf.drawRightString(page_width - 36, 22, f'Page {page_number + 1} of {page_count}')
+            pdf.showPage()
         pdf.save()
         response = HttpResponse(output.getvalue(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{title.lower().replace(" ", "-")}.pdf"'
         return response
     if export_format == 'jpg':
         from PIL import Image, ImageDraw
-        image = Image.new('RGB', (1400, max(120, 45 * (len(rows) + 2))), 'white')
+        image = Image.new('RGB', (1600, max(280, 48 * (len(rows) + 5))), '#f5f7f2')
         draw = ImageDraw.Draw(image)
-        draw.text((24, 18), title, fill='#18313b')
-        y = 55
-        draw.text((24, y), ' | '.join(headers), fill='#126b68')
+        draw.rectangle((0, 0, 1600, 108), fill='#126b68')
+        draw.text((36, 24), title, fill='white')
+        draw.text((36, 66), subtitle, fill='#dff2ea')
+        y = 140
+        draw.text((36, y), ' | '.join(headers), fill='#126b68')
         for row in rows:
-            y += 28
+            y += 34
             draw.text((24, y), ' | '.join(str(value or '')[:45] for value in row), fill='#18313b')
+        draw.text((36, image.height - 34), stamp, fill='#6b7d82')
+        draw.text((1450, image.height - 34), 'Page 1 of 1', fill='#6b7d82')
         output = BytesIO()
         image.save(output, format='JPEG', quality=90)
         response = HttpResponse(output.getvalue(), content_type='image/jpeg')
@@ -126,20 +270,26 @@ def _export_response(request, rows, headers, title):
     return None
 
 
-def _people_response(request, people, query):
+def _people_response(request, people, query, extra_context=None):
     rows = [(person.serial_number, person.full_name, person.age or '', person.gender, person.city, person.occupation, person.masked_identity_number()) for person in people]
-    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Occupation', 'CNIC'], 'People export')
+    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Occupation', 'CNIC'], 'People', _filter_subtitle(request))
     if export:
         return export
-    return render(request, 'people/list.html', {'people': people[:250], 'query': query, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', '')})
+    page = Paginator(people, 50).get_page(request.GET.get('page'))
+    context = {'people': page, 'page_obj': page, 'query': query, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', '')}
+    context.update(extra_context or {})
+    return render(request, 'people/list.html', context)
 
 
-def _harmony_response(request, profiles, status):
+def _harmony_response(request, profiles, status, extra_context=None):
     rows = [(profile.serial_number, profile.person.full_name, profile.person.age or '', profile.person.gender, profile.person.city, profile.owning_local_council.name if profile.owning_local_council else '—', profile.owning_jamatkhana.name if profile.owning_jamatkhana else '—', profile.profession, profile.get_status_display()) for profile in profiles]
-    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Current LC', 'Current JK', 'Profession', 'Status'], 'Family Harmony export')
+    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Current LC', 'Current JK', 'Profession', 'Status'], 'Family Harmony', _filter_subtitle(request))
     if export:
         return export
-    return render(request, 'family_harmony/list.html', {'profiles': profiles[:250], 'status': status, 'statuses': FamilyHarmonyProfile.Status.choices, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', ''), 'profession': request.GET.get('profession', '')})
+    page = Paginator(profiles, 50).get_page(request.GET.get('page'))
+    context = {'profiles': page, 'page_obj': page, 'status': status, 'statuses': FamilyHarmonyProfile.Status.choices, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', ''), 'profession': request.GET.get('profession', '')}
+    context.update(extra_context or {})
+    return render(request, 'family_harmony/list.html', context)
 
 
 @login_required
@@ -164,7 +314,7 @@ def person_export(request, person_id, export_format):
     person = get_object_or_404(Person, pk=person_id)
     rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.occupation or '—', person.masked_identity_number() or '—')]
     headers = ['Serial', 'Name', 'Age', 'Gender', 'City', 'Occupation', 'CNIC']
-    export = _export_response(request, rows, headers, f'Person export: {person.full_name}')
+    export = _export_response(request, rows, headers, f'Person: {person.full_name}', 'Person detail')
     if export is not None:
         return export
     raise Http404()
@@ -218,22 +368,25 @@ def inline_update_person(request):
 
 @login_required
 def harmony_create(request):
-    if request.method == 'POST':
-        person_form = PersonForm(request.POST, request.FILES or None)
-        profile_form = FamilyHarmonyProfileForm(request.POST)
-        if person_form.is_valid() and profile_form.is_valid():
-            person = person_form.save(commit=False)
-            person.created_by = request.user
-            person.updated_by = request.user
-            person.save()
-            profile = profile_form.save(commit=False)
-            profile.person = person
-            profile.save()
-            return redirect('harmony_detail', profile_id=profile.pk)
-    else:
-        person_form = PersonForm()
-        profile_form = FamilyHarmonyProfileForm()
-    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'title': 'Add Family Harmony profile'})
+    person_id = request.POST.get('person_id') or request.GET.get('person_id')
+    if not person_id:
+        people = Person.objects.filter(is_active=True, harmony_profile__isnull=True).order_by('full_name')
+        return render(request, 'family_harmony/select_person.html', {'people': people})
+
+    person = get_object_or_404(Person, pk=person_id, is_active=True)
+    if hasattr(person, 'harmony_profile'):
+        return redirect('harmony_edit', profile_id=person.harmony_profile.pk)
+    person_form = PersonForm(request.POST or None, request.FILES or None, instance=person)
+    profile_form = FamilyHarmonyProfileForm(request.POST or None)
+    if person_form.is_valid() and profile_form.is_valid():
+        person = person_form.save(commit=False)
+        person.updated_by = request.user
+        person.save()
+        profile = profile_form.save(commit=False)
+        profile.person = person
+        profile.save()
+        return redirect('harmony_detail', profile_id=profile.pk)
+    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'person_id': person.pk, 'title': 'Add Family Harmony profile'})
 
 
 @login_required
@@ -247,6 +400,7 @@ def harmony_export(request, profile_id, export_format):
     profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'owning_region', 'owning_local_council', 'owning_jamatkhana'), pk=profile_id)
     person = profile.person
     serial = f'FH-{profile.pk:05d}'
+    stamp = timezone.localtime().strftime('%d %b %Y %H:%M')
     location = f'Region: {profile.owning_region or "—"} | Local: {profile.owning_local_council or "—"} | JK: {profile.owning_jamatkhana or "—"}'
     sections = [
         ('Profile', [f'Serial number: {serial}', f'Name: {person.full_name}', f'Age: {person.age or "—"}', f'Gender: {person.gender or "—"}', f'Status: {profile.get_status_display()}', location]),
@@ -297,6 +451,7 @@ def harmony_export(request, profile_id, export_format):
                 y -= 17
             pdf.setFillColorRGB(0.40, 0.45, 0.46)
             pdf.setFont('Helvetica', 8)
+            pdf.drawString(36, 22, stamp)
             pdf.drawRightString(page_width - 36, 22, f'Profile {serial} | Page {page_number + 1} of {page_count}')
             pdf.showPage()
         pdf.save()
@@ -325,6 +480,7 @@ def harmony_export(request, profile_id, export_format):
                 draw.text((75, y), value[:115], fill='#18313b')
                 y += 34
             y += 18
+        draw.text((60, 1850), stamp, fill='#6b7d82')
         draw.text((1080, 1850), 'Page 1 of 1', fill='#6b7d82')
         output = BytesIO()
         image.save(output, format='JPEG', quality=92)
@@ -346,6 +502,27 @@ def create_profile_share(request, profile_id):
     if request.GET.get('redirect') == 'whatsapp':
         return redirect(f'https://wa.me/?text={whatsapp_text}')
     return render(request, 'family_harmony/share_created.html', {'profile': profile, 'share': share, 'share_url': share_url, 'whatsapp_url': f'https://wa.me/?text={whatsapp_text}'})
+
+
+@login_required
+def create_person_share(request, person_id):
+    person = get_object_or_404(Person, pk=person_id)
+    settings = FamilyHarmonySettings.current()
+    raw_token = secrets.token_urlsafe(32)
+    expiry_days = max(settings.minimum_expiry_days, min(settings.default_expiry_days, settings.maximum_expiry_days))
+    share = PersonShare.objects.create(
+        person=person,
+        created_by=request.user,
+        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+        expires_at=timezone.now() + timedelta(days=expiry_days),
+        max_views=settings.default_max_views,
+    )
+    share_url = request.build_absolute_uri(f'/people/share/{raw_token}/')
+    phone = normalize_phone_number(getattr(getattr(request.user, 'profile', None), 'phone_number', ''))
+    recipient = ''.join(character for character in phone if character.isdigit())
+    whatsapp_text = quote(f'Person detail: {person.full_name}\nPlease review this confidential detail: {share_url}\nLink expires in {expiry_days} days.')
+    whatsapp_url = f'https://wa.me/{recipient}?text={whatsapp_text}' if recipient else f'https://wa.me/?text={whatsapp_text}'
+    return redirect(whatsapp_url)
 
 
 @login_required
@@ -432,6 +609,16 @@ def shared_profile(request, token):
         raise Http404('This profile link is no longer available.')
     profile = share.profile
     return render(request, 'family_harmony/shared_profile.html', {'profile': profile, 'share': share})
+
+
+@never_cache
+def shared_person(request, token):
+    share = get_object_or_404(PersonShare, token_hash=hashlib.sha256(token.encode()).hexdigest())
+    if not share.is_available():
+        raise Http404('This person link is no longer available.')
+    share.views += 1
+    share.save(update_fields=['views'])
+    return render(request, 'people/shared_detail.html', {'person': share.person, 'share': share})
 
 
 @login_required

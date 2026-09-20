@@ -8,9 +8,9 @@
   </div>
   <div class="actions">
     <a class="primary" href="{% url 'person_create' %}">Add person</a>
-    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&format=xlsx">Excel</a>
-    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&format=pdf">PDF</a>
-    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&format=jpg">JPG</a>
+    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
+    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>
+    <a class="secondary" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=jpg">JPG</a>
   </div>
 </section>
 
@@ -23,6 +23,14 @@
       <option {% if gender == 'Male' %}selected{% endif %}>Male</option>
     </select>
     <input name="city" value="{{ city }}" placeholder="City" onchange="this.form.submit()">
+    <select name="local_council" class="select2-filter" data-searchable="true" aria-label="Filter by current local council">
+      <option value="">All local councils</option>
+      {% for local in local_councils %}<option value="{{ local.id }}" {% if local_council == local.id|stringformat:'s' %}selected{% endif %}>{{ local.name }}</option>{% endfor %}
+    </select>
+    <select name="jamatkhana" class="select2-filter" data-searchable="true" aria-label="Filter by current Jamatkhana">
+      <option value="">All Jamatkhanas</option>
+      {% for jk in jamatkhanas %}<option value="{{ jk.id }}" {% if jamatkhana == jk.id|stringformat:'s' %}selected{% endif %}>{{ jk.name }}{% if jk.local_council %} · {{ jk.local_council.name }}{% endif %}</option>{% endfor %}
+    </select>
     <button class="primary">Filter</button>
   </form>
 </section>
@@ -31,12 +39,15 @@
   <table>
     <thead>
       <tr>
+        <th>S.N</th>
         <th>Photo</th>
         <th>Serial</th>
         <th>Name</th>
         <th>Age</th>
         <th>Gender</th>
-        <th>Location</th>
+        <th>City</th>
+        <th>Current LC</th>
+        <th>Current JK</th>
         <th>Occupation</th>
         <th>CNIC</th>
         <th>Actions</th>
@@ -45,20 +56,24 @@
     <tbody>
       {% for person in people %}
       <tr>
+        <td>{{ forloop.counter }}</td>
         <td>{% if person.photo %}<img class="table-avatar" src="{{ person.photo.url }}" alt="Avatar">{% else %}<span class="table-avatar initials">{{ person.first_name|first }}</span>{% endif %}</td>
         <td>{{ person.serial_number }}</td>
         <td><a href="{% url 'person_detail' person.id %}"><strong>{{ person.full_name }}</strong></a><small>{{ person.email|default:'No email' }}</small></td>
         <td>{{ person.age|default:'—' }}</td>
         <td><input class="inline-edit" data-inline-url="{% url 'inline_update_person' %}" data-record-id="{{ person.id }}" data-inline-field="gender" value="{{ person.gender }}" aria-label="Gender for {{ person.full_name }}"></td>
         <td><input class="inline-edit" data-inline-url="{% url 'inline_update_person' %}" data-record-id="{{ person.id }}" data-inline-field="city" value="{{ person.city }}" aria-label="City for {{ person.full_name }}"></td>
+        <td>{{ person.local_council|default:'—' }}</td>
+        <td>{{ person.jamatkhana|default:'—' }}</td>
         <td><input class="inline-edit" data-inline-url="{% url 'inline_update_person' %}" data-record-id="{{ person.id }}" data-inline-field="occupation" value="{{ person.occupation }}" aria-label="Occupation for {{ person.full_name }}"></td>
         <td>{{ person.masked_identity_number|default:'—' }}</td>
-        <td><a href="{% url 'person_edit' person.id %}">Edit</a></td>
+        <td class="row-actions"><a class="action-button view" href="{% url 'person_detail' person.id %}" title="View person"><span aria-hidden="true">◉</span> View</a> <a class="action-button edit" href="{% url 'person_edit' person.id %}" title="Edit person"><span aria-hidden="true">✎</span> Edit</a> {% if person.harmony_profile %}<a class="action-button unit" href="{% url 'harmony_detail' person.harmony_profile.id %}" title="Open Family Harmony"><span aria-hidden="true">♡</span> Harmony</a>{% else %}<a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}" title="Add Family Harmony"><span aria-hidden="true">＋</span> Harmony</a>{% endif %}<a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a></td>
       </tr>
       {% empty %}
-      <tr><td colspan="9" class="muted">No people found.</td></tr>
+      <tr><td colspan="12" class="muted">No people found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
+{% include 'partials/pagination.html' %}
 {% endblock %}

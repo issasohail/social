@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Shared person detail | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">SECURE SHARED DETAIL</p>
+  <h1>{{ person.full_name }}</h1>
+  <p class="muted">This link expires {{ share.expires_at|date:'j M Y, H:i' }}.</p>
+</section>
+<section class="panel detail-hero">
+  {% if person.photo %}<img src="{{ person.photo.url }}" alt="Photo of {{ person.full_name }}">{% endif %}
+  <div><h2>{{ person.full_name }}</h2><p>{{ person.title|default:'Person' }} · {{ person.city|default:'Location not recorded' }}</p></div>
+</section>
+<section class="panel"><h2>Profile details</h2><div class="detail-grid">
+  <div><small>Gender</small><strong>{{ person.gender|default:'—' }}</strong></div>
+  <div><small>Age</small><strong>{{ person.age|default:'—' }}</strong></div>
+  <div><small>Nationality</small><strong>{{ person.nationality|default:'—' }}</strong></div>
+  <div><small>Occupation</small><strong>{{ person.occupation|default:'—' }}</strong></div>
+  <div><small>Education</small><strong>{{ person.education|default:'—' }}</strong></div>
+  <div><small>City</small><strong>{{ person.city|default:'—' }}</strong></div>
+</div></section>
+{% endblock %}

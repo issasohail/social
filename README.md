@@ -51,6 +51,33 @@ The demo command creates fictional records only. Never commit `.env`, media, dat
 
 Production deployment will require a configured MySQL account, secret environment variables, HTTPS, a reverse proxy, static/media storage, and a process manager. Those deployment concerns are intentionally not configured in this local project.
 
+## Production demo data and deployment
+
+The demo data loader creates realistic fictional names, complete profile fields, generated portrait JPGs, organization hierarchy, Family Harmony profiles, and preferences. It is idempotent by default: if demo people already exist, a second run makes no changes. It is a management command rather than a migration because it creates records and media files.
+
+On the Linux production host, after configuring the Social Welfare `.env` and database, run:
+
+```bash
+cd /home/ivs/apps/social
+source .venv/bin/activate
+git pull --ff-only origin main
+python manage.py migrate --noinput
+python manage.py seed_social_demo --confirm --jks-per-local 2 --profiles-per-jk 5
+python manage.py collectstatic --noinput
+python manage.py check --deploy
+sudo systemctl restart social-welfare.service
+sudo systemctl status social-welfare.service --no-pager
+```
+
+For a clean demo-data reload only, remove the existing demo records first and then seed again:
+
+```bash
+python manage.py remove_social_demo --confirm
+python manage.py seed_social_demo --confirm --jks-per-local 2 --profiles-per-jk 5
+```
+
+These commands affect only the Social Welfare application and database. Do not run them against TMS or IVS.
+
 ## Production pull handoff
 
 The application is currently on `main` at `https://github.com/issasohail/social.git`. On a future Linux production host, the deployment operator should pull the code into the chosen release directory, activate a production virtual environment, install `requirements.txt`, create a production `.env`, then run migrations and `collectstatic` before restarting the separately managed application service:

@@ -1,7 +1,9 @@
 from django.contrib.auth.models import Group
+from django.core.management import call_command
 from django.test import TestCase
 
 from .forms import StaffUserForm
+from people.models import Person
 
 
 class StaffAccountTests(TestCase):
@@ -21,3 +23,9 @@ class StaffAccountTests(TestCase):
 	def test_staff_admin_page_requires_superuser(self):
 		self.client.force_login(self.user)
 		self.assertEqual(self.client.get('/staff-admin/users/').status_code, 200)
+
+	def test_demo_seed_is_idempotent_by_default(self):
+		call_command('seed_social_demo', confirm=True, jks_per_local=1, profiles_per_jk=1)
+		first_count = Person.objects.filter(is_demo=True).count()
+		call_command('seed_social_demo', confirm=True, jks_per_local=1, profiles_per_jk=1)
+		self.assertEqual(Person.objects.filter(is_demo=True).count(), first_count)

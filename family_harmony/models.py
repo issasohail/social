@@ -22,6 +22,7 @@ class FamilyHarmonyProfile(models.Model):
         ARCHIVED = 'ARCHIVED', 'Archived'
 
     person = models.OneToOneField(Person, on_delete=models.PROTECT, related_name='harmony_profile')
+    portfolio = models.CharField(max_length=100, default='Family Harmony', blank=True)
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.DRAFT)
     assigned_officer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     owning_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT)

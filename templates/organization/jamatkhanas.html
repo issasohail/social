@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Jamatkhana | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head inline">
+  <div>
+    <p class="eyebrow">JURISDICTION</p>
+    <h1>Jamatkhana</h1>
+    <p class="muted">{{ subtitle }}</p>
+  </div>
+  <div class="actions">
+    <a class="secondary" href="{% url 'settings' %}">Back to settings</a>
+  </div>
+</section>
+
+<section class="metrics">
+  <article><span>Total JK</span><strong>{{ stats.total }}</strong></article>
+  <article><span>Active JK</span><strong>{{ stats.active }}</strong></article>
+  <article><span>People linked</span><strong>{{ stats.linked }}</strong></article>
+</section>
+
+<section class="panel form-panel">
+  <div class="filter-bar" style="padding:16px 18px 0; flex-wrap:wrap;">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <input type="search" name="q" value="{{ query }}" placeholder="Search JK name, short name or code" aria-label="Search jamatkhanas">
+      <select name="local_council" aria-label="Filter by local council">
+        <option value="">All Local Councils</option>
+        {% for local in local_councils %}
+        <option value="{{ local.id }}" {% if local.id|stringformat:'s' == local_council %}selected{% endif %}>{{ local.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="primary" type="submit">Search</button>
+      {% if query or local_council %}<a class="secondary" href="{% url 'jamatkhanas' %}">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div style="overflow:auto;padding:18px;">
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="text-align:left;border-bottom:1px solid #dce5df;">
+          <th style="padding:12px 10px; width:70px;">S.No</th>
+          <th style="padding:12px 10px;">JK</th>
+          <th style="padding:12px 10px;">Short Name</th>
+          <th style="padding:12px 10px;">Code</th>
+          <th style="padding:12px 10px;">Local Council</th>
+          <th style="padding:12px 10px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr style="border-bottom:1px solid #eef3ef;">
+          <td style="padding:12px 10px; color:#5b6d72;">{{ forloop.counter0|add:page_obj.start_index }}</td>
+          <td style="padding:12px 10px; font-weight:700;">{{ item.name }}</td>
+          <td style="padding:12px 10px;">{{ item.short_name|default:'—' }}</td>
+          <td style="padding:12px 10px;">{{ item.code }}</td>
+          <td style="padding:12px 10px;">{{ item.local_council.name }}</td>
+          <td style="padding:12px 10px;">{% if item.is_active %}Active{% else %}Inactive{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="padding:18px 10px;color:#6b7d82;">No Jamatkhanas found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% include 'partials/pagination.html' %}
+{% endblock %}

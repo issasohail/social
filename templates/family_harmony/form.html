@@ -9,6 +9,7 @@
 <section class="panel form-panel">
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
+    <input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
 
     <div class="form-layout">
       <div class="form-section">
@@ -80,6 +81,7 @@
         <h2>Harmony profile</h2>
 
         <div class="form-row">
+          <div class="form-field">{{ profile_form.portfolio.label_tag }} {{ profile_form.portfolio }} {{ profile_form.portfolio.errors }}</div>
           <div class="form-field">{{ profile_form.status.label_tag }} {{ profile_form.status }} {{ profile_form.status.errors }}</div>
           <div class="form-field">{{ profile_form.height_cm.label_tag }} {{ profile_form.height_cm }} {{ profile_form.height_cm.errors }}</div>
           <div class="form-field">{{ profile_form.education_level.label_tag }} {{ profile_form.education_level }} {{ profile_form.education_level.errors }}</div>

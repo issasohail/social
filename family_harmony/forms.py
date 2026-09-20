@@ -12,6 +12,8 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         settings = FamilyHarmonySettings.current()
+        portfolio_choices = [(value, value) for value in settings.portfolio_options or ['Family Harmony', 'Seniors', 'Portfolio 3', 'Portfolio 4', 'Portfolio 5', 'Portfolio 6']]
+        self.fields['portfolio'].choices = portfolio_choices
         choices = [(value, value) for value in settings.education_levels or ['Metric', 'O Level', 'Bachelor', 'Master', 'PhD', 'Other']]
         self.fields['education_level'].choices = [('', 'Select education level')] + choices
         self.fields['owning_jamatkhana'].label = 'Current Jamatkhana'

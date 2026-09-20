@@ -7,6 +7,27 @@
 </section>
 
 <section class="panel form-panel">
+  <div class="form-section">
+    <h2>Jurisdiction lists</h2>
+    <div class="form-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+        <h3 style="margin:0 0 8px; font-size:1.05rem;">Regional Councils</h3>
+        <p style="margin:0 0 12px; color:#5d7175;">View and manage all RC records.</p>
+        <a class="primary" href="{% url 'settings_regional_councils' %}">Open RC list</a>
+      </div>
+      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+        <h3 style="margin:0 0 8px; font-size:1.05rem;">Local Councils</h3>
+        <p style="margin:0 0 12px; color:#5d7175;">Review LC coverage and filters.</p>
+        <a class="primary" href="{% url 'settings_local_councils' %}">Open LC list</a>
+      </div>
+      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+        <h3 style="margin:0 0 8px; font-size:1.05rem;">Jamatkhanas</h3>
+        <p style="margin:0 0 12px; color:#5d7175;">View all JK details and group access.</p>
+        <a class="primary" href="{% url 'settings_jamatkhanas' %}">Open JK list</a>
+      </div>
+    </div>
+  </div>
+
   <form method="post">
     {% csrf_token %}
 
@@ -30,6 +51,26 @@
             <textarea id="title_options" name="title_options" rows="8">{% for item in settings.title_options %}{{ item }}
 {% endfor %}</textarea>
           </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Person dropdowns</h2>
+        <div class="form-row">
+          <div class="form-field"><label for="occupation_options">Occupations, one per line</label><textarea id="occupation_options" name="occupation_options" rows="8">{% for item in settings.occupation_options %}{{ item }}
+{% endfor %}</textarea></div>
+          <div class="form-field"><label for="employer_options">Employers or business types, one per line</label><textarea id="employer_options" name="employer_options" rows="8">{% for item in settings.employer_options %}{{ item }}
+{% endfor %}</textarea></div>
+          <div class="form-field"><label for="income_ranges">Income ranges, one per line</label><textarea id="income_ranges" name="income_ranges" rows="8">{% for item in settings.income_ranges %}{{ item }}
+{% endfor %}</textarea></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Family Harmony portfolios</h2>
+        <div class="form-row">
+          <div class="form-field field-full"><label for="portfolio_options">One portfolio per line</label><textarea id="portfolio_options" name="portfolio_options" rows="8">{% for item in settings.portfolio_options %}{{ item }}
+{% endfor %}</textarea></div>
         </div>
       </div>
 

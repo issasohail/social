@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Select person | Family Harmony{% endblock %}
+{% block content %}
+<section class="page-head"><p class="eyebrow">FAMILY HARMONY</p><h1>Select a person</h1><p class="muted">Family Harmony profiles use an existing People record as their single source of person data.</p></section>
+<section class="panel table-wrap"><table><thead><tr><th>S.N</th><th>Serial</th><th>Name</th><th>City</th><th>Current LC</th><th>Current JK</th><th></th></tr></thead><tbody>
+{% for person in people %}<tr><td>{{ forloop.counter }}</td><td>{{ person.serial_number }}</td><td>{{ person.full_name }}</td><td>{{ person.city|default:'—' }}</td><td>{{ person.local_council|default:'—' }}</td><td>{{ person.jamatkhana|default:'—' }}</td><td><a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}">Use person</a></td></tr>{% empty %}<tr><td colspan="7" class="muted">Every active person already has a Harmony profile.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

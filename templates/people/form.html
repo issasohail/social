@@ -1,1 +1,77 @@
-{% extends 'base.html' %}{% block title %}{{ title }} | Social Welfare{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">CENTRAL REGISTRY</p><h1>{{ title }}</h1></section><section class="panel form-panel"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="primary">Save person</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ title }} | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">CENTRAL REGISTRY</p>
+  <h1>{{ title }}</h1>
+</section>
+
+<section class="panel form-panel">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="form-layout">
+      <div class="form-section">
+        <h2>Person details</h2>
+        {% if form.non_field_errors %}<div class="form-panel-errors">{{ form.non_field_errors }}</div>{% endif %}
+
+        <div class="form-row">
+          <div class="form-field">{{ form.title.label_tag }} {{ form.title }} {{ form.title.errors }}</div>
+          <div class="form-field">{{ form.first_name.label_tag }} {{ form.first_name }} {{ form.first_name.errors }}</div>
+          <div class="form-field">{{ form.middle_name.label_tag }} {{ form.middle_name }} {{ form.middle_name.errors }}</div>
+          <div class="form-field">{{ form.last_name.label_tag }} {{ form.last_name }} {{ form.last_name.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.gender.label_tag }} {{ form.gender }} {{ form.gender.errors }}</div>
+          <div class="form-field">{{ form.date_of_birth.label_tag }} {{ form.date_of_birth }} {{ form.date_of_birth.errors }}</div>
+          <div class="form-field">{{ form.nationality.label_tag }} {{ form.nationality }} {{ form.nationality.errors }}</div>
+          <div class="form-field">{{ form.marital_status.label_tag }} {{ form.marital_status }} {{ form.marital_status.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.identity_type.label_tag }} {{ form.identity_type }} {{ form.identity_type.errors }}</div>
+          <div class="form-field">{{ form.identity_number.label_tag }} {{ form.identity_number }} {{ form.identity_number.errors }}</div>
+          <div class="form-field">{{ form.mobile.label_tag }} {{ form.mobile }} {{ form.mobile.errors }}</div>
+          <div class="form-field">{{ form.alternate_mobile.label_tag }} {{ form.alternate_mobile }} {{ form.alternate_mobile.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.whatsapp_number.label_tag }} {{ form.whatsapp_number }} {{ form.whatsapp_number.errors }}</div>
+          <div class="form-field">{{ form.email.label_tag }} {{ form.email }} {{ form.email.errors }}</div>
+          <div class="form-field">{{ form.city.label_tag }} {{ form.city }} {{ form.city.errors }}</div>
+          <div class="form-field">{{ form.province.label_tag }} {{ form.province }} {{ form.province.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.country.label_tag }} {{ form.country }} {{ form.country.errors }}</div>
+          <div class="form-field">{{ form.region.label_tag }} {{ form.region }} {{ form.region.errors }}</div>
+          <div class="form-field">{{ form.local_council.label_tag }} {{ form.local_council }} {{ form.local_council.errors }}</div>
+          <div class="form-field">{{ form.jamatkhana.label_tag }} {{ form.jamatkhana }} {{ form.jamatkhana.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field field-full">{{ form.current_address.label_tag }} {{ form.current_address }} {{ form.current_address.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field field-full">{{ form.permanent_address.label_tag }} {{ form.permanent_address }} {{ form.permanent_address.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.education.label_tag }} {{ form.education }} {{ form.education.errors }}</div>
+          <div class="form-field">{{ form.occupation.label_tag }} {{ form.occupation }} {{ form.occupation.errors }}</div>
+          <div class="form-field">{{ form.employer_or_business.label_tag }} {{ form.employer_or_business }} {{ form.employer_or_business.errors }}</div>
+          <div class="form-field">{{ form.income_range.label_tag }} {{ form.income_range }} {{ form.income_range.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.languages.label_tag }} {{ form.languages }} {{ form.languages.errors }}</div>
+          <div class="form-field field-full">{{ form.interests.label_tag }} {{ form.interests }} {{ form.interests.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">{{ form.photo.label_tag }} {{ form.photo }} {{ form.photo.errors }}</div>
+          <div class="form-field">{{ form.facebook_url.label_tag }} {{ form.facebook_url }} {{ form.facebook_url.errors }}</div>
+          <div class="form-field">{{ form.instagram_url.label_tag }} {{ form.instagram_url }} {{ form.instagram_url.errors }}</div>
+          <div class="form-field">{{ form.linkedin_url.label_tag }} {{ form.linkedin_url }} {{ form.linkedin_url.errors }}</div>
+        </div>
+        <div class="form-row">
+          <div class="form-field field-full">{{ form.other_social_url.label_tag }} {{ form.other_social_url }} {{ form.other_social_url.errors }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions"><button class="primary" type="submit">Save person</button></div>
+  </form>
+</section>
+{% endblock %}

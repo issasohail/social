@@ -1,1 +1,32 @@
-{% extends 'base.html' %}{% block title %}Assign access | Social Welfare{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">ADMINISTRATION</p><h1>Assign access to {{ managed_user.username }}</h1><p class="muted">Choose the broadest jurisdiction the user genuinely needs and optionally restrict it to a board.</p></section><section class="panel form-panel"><form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary">Assign access</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Assign access | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head">
+  <p class="eyebrow">ADMINISTRATION</p>
+  <h1>Assign access to {{ managed_user.username }}</h1>
+  <p class="muted">Choose the broadest jurisdiction the user genuinely needs and optionally restrict it to a board.</p>
+</section>
+<section class="panel form-panel">
+  <form method="post">
+    {% csrf_token %}
+    <div class="form-layout">
+      <div class="form-row">
+        <div class="form-field">{{ form.level.label_tag }} {{ form.level }} {{ form.level.errors }}</div>
+        <div class="form-field">{{ form.board.label_tag }} {{ form.board }} {{ form.board.errors }}</div>
+        <div class="form-field">{{ form.is_active.label_tag }} {{ form.is_active }} {{ form.is_active.errors }}</div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">{{ form.national_council.label_tag }} {{ form.national_council }} {{ form.national_council.errors }}</div>
+        <div class="form-field">{{ form.regional_council.label_tag }} {{ form.regional_council }} {{ form.regional_council.errors }}</div>
+        <div class="form-field">{{ form.local_council.label_tag }} {{ form.local_council }} {{ form.local_council.errors }}</div>
+        <div class="form-field">{{ form.jamatkhana.label_tag }} {{ form.jamatkhana }} {{ form.jamatkhana.errors }}</div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">{{ form.start_date.label_tag }} {{ form.start_date }} {{ form.start_date.errors }}</div>
+        <div class="form-field">{{ form.end_date.label_tag }} {{ form.end_date }} {{ form.end_date.errors }}</div>
+      </div>
+    </div>
+    <div class="form-actions"><button class="primary">Assign access</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Regional Council | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head inline">
+  <div>
+    <p class="eyebrow">JURISDICTION</p>
+    <h1>Regional Council</h1>
+    <p class="muted">{{ subtitle }}</p>
+  </div>
+  <div class="actions">
+    <a class="secondary" href="{% url 'settings' %}">Back to settings</a>
+  </div>
+</section>
+
+<section class="metrics">
+  <article><span>Total RC</span><strong>{{ stats.total }}</strong></article>
+  <article><span>Active RC</span><strong>{{ stats.active }}</strong></article>
+  <article><span>Linked LC</span><strong>{{ stats.linked }}</strong></article>
+</section>
+
+<section class="panel form-panel">
+  <div class="filter-bar" style="padding:16px 18px 0;">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <input type="search" name="q" value="{{ query }}" placeholder="Search RC name or code" aria-label="Search regional councils">
+      <button class="primary" type="submit">Search</button>
+      {% if query %}<a class="secondary" href="{% url 'regional_councils' %}">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div style="overflow:auto;padding:18px;">
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr style="text-align:left;border-bottom:1px solid #dce5df;">
+          <th style="padding:12px 10px; width:70px;">S.No</th>
+          <th style="padding:12px 10px;">RC</th>
+          <th style="padding:12px 10px;">Code</th>
+          <th style="padding:12px 10px;">National Council</th>
+          <th style="padding:12px 10px;">Local Councils</th>
+          <th style="padding:12px 10px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr style="border-bottom:1px solid #eef3ef;">
+          <td style="padding:12px 10px; color:#5b6d72;">{{ forloop.counter0|add:page_obj.start_index }}</td>
+          <td style="padding:12px 10px; font-weight:700;">{{ item.name }}</td>
+          <td style="padding:12px 10px;">{{ item.code }}</td>
+          <td style="padding:12px 10px;">{{ item.national_council.name }}</td>
+          <td style="padding:12px 10px;">{{ item.locals.count }}</td>
+          <td style="padding:12px 10px;">{% if item.is_active %}Active{% else %}Inactive{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="padding:18px 10px;color:#6b7d82;">No Regional Councils found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% include 'partials/pagination.html' %}
+{% endblock %}
