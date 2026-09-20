@@ -2,7 +2,7 @@
   const getCookie = (name) => document.cookie.split('; ').find((row) => row.startsWith(`${name}=`))?.split('=')[1];
   const csrfToken = decodeURIComponent(getCookie('csrftoken') || '');
 
-  document.querySelectorAll('.inline-edit').forEach((field) => {
+  const bindInlineEditors = (root = document) => root.querySelectorAll('.inline-edit').forEach((field) => {
     let savedValue = field.value;
     const save = async () => {
       if (field.value === savedValue) return;
@@ -31,6 +31,61 @@
     };
     field.addEventListener('blur', save);
     field.addEventListener('change', save);
+  });
+  bindInlineEditors();
+
+  const filterForms = document.querySelectorAll('.ajax-filter-form');
+  filterForms.forEach((form) => {
+    let timer;
+    const refresh = async () => {
+      const params = new URLSearchParams(new FormData(form));
+      params.delete('page');
+      const url = `${window.location.pathname}?${params.toString()}`;
+      const response = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      if (!response.ok) return;
+      const html = await response.text();
+      const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+      const currentResults = document.querySelector('.list-results');
+      const nextResults = documentFragment.querySelector('.list-results');
+      if (!currentResults || !nextResults) return;
+      currentResults.replaceWith(nextResults);
+      bindInlineEditors(nextResults);
+      window.history.replaceState({}, '', url);
+      document.querySelectorAll('.export-link').forEach((link) => {
+        const exportParams = new URLSearchParams(new FormData(form));
+        exportParams.set('format', link.dataset.exportFormat);
+        link.href = `${window.location.pathname}?${exportParams.toString()}`;
+      });
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => refresh().catch(() => {}), 250);
+    };
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      refresh().catch(() => {});
+    });
+    form.querySelectorAll('select, input').forEach((field) => {
+      field.addEventListener(field.tagName === 'INPUT' ? 'input' : 'change', schedule);
+    });
+  });
+
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('.list-results .pagination a');
+    if (!link || !document.querySelector('.ajax-filter-form')) return;
+    event.preventDefault();
+    fetch(link.href, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then((response) => response.text())
+      .then((html) => {
+        const nextResults = new DOMParser().parseFromString(html, 'text/html').querySelector('.list-results');
+        const currentResults = document.querySelector('.list-results');
+        if (nextResults && currentResults) {
+          currentResults.replaceWith(nextResults);
+          bindInlineEditors(nextResults);
+          window.history.replaceState({}, '', link.href);
+        }
+      })
+      .catch(() => {});
   });
 
   document.querySelectorAll('select[data-searchable="true"]').forEach((select) => {

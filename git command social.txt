@@ -14,3 +14,9 @@ python manage.py check --deploy
 cd E:\social
 $env:DJANGO_ALLOWED_HOSTS="127.0.0.1,localhost,192.168.100.28"
 .\.venv\Scripts\python.exe manage.py runserver 0.0.0.0:8080
+
+
+# LOCAL
+git add .
+git commit -m "fix"
+git push

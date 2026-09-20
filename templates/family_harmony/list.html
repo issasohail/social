@@ -8,28 +8,29 @@
   </div>
   <div class="actions">
     <a class="primary" href="{% url 'harmony_create' %}">Add profile</a>
-    <a class="secondary" href="?status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&format=xlsx">Excel</a>
-    <a class="secondary" href="?status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&format=pdf">PDF</a>
-    <a class="secondary" href="?status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&format=jpg">JPG</a>
+    <a class="secondary export-link" data-export-format="xlsx" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
+    <a class="secondary export-link" data-export-format="pdf" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>
+    <a class="secondary export-link" data-export-format="jpg" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=jpg">JPG</a>
   </div>
 </section>
 
 <section class="panel">
-  <form class="filter-bar" method="get">
-    <select name="status" onchange="this.form.submit()">
+  <form class="filter-bar ajax-filter-form" method="get">
+    <input type="search" name="q" value="{{ query }}" placeholder="Name, phone, or city">
+    <select name="status">
       <option value="">All statuses</option>
       {% for value,label in statuses %}
         <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
-    <select name="gender" onchange="this.form.submit()">
+    <select name="gender">
       <option value="">All genders</option>
-      <option {% if gender == 'Female' %}selected{% endif %}>Female</option>
-      <option {% if gender == 'Male' %}selected{% endif %}>Male</option>
+      <option value="Female" {% if gender == 'Female' %}selected{% endif %}>Female</option>
+      <option value="Male" {% if gender == 'Male' %}selected{% endif %}>Male</option>
     </select>
-    <input name="city" value="{{ city }}" placeholder="City" onchange="this.form.submit()">
-    <input name="profession" value="{{ profession }}" placeholder="Profession" onchange="this.form.submit()">
-    <select name="portfolio" onchange="this.form.submit()">
+    <input name="city" value="{{ city }}" placeholder="City">
+    <input name="profession" value="{{ profession }}" placeholder="Profession">
+    <select name="portfolio">
       <option value="">All portfolios</option>
       {% for option in portfolio_options %}<option value="{{ option }}" {% if portfolio == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
     </select>
@@ -45,6 +46,7 @@
   </form>
 </section>
 
+<div class="list-results">
 <section class="panel table-wrap">
   <table>
     <thead>
@@ -57,6 +59,7 @@
         <th>Age</th>
         <th>Gender</th>
         <th>City</th>
+        <th>Phone</th>
         <th>Current LC</th>
         <th>Current JK</th>
         <th>Profession</th>
@@ -75,6 +78,7 @@
         <td>{{ profile.person.age|default:'—' }}</td>
         <td>{{ profile.person.gender|default:'—' }}</td>
         <td><input class="inline-edit" data-inline-url="{% url 'harmony_inline_update' %}" data-record-id="{{ profile.id }}" data-inline-field="city" value="{{ profile.person.city }}" aria-label="City for {{ profile.person.full_name }}"></td>
+        <td>{{ profile.person.mobile|default:'—' }}</td>
         <td>{{ profile.owning_local_council|default:'—' }}</td>
         <td>{{ profile.owning_jamatkhana|default:'—' }}</td>
         <td><input class="inline-edit" data-inline-url="{% url 'harmony_inline_update' %}" data-record-id="{{ profile.id }}" data-inline-field="profession" value="{{ profile.profession }}" aria-label="Profession for {{ profile.person.full_name }}"></td>
@@ -86,10 +90,11 @@
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="12" class="muted">No family harmony profiles found.</td></tr>
+      <tr><td colspan="14" class="muted">No family harmony profiles found.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
 {% include 'partials/pagination.html' %}
+</div>
 {% endblock %}

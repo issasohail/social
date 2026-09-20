@@ -147,6 +147,9 @@ def people_list(request):
 @login_required
 def harmony_list(request):
     profiles = FamilyHarmonyProfile.objects.select_related('person', 'owning_region', 'owning_local_council', 'owning_jamatkhana')
+    query = request.GET.get('q', '').strip()
+    if query:
+        profiles = profiles.filter(Q(person__full_name__icontains=query) | Q(person__mobile__icontains=query) | Q(person__city__icontains=query))
     status = request.GET.get('status', '').strip()
     if status:
         profiles = profiles.filter(status=status)
@@ -166,6 +169,7 @@ def harmony_list(request):
         'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
         'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
         'portfolio_options': FamilyHarmonySettings.current().portfolio_options,
+        'query': query,
         'portfolio': request.GET.get('portfolio', ''),
         'local_council': request.GET.get('local_council', ''),
         'jamatkhana': request.GET.get('jamatkhana', ''),
@@ -174,12 +178,21 @@ def harmony_list(request):
 
 def _filter_subtitle(request):
     labels = {'q': 'Search', 'gender': 'Gender', 'city': 'City', 'local_council': 'LC', 'jamatkhana': 'JK', 'portfolio': 'Portfolio', 'status': 'Status', 'profession': 'Profession'}
-    values = [f'{labels[key]}: {request.GET[key]}' for key in labels if request.GET.get(key)]
+    values = []
+    for key, label in labels.items():
+        value = request.GET.get(key)
+        if not value:
+            continue
+        if key == 'local_council':
+            value = LocalCouncil.objects.filter(pk=value).values_list('name', flat=True).first() if value.isdigit() else value
+        elif key == 'jamatkhana':
+            value = Jamatkhana.objects.filter(pk=value).values_list('name', flat=True).first() if value.isdigit() else value
+        values.append(f'{label}: {value}')
     return ' | '.join(values) or 'All records'
 
 
-def _export_response(request, rows, headers, title, subtitle=''):
-    export_format = request.GET.get('format')
+def _export_response(request, rows, headers, title, subtitle='', export_format=None):
+    export_format = export_format or request.GET.get('format')
     subtitle = subtitle or _filter_subtitle(request)
     stamp = timezone.localtime().strftime('%d %b %Y %H:%M')
     if export_format == 'xlsx':
@@ -208,6 +221,8 @@ def _export_response(request, rows, headers, title, subtitle=''):
         rows_per_page = 27
         page_count = max(1, (len(rows) + rows_per_page - 1) // rows_per_page)
         pdf = canvas.Canvas(output, pagesize=(page_width, page_height))
+        pdf.setTitle(title)
+        pdf.setAuthor('Social Welfare Center')
         content_width = page_width - (28 * mm)
         header_style = ParagraphStyle('export_header', fontName='Helvetica-Bold', fontSize=7, leading=8, textColor=colors.white)
         cell_style = ParagraphStyle('export_cell', fontName='Helvetica', fontSize=6.7, leading=8, textColor=colors.HexColor('#18313b'))
@@ -271,8 +286,8 @@ def _export_response(request, rows, headers, title, subtitle=''):
 
 
 def _people_response(request, people, query, extra_context=None):
-    rows = [(person.serial_number, person.full_name, person.age or '', person.gender, person.city, person.occupation, person.masked_identity_number()) for person in people]
-    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Occupation', 'CNIC'], 'People', _filter_subtitle(request))
+    rows = [(person.serial_number, person.full_name, person.age or '', person.gender, person.city, person.mobile, person.occupation, person.masked_identity_number()) for person in people]
+    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Occupation', 'CNIC'], 'People', _filter_subtitle(request))
     if export:
         return export
     page = Paginator(people, 50).get_page(request.GET.get('page'))
@@ -282,12 +297,12 @@ def _people_response(request, people, query, extra_context=None):
 
 
 def _harmony_response(request, profiles, status, extra_context=None):
-    rows = [(profile.serial_number, profile.person.full_name, profile.person.age or '', profile.person.gender, profile.person.city, profile.owning_local_council.name if profile.owning_local_council else '—', profile.owning_jamatkhana.name if profile.owning_jamatkhana else '—', profile.profession, profile.get_status_display()) for profile in profiles]
-    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Current LC', 'Current JK', 'Profession', 'Status'], 'Family Harmony', _filter_subtitle(request))
+    rows = [(profile.serial_number, profile.person.full_name, profile.person.age or '', profile.person.gender, profile.person.city, profile.person.mobile, profile.owning_local_council.name if profile.owning_local_council else '—', profile.owning_jamatkhana.name if profile.owning_jamatkhana else '—', profile.profession, profile.get_status_display()) for profile in profiles]
+    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Current LC', 'Current JK', 'Profession', 'Status'], 'Family Harmony', _filter_subtitle(request))
     if export:
         return export
     page = Paginator(profiles, 50).get_page(request.GET.get('page'))
-    context = {'profiles': page, 'page_obj': page, 'status': status, 'statuses': FamilyHarmonyProfile.Status.choices, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', ''), 'profession': request.GET.get('profession', '')}
+    context = {'profiles': page, 'page_obj': page, 'query': request.GET.get('q', ''), 'status': status, 'statuses': FamilyHarmonyProfile.Status.choices, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', ''), 'profession': request.GET.get('profession', '')}
     context.update(extra_context or {})
     return render(request, 'family_harmony/list.html', context)
 
@@ -312,9 +327,9 @@ def person_detail(request, person_id):
 @login_required
 def person_export(request, person_id, export_format):
     person = get_object_or_404(Person, pk=person_id)
-    rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.occupation or '—', person.masked_identity_number() or '—')]
-    headers = ['Serial', 'Name', 'Age', 'Gender', 'City', 'Occupation', 'CNIC']
-    export = _export_response(request, rows, headers, f'Person: {person.full_name}', 'Person detail')
+    rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.mobile or '—', person.occupation or '—', person.masked_identity_number() or '—')]
+    headers = ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Occupation', 'CNIC']
+    export = _export_response(request, rows, headers, f'Person: {person.full_name}', 'Person detail', export_format=export_format)
     if export is not None:
         return export
     raise Http404()
@@ -403,7 +418,7 @@ def harmony_export(request, profile_id, export_format):
     stamp = timezone.localtime().strftime('%d %b %Y %H:%M')
     location = f'Region: {profile.owning_region or "—"} | Local: {profile.owning_local_council or "—"} | JK: {profile.owning_jamatkhana or "—"}'
     sections = [
-        ('Profile', [f'Serial number: {serial}', f'Name: {person.full_name}', f'Age: {person.age or "—"}', f'Gender: {person.gender or "—"}', f'Status: {profile.get_status_display()}', location]),
+        ('Profile', [f'Serial number: {serial}', f'Name: {person.full_name}', f'Age: {person.age or "—"}', f'Gender: {person.gender or "—"}', f'Phone: {person.mobile or "—"}', f'Status: {profile.get_status_display()}', location]),
         ('Education and work', [f'Education: {profile.qualification or profile.education_level or "—"}', f'Institution: {profile.institution or "—"}', f'Profession: {profile.profession or "—"}', f'Employer: {profile.employer_or_business or "—"}', f'Experience: {profile.years_experience or "—"}', f'Financial status: {profile.financial_status or "—"}']),
         ('Family and personality', [f'Family background: {profile.family_background or "—"}', f'Family values: {profile.family_values or "—"}', f'Personality: {profile.personality or "—"}', f'Interests: {profile.interests or "—"}', f'Languages: {profile.languages or "—"}']),
         ('Seeking', [f'Age range: {profile.preferences.minimum_age if hasattr(profile, "preferences") else "—"} - {profile.preferences.maximum_age if hasattr(profile, "preferences") else "—"}', f'Locations: {", ".join(profile.preferences.preferred_locations) if hasattr(profile, "preferences") else "—"}', f'Education: {profile.preferences.preferred_education if hasattr(profile, "preferences") else "—"}', f'Expectations: {profile.preferences.free_text_seeking_description if hasattr(profile, "preferences") else "—"}']),
@@ -419,6 +434,8 @@ def harmony_export(request, profile_id, export_format):
         per_page = 23
         page_count = max(1, (len(lines) + per_page - 1) // per_page)
         pdf = canvas.Canvas(output, pagesize=A4)
+        pdf.setTitle(f'Family Harmony Profile - {person.full_name}')
+        pdf.setAuthor('Social Welfare Center')
         for page_number in range(page_count):
             pdf.setFillColorRGB(0.07, 0.42, 0.41)
             pdf.rect(0, page_height - 92, page_width, 92, fill=1, stroke=0)
