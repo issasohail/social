@@ -59,8 +59,8 @@ class FamilyHarmonySettings(models.Model):
             settings.marital_status_options = ['Never married', 'Divorced', 'Widowed', 'Separated', 'Other']
         if not settings.relationship_options:
             settings.relationship_options = ['Father', 'Mother', 'Brother', 'Sister', 'Son', 'Daughter', 'Guardian', 'Other']
-        if not settings.caste_tribe_options:
-            settings.caste_tribe_options = ['Other']
+        if not settings.caste_tribe_options or settings.caste_tribe_options == ['Other']:
+            settings.caste_tribe_options = ['Khoja', 'Momin', 'Gilgit', 'Hunza', 'Ghizar', 'Punal', 'Gojali', 'Other']
         if not settings.nationality_options:
             settings.nationality_options = ['Pakistani', 'Other']
         if not settings.country_options:

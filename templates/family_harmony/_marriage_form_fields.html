@@ -1,106 +1,140 @@
+<div class="mpf-form">
 {% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}
-<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>
+<div class="mpf-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>
 {% endif %}
 
-<div class="mp-upload-strip">
-  <label class="mp-upload-card mp-profile-upload" for="id_photo">
-    <span class="mp-camera">●</span>
+<div class="mpf-upload-strip">
+  <label class="mpf-upload-card mpf-profile-card{% if person_form.instance.photo %} is-filled{% endif %}" for="id_photo">
+    {% if person_form.instance.photo %}<img id="photoPreview" class="mpf-photo-cover" src="{{ person_form.instance.photo.url }}" alt="Profile photo"><span class="mpf-photo-change">Change photo</span>{% else %}<img id="photoPreview" class="mpf-photo-cover" hidden alt="Profile preview"><span class="mpf-photo-change" hidden>Change photo</span>{% endif %}
+    <span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
     <strong>Click to upload<br>Profile photo</strong>
-    <small>(JPG, PNG, max 5 MB)</small>
-    {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview">{% endif %}
+    <small>(JPG, PNG, max 5 MB)</small></span>
   </label>
-  <label class="mp-upload-card" for="id_cnic_front"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Front</strong><small>(max 5 MB)</small></label>
-  <label class="mp-upload-card" for="id_cnic_back"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Back</strong><small>(max 5 MB)</small></label>
-  <div class="mp-hidden-file">{{ person_form.photo }}{{ person_form.cnic_front }}{{ person_form.cnic_back }}</div>
+  <label class="mpf-upload-card" for="id_cnic_front">
+    <img class="mpf-document-preview" hidden alt="CNIC front preview"><span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <strong>Click to upload<br>CNIC Front</strong>
+    <small>{% if person_form.instance.cnic_front %}Current front uploaded · click to replace{% else %}(max 5 MB){% endif %}</small></span>
+  </label>
+  <label class="mpf-upload-card" for="id_cnic_back">
+    <img class="mpf-document-preview" hidden alt="CNIC back preview"><span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <strong>Click to upload<br>CNIC Back</strong>
+    <small>{% if person_form.instance.cnic_back %}Current back uploaded · click to replace{% else %}(max 5 MB){% endif %}</small></span>
+  </label>
+  <div class="mpf-hidden-file">{{ person_form.photo }}{{ person_form.cnic_front }}{{ person_form.cnic_back }}</div>
 </div>
 
-<section class="mp-section mp-approved-section is-open">
-  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♟</span><b>1. Personal Information</b><span class="mp-chevron">⌃</span></button>
-  <div class="mp-section-body">
-    <div class="mp-approved-grid personal-top">
-      <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
-      <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
-      <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
-      <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
-      <div class="form-field mp-gender-field"><label>Gender{% if person_form.gender.field.required %} <span class="required">*</span>{% endif %}</label><div class="mp-segmented">{{ person_form.gender }}</div>{{ person_form.gender.errors }}</div>
-      <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
+<section class="mpf-section">
+  <div class="mpf-section-header"><button class="mpf-section-title" type="button" aria-expanded="true">
+    <span class="mpf-section-icon"><svg class="mpf-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.4 0-8 2.2-8 5v3h16v-3c0-2.8-3.6-5-8-5z"/></svg></span>
+    <b>1. Personal Information</b>
+    <span class="mpf-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>
+  </button><div class="mpf-heading-jamatkhana"><label for="{{ person_form.jamatkhana.id_for_label }}">Jamatkhana</label>{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}</div></div>
+  <div class="mpf-section-body mpf-four-row-layout">
+    <div class="mpf-row mpf-row-10">
+      {% include "./_marriage_form_field.html" with field=person_form.title %}
+      {% include "./_marriage_form_field.html" with field=person_form.first_name %}
+      {% include "./_marriage_form_field.html" with field=person_form.middle_name %}
+      {% include "./_marriage_form_field.html" with field=person_form.last_name %}
+      {% include "./_marriage_form_field.html" with field=person_form.gender css="mpf-seg mpf-gender" %}
+      {% include "./_marriage_form_field.html" with field=person_form.date_of_birth %}
 
-      <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
-      <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
-      <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status"></small></div>
-      <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
-      <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
-      <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
-
-      <div class="form-field mp-jk">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}</div>
-      <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
-      <div class="form-field mp-city">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
-
-      <div class="form-field mp-address">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
-      <div class="form-field mp-address">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=person_form.nationality %}
+      {% include "./_marriage_form_field.html" with field=person_form.identity_type %}
+      {% include "./_marriage_form_field.html" with field=person_form.identity_number status_id="id-status" %}
+      <div class="mpf-field"><label>{{ profile_form.caste_tribe.label }}</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.caste_tribe }}</div></details>{{ profile_form.caste_tribe.errors }}</div>
     </div>
+    <div class="mpf-row mpf-row-10">
+      {% include "./_marriage_form_field.html" with field=person_form.mobile %}
+      {% include "./_marriage_form_field.html" with field=person_form.whatsapp_number %}
 
-    <div class="mp-compact-row">
-      <div class="form-field mp-height"><label>Height</label><div class="mp-height-pair">{{ profile_form.height_feet }}{{ profile_form.height_inches }}</div></div>
-      <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
-      <div class="form-field mp-toggle"><label>Smoking</label>{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
-      <div class="form-field mp-toggle"><label>Own a car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
-      <div class="form-field mp-toggle"><label>House</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
-      <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
-      <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
-      <div class="form-field mp-disease">{{ profile_form.known_diseases.label_tag }}<div class="mp-disease-select">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=person_form.email %}
+      {% include "./_marriage_form_field.html" with field=person_form.country %}
+      {% include "./_marriage_form_field.html" with field=person_form.city %}
+      <div class="mpf-field"><label for="{{ profile_form.height_feet.id_for_label }}">Height</label><div class="mpf-pair">{{ profile_form.height_feet }}{{ profile_form.height_inches }}</div>{{ profile_form.height_feet.errors }}{{ profile_form.height_inches.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=profile_form.weight_kg %}
+      {% include "./_marriage_form_field.html" with field=profile_form.marital_status %}
+      {% include "./_marriage_form_field.html" with field=profile_form.family_type %}
+      <div class="mpf-field mpf-sibling-pair"><label>Siblings</label><div><span><small>Brothers</small>{{ profile_form.brothers_count }}</span><span><small>Sisters</small>{{ profile_form.sisters_count }}</span></div>{{ profile_form.brothers_count.errors }}{{ profile_form.sisters_count.errors }}</div>
     </div>
-  </div>
-</section>
-
-<section class="mp-section mp-approved-section">
-  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">▣</span><b>2. Family, Education &amp; Career</b><span class="mp-chevron">⌃</span></button>
-  <div class="mp-section-body">
-    <div class="mp-family-career-grid">
-      <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
-      <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
-      <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
-      <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
-      <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
-      <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
-      <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
-      <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
-      <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
-      <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
-      <div class="form-field mp-languages">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
-      <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
-      <div class="form-field mp-about-family">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
+    <div class="mpf-row mpf-row-3">
+      {% include "./_marriage_form_field.html" with field=person_form.permanent_address %}
+      {% include "./_marriage_form_field.html" with field=person_form.current_address %}
+      {% include "./_marriage_form_field.html" with field=profile_form.family_background %}
+    </div>
+    <div class="mpf-row mpf-row-13">
+      {% include "./_marriage_form_field.html" with field=profile_form.smoking label="Smoking" css="mpf-seg" %}
+      {% include "./_marriage_form_field.html" with field=profile_form.owns_car label="Own a car" css="mpf-seg" %}
+      {% include "./_marriage_form_field.html" with field=profile_form.owns_house label="House" css="mpf-seg" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.willingness_to_relocate label="Willing to Relocate" css="mpf-seg" %}
+      {% include "./_marriage_form_field.html" with field=profile_form.physical_status %}
+      {% include "./_marriage_form_field.html" with field=profile_form.disability_status %}
+      <div class="mpf-field">
+        <label>{{ profile_form.known_diseases.label }}</label>
+        <details class="mpf-multi">
+          <summary>Select (e.g. Diabetes)</summary>
+          <div class="mpf-multi-menu">{{ profile_form.known_diseases }}</div>
+        </details>
+        {{ profile_form.known_diseases.errors }}
+      </div>
+      {% include "./_marriage_form_field.html" with field=profile_form.education_level %}
+      {% include "./_marriage_form_field.html" with field=profile_form.qualification %}
+      {% include "./_marriage_form_field.html" with field=profile_form.institution %}
+      <div class="mpf-field"><label>Profession</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.profession }}</div></details>{{ profile_form.profession.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=profile_form.employer_or_business %}
+      <div class="mpf-field"><label>Income Range</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.income_range }}</div></details>{{ profile_form.income_range.errors }}</div>
+      <div class="mpf-field"><label>{{ profile_form.languages.label }}</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.languages }}</div></details>{{ profile_form.languages.errors }}</div>
     </div>
   </div>
 </section>
 
 {% if preference_form %}
-<section class="mp-section mp-approved-section">
-  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♥</span><b>3. Preferences for Prospective Match</b><span class="mp-chevron">⌃</span></button>
-  <div class="mp-section-body">
-    <div class="mp-preference-grid">
-      {% for field in preference_form %}
-        <div class="form-field {% if field.name == 'free_text_seeking_description' or field.name == 'other_expectations' %}mp-pref-wide{% endif %} {% if field.name == 'willingness_to_relocate' %}mp-toggle{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>
-      {% endfor %}
+<section class="mpf-section">
+  <button class="mpf-section-title" type="button" aria-expanded="true">
+    <span class="mpf-section-icon"><svg class="mpf-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/></svg></span>
+    <b>3. Preferences for Prospective Match</b>
+    <span class="mpf-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>
+  </button>
+  <div class="mpf-section-body">
+    <div class="mpf-grid mpf-preference-grid">
+      {% include "./_marriage_form_field.html" with field=preference_form.minimum_age label="Min Age" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.maximum_age label="Max Age" %}
+      <div class="mpf-field"><label>Marital Status</label><details class="mpf-multi"><summary>Select marital status</summary><div class="mpf-multi-menu">{{ preference_form.preferred_marital_status_options }}</div></details>{{ preference_form.preferred_marital_status_options.errors }}</div>
+      <div class="mpf-field"><label>Education</label><details class="mpf-multi"><summary>Select education</summary><div class="mpf-multi-menu">{{ preference_form.preferred_education_options }}</div></details>{{ preference_form.preferred_education_options.errors }}</div>
+      <div class="mpf-field"><label>Profession</label><details class="mpf-multi"><summary>Select profession</summary><div class="mpf-multi-menu">{{ preference_form.preferred_professions }}</div></details>{{ preference_form.preferred_professions.errors }}</div>
+      <div class="mpf-field"><label>Income</label><details class="mpf-multi"><summary>Select income range</summary><div class="mpf-multi-menu">{{ preference_form.preferred_income_options }}</div></details>{{ preference_form.preferred_income_options.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_type label="Family Type" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_caste_tribe label="Caste / Tribe" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_country label="Country" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_cities label="City" %}
+      <div class="mpf-field"><label>Languages</label><details class="mpf-multi"><summary>Select languages</summary><div class="mpf-multi-menu">{{ preference_form.preferred_languages }}</div></details>{{ preference_form.preferred_languages.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_values label="Family Values" css="mpf-col-4" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_personality label="Personality" css="mpf-col-4" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.other_expectations label="Other Expectations" css="mpf-col-4" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.free_text_seeking_description label="What are you looking for?" css="mpf-col-6" %}
+      <div class="mpf-preserved">{{ preference_form.preferred_locations }}</div>
     </div>
   </div>
 </section>
 {% endif %}
 
 {% if not public_mode %}
-<section class="mp-section mp-approved-section mp-internal">
-  <button class="mp-section-title" type="button" aria-expanded="false"><span class="mp-section-icon">⚙</span><b>Internal / Workflow</b><span class="mp-chevron">⌄</span></button>
-  <div class="mp-section-body">
-    <div class="mp-approved-grid">
-      <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
-      <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
-      <div class="form-field mp-address">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
+<section class="mpf-section mpf-internal mpf-collapsed">
+  <button class="mpf-section-title" type="button" aria-expanded="false">
+    <span class="mpf-section-icon"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></span>
+    <b>Internal / Workflow</b>
+    <span class="mpf-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>
+  </button>
+  <div class="mpf-section-body">
+    <div class="mpf-grid">
+      {% include "./_marriage_form_field.html" with field=profile_form.portfolio css="mpf-col-3" %}
+      {% include "./_marriage_form_field.html" with field=profile_form.status css="mpf-col-3" %}
+      {% include "./_marriage_form_field.html" with field=profile_form.notes css="mpf-col-6" %}
     </div>
   </div>
 </section>
 {% endif %}
 
-<div class="mp-preserved-fields">
+<div class="mpf-preserved">
   {{ person_form.province }}
   {{ profile_form.father_name }}{{ profile_form.father_occupation }}{{ profile_form.mother_name }}{{ profile_form.mother_occupation }}
   {{ profile_form.family_residence }}{{ profile_form.place_of_origin }}{{ profile_form.guardian_contact }}{{ profile_form.family_values }}
@@ -110,20 +144,113 @@
 </div>
 
 <script>
-(function(){
-  document.querySelectorAll('.mp-section-title').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var section = btn.closest('.mp-approved-section');
-      section.classList.toggle('mp-collapsed');
-      var collapsed = section.classList.contains('mp-collapsed');
-      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      var c = btn.querySelector('.mp-chevron'); if(c) c.textContent = collapsed ? '⌄' : '⌃';
+(function () {
+  var root = document.currentScript.parentElement;
+  var narrow = window.matchMedia('(max-width:767px)').matches;
+  var slice = Array.prototype.slice;
+
+  function setOpen(section, open) {
+    section.classList.toggle('mpf-collapsed', !open);
+    section.querySelector('.mpf-section-title').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  slice.call(root.querySelectorAll('.mpf-section')).forEach(function (section, index) {
+    if (section.classList.contains('mpf-internal') || (narrow && index > 0)) {
+      setOpen(section, false);
+    }
+    section.querySelector('.mpf-section-title').addEventListener('click', function () {
+      setOpen(section, section.classList.contains('mpf-collapsed'));
     });
   });
-  var photo = document.getElementById('id_photo'), preview = document.getElementById('photoPreview');
-  if(photo && preview) photo.addEventListener('change', function(){
-    var f=this.files&&this.files[0]; if(!f) return;
-    preview.src=URL.createObjectURL(f); preview.hidden=false;
+
+  root.addEventListener('invalid', function (event) {
+    var section = event.target.closest('.mpf-section');
+    if (section && section.classList.contains('mpf-collapsed')) {
+      setOpen(section, true);
+    }
+  }, true);
+
+  var thumb = root.querySelector('#photoPreview');
+  ['id_photo', 'id_cnic_front', 'id_cnic_back'].forEach(function (id) {
+    var input = root.querySelector('#' + id);
+    var card = root.querySelector('label[for="' + id + '"]');
+    if (!input || !card) { return; }
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) { return; }
+      card.classList.add('is-filled');
+      var caption = card.querySelector('small');
+      if (caption) { caption.textContent = file.name; }
+      var preview = card.querySelector('img');
+      if (preview) {
+        preview.src = URL.createObjectURL(file);
+        preview.hidden = false;
+      }
+      if (id === 'id_photo' && thumb) {
+        var copy = card.querySelector('.mpf-upload-copy'); if (copy) { copy.hidden = true; }
+        var change = card.querySelector('.mpf-photo-change'); if (change) { change.hidden = false; }
+      }
+    });
+  });
+
+  slice.call(root.querySelectorAll('.mpf-seg select')).forEach(function (select) {
+    var group = document.createElement('div');
+    group.className = 'mpf-seg-group';
+    group.setAttribute('role', 'radiogroup');
+
+    function sync() {
+      slice.call(group.children).forEach(function (button) {
+        var on = button.dataset.value === select.value;
+        button.classList.toggle('is-on', on);
+        button.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    }
+
+    slice.call(select.options).forEach(function (option) {
+      if (!option.value) { return; }
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mpf-seg-btn';
+      button.textContent = option.textContent;
+      button.dataset.value = option.value;
+      button.setAttribute('role', 'radio');
+      button.addEventListener('click', function () {
+        select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      group.appendChild(button);
+    });
+
+    select.classList.add('mpf-seg-source');
+    select.parentNode.insertBefore(group, select.nextSibling);
+    select.addEventListener('change', sync);
+    sync();
+  });
+
+  var multis = slice.call(root.querySelectorAll('.mpf-multi'));
+  multis.forEach(function (box) {
+    var summary = box.querySelector('summary');
+    var placeholder = summary.textContent;
+    box.addEventListener('change', function () {
+      var picked = slice.call(box.querySelectorAll('input:checked')).map(function (input) {
+        return input.parentNode.textContent.trim();
+      });
+      summary.textContent = picked.length ? picked.join(', ') : placeholder;
+      summary.classList.toggle('has-value', picked.length > 0);
+    });
+    var initial = slice.call(box.querySelectorAll('input:checked')).map(function (input) {
+      return input.parentNode.textContent.trim();
+    });
+    if (initial.length) {
+      summary.textContent = initial.join(', ');
+      summary.classList.add('has-value');
+    }
+  });
+  document.addEventListener('click', function (event) {
+    multis.forEach(function (box) {
+      if (box.open && !box.contains(event.target)) { box.removeAttribute('open'); }
+    });
   });
 })();
 </script>
+</div>

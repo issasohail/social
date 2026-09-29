@@ -1,0 +1,203 @@
+.mpf-form{--mpf-navy:#11345a;--mpf-label:#24476b;--mpf-line:#c9d7e0;--mpf-teal:#0b7f79;--mpf-muted:#5b7186;position:relative;font-family:Arial,Helvetica,sans-serif;color:var(--mpf-navy)}
+.mpf-form *,.mpf-form *::before,.mpf-form *::after{box-sizing:border-box}
+
+.mpf-errors{margin:0 0 10px;padding:9px 12px;border:1px solid #f0c3c3;border-radius:6px;background:#fff0f0;color:#9f2929;font-size:12px}
+
+.mpf-upload-strip{display:flex;justify-content:flex-end;align-items:stretch;gap:10px;margin:0 0 12px}
+.mpf-upload-card{position:relative;overflow:hidden;width:118px;min-height:80px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px dashed #8dbfc6;border-radius:6px;background:#f7fbfc;color:var(--mpf-navy);font-size:11px;line-height:1.25;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.mpf-upload-card:hover,.mpf-upload-card:focus-within{border-color:var(--mpf-teal);background:#eef8f8}
+.mpf-upload-card.is-filled{border-style:solid;border-color:var(--mpf-teal);background:#eaf6f5}
+.mpf-upload-card .mpf-ico{width:24px;height:24px;margin-bottom:2px;color:var(--mpf-teal)}
+.mpf-upload-card strong{font-weight:400}
+.mpf-upload-card small{display:block;max-width:100%;overflow:hidden;font-size:9px;color:var(--mpf-muted);text-overflow:ellipsis;white-space:nowrap}
+.mpf-photo-thumb{width:64px;height:80px;object-fit:cover;border:1px solid var(--mpf-line);border-radius:6px;background:#fff}
+.mpf-photo-thumb[hidden]{display:none}
+.mpf-hidden-file{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.mpf-section{margin:0 0 12px;border:1px solid #dfe8ee;border-radius:8px;background:#fff;box-shadow:0 2px 10px rgba(17,52,90,.05)}
+.mpf-internal{background:#fbfcfd}
+.mpf-section-title{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 16px;border:0;border-radius:8px;background:transparent;color:var(--mpf-navy);font:700 17px Georgia,"Times New Roman",serif;text-align:left;cursor:pointer}
+.mpf-section-header{display:flex;align-items:center;gap:12px;padding-right:14px}.mpf-section-header .mpf-section-title{flex:1}.mpf-heading-jamatkhana{display:flex;align-items:center;gap:7px;min-width:400px}.mpf-heading-jamatkhana label{font:500 11px Arial,sans-serif;color:var(--mpf-label)}.mpf-heading-jamatkhana select{width:830px;height:31px;padding:5px 8px;border:1px solid var(--mpf-line);border-radius:5px;background:#fff;color:var(--mpf-navy);font:12px Arial,sans-serif}
+.mpf-section-title b{font-weight:700}
+.mpf-section-icon{display:inline-flex;flex:none;width:22px;height:22px}
+.mpf-section-icon .mpf-ico{width:22px;height:22px}
+.mpf-chevron{display:inline-flex;flex:none;width:18px;height:18px;margin-left:auto;transition:transform .15s}
+.mpf-collapsed .mpf-chevron{transform:rotate(180deg)}
+.mpf-section-body{padding:4px 16px 16px}
+.mpf-collapsed .mpf-section-body{display:none}
+
+.mpf-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:12px}
+.mpf-four-row-layout{display:grid;gap:10px}.mpf-row{display:grid;gap:10px;align-items:end}.mpf-row-10{grid-template-columns:repeat(10,minmax(0,1fr))}.mpf-row-3{grid-template-columns:repeat(3,minmax(0,1fr))}.mpf-row-13{grid-template-columns:repeat(13,minmax(0,1fr))}.mpf-row .mpf-field{min-width:0}.mpf-row .mpf-field input,.mpf-row .mpf-field select,.mpf-row .mpf-field textarea,.mpf-row .mpf-multi>summary{width:100%;max-width:none}.mpf-row-13 .mpf-seg{max-width:none}.mpf-row-13 .mpf-seg-btn{padding:0 5px}.mpf-row-13 .mpf-field>label{font-size:9px}
+.mpf-grid>.mpf-field{grid-column:span 1}
+.mpf-grid>.mpf-col-3{grid-column:span 2}
+.mpf-grid>.mpf-col-4{grid-column:span 3}
+.mpf-grid>.mpf-col-6{grid-column:span 4}
+.mpf-grid>.mpf-col-9{grid-column:span 6}
+.mpf-compact{display:grid;grid-template-columns:1.3fr .8fr .95fr .95fr 1.2fr 1.15fr 1.15fr 1.5fr;gap:12px;margin-top:12px;align-items:end}
+.mpf-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mpf-sibling-pair{grid-column:span 2!important}.mpf-sibling-pair>div{display:flex;gap:4px}.mpf-sibling-pair>div>span{display:grid;grid-template-columns:auto 76px;align-items:center;gap:4px;min-width:0}.mpf-sibling-pair>div small{font:10px Arial,sans-serif;color:var(--mpf-muted)}.mpf-sibling-pair input{width:76px!important}
+.mpf-preserved{display:none}
+
+.mpf-field{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0}
+.mpf-field>label{margin:0;font:500 11px/1.2 Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;color:var(--mpf-label)}
+.mpf-field .required{margin-left:2px;color:#e3283f}
+.mpf-field small{font-size:10px;color:var(--mpf-muted)}
+.mpf-field input:not([type=checkbox]):not([type=radio]):not([type=file]),.mpf-field select,.mpf-field textarea{width:100%;height:34px;min-height:34px;padding:6px 9px;border:1px solid var(--mpf-line);border-radius:5px;background:#fff;color:var(--mpf-navy);font:12px Arial,Helvetica,sans-serif;box-shadow:none}
+.mpf-field textarea{padding-top:8px;resize:vertical}
+.mpf-field select[multiple]{height:68px;padding:3px}
+.mpf-field input::placeholder,.mpf-field textarea::placeholder{color:#9aa9b6}
+.mpf-field input:focus,.mpf-field select:focus,.mpf-field textarea:focus,.mpf-multi[open]>summary{outline:none;border-color:var(--mpf-teal);box-shadow:0 0 0 3px rgba(11,127,121,.14)}
+.mpf-field .errorlist{margin:0;padding:0;list-style:none;font-size:11px;color:#b63a2c}
+
+.mpf-seg>ul:not(.errorlist),.mpf-seg>div:not(.mpf-seg-group){display:flex;margin:0;padding:0;list-style:none}
+.mpf-seg>ul:not(.errorlist)>li,.mpf-seg>div:not(.mpf-seg-group)>div{flex:1;margin:0}
+.mpf-seg>ul:not(.errorlist)>li>label,.mpf-seg>div:not(.mpf-seg-group)>div>label{position:relative;display:flex;align-items:center;justify-content:center;height:34px;margin:0;padding:0 12px;border:1px solid var(--mpf-line);background:#fff;color:var(--mpf-navy);font:12px Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;white-space:nowrap;cursor:pointer}
+.mpf-seg>ul:not(.errorlist)>li+li>label,.mpf-seg>div:not(.mpf-seg-group)>div+div>label{margin-left:-1px}
+.mpf-seg>ul:not(.errorlist)>li:first-child>label,.mpf-seg>div:not(.mpf-seg-group)>div:first-child>label{border-radius:5px 0 0 5px}
+.mpf-seg>ul:not(.errorlist)>li:last-child>label,.mpf-seg>div:not(.mpf-seg-group)>div:last-child>label{border-radius:0 5px 5px 0}
+.mpf-seg label>input[type=radio]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.mpf-seg label:has(input:checked){z-index:1;border-color:var(--mpf-teal);background:var(--mpf-teal);color:#fff}
+.mpf-seg-group{display:flex}
+.mpf-seg-btn{flex:1;height:34px;padding:0 12px;border:1px solid var(--mpf-line);background:#fff;color:var(--mpf-navy);font:12px Arial,Helvetica,sans-serif;cursor:pointer}
+.mpf-seg-btn+.mpf-seg-btn{margin-left:-1px}
+.mpf-seg-btn:first-child{border-radius:5px 0 0 5px}
+.mpf-seg-btn:last-child{border-radius:0 5px 5px 0}
+.mpf-seg-btn.is-on{position:relative;z-index:1;border-color:var(--mpf-teal);background:var(--mpf-teal);color:#fff}
+.mpf-seg-source{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+.mpf-multi{position:relative}
+.mpf-multi>summary{display:flex;align-items:center;justify-content:space-between;gap:6px;height:34px;padding:0 9px;overflow:hidden;border:1px solid var(--mpf-line);border-radius:5px;background:#fff;color:var(--mpf-muted);font:12px Arial,Helvetica,sans-serif;white-space:nowrap;text-overflow:ellipsis;list-style:none;cursor:pointer}
+.mpf-multi>summary::-webkit-details-marker{display:none}
+.mpf-multi>summary::after{content:"";flex:none;width:6px;height:6px;border-right:1.5px solid #4a5f73;border-bottom:1.5px solid #4a5f73;transform:rotate(45deg) translateY(-2px)}
+.mpf-multi>summary.has-value{color:var(--mpf-navy)}
+.mpf-multi-menu{position:absolute;z-index:30;top:calc(100% + 4px);right:0;width:max(100%,240px);max-height:260px;overflow:auto;padding:8px 10px;border:1px solid var(--mpf-line);border-radius:6px;background:#fff;box-shadow:0 10px 30px rgba(17,52,90,.16)}
+.mpf-multi-menu ul{display:block;margin:0;padding:0;list-style:none}
+.mpf-multi-menu label{display:flex;align-items:center;gap:8px;margin:0;padding:5px 2px;font:12px Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;color:var(--mpf-navy);cursor:pointer}
+.mpf-field .mpf-multi-menu input[type=checkbox]{width:auto;height:auto;min-height:0;margin:0}
+
+@media (max-width:1023px){
+  .mpf-row-10,.mpf-row-13{grid-template-columns:repeat(4,minmax(0,1fr))}.mpf-row-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mpf-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .mpf-grid>.mpf-field,.mpf-grid>.mpf-col-3{grid-column:span 1}
+  .mpf-grid>.mpf-col-4,.mpf-grid>.mpf-col-6{grid-column:span 2}
+  .mpf-grid>.mpf-col-9{grid-column:1/-1}
+  .mpf-compact{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .mpf-upload-strip{justify-content:flex-start}
+}
+
+@media (max-width:767px){
+  .mpf-row,.mpf-row-10,.mpf-row-13,.mpf-row-3{grid-template-columns:1fr}
+  .mpf-grid,.mpf-compact{grid-template-columns:1fr}
+  .mpf-grid>.mpf-field,.mpf-grid>.mpf-col-3,.mpf-grid>.mpf-col-4,.mpf-grid>.mpf-col-6,.mpf-grid>.mpf-col-9{grid-column:1/-1}
+  .mpf-upload-strip{display:grid;grid-template-columns:1.25fr .75fr;gap:8px}
+  .mpf-profile-card{grid-row:span 2;min-height:150px}
+  .mpf-upload-card{width:100%;min-height:70px}
+  .mpf-photo-thumb{grid-column:1/-1;justify-self:start}
+  .mpf-section-title{min-height:44px;padding:0 12px;font-size:15px}
+  .mpf-section-body{padding:4px 12px 14px}
+  .mpf-field input:not([type=checkbox]):not([type=radio]):not([type=file]),.mpf-field select,.mpf-field textarea,.mpf-multi>summary,.mpf-seg-btn,.mpf-seg>ul:not(.errorlist)>li>label,.mpf-seg>div:not(.mpf-seg-group)>div>label{height:40px;min-height:40px;font-size:16px}
+  .mpf-field textarea{height:52px}
+  .mpf-multi-menu{left:0;right:auto;width:100%}
+  .mpf-section-header{display:block;padding-right:0}.mpf-heading-jamatkhana{padding:0 12px 10px;min-width:0}.mpf-heading-jamatkhana select{flex:1;width:auto}
+}
+
+/* Final integration refinements against the approved mockup */
+.mpf-page-shell{width:min(1540px,calc(100% - 24px));margin:18px auto 32px}
+.mpf-page-head{min-height:78px;padding:12px 14px 10px;background:#fff;color:var(--mpf-navy,#11345a);border:0;border-radius:0;box-shadow:none}
+.mpf-page-head .eyebrow{display:none}.mpf-page-head h1{margin:0 0 4px;color:#11345a;font:700 31px/1.08 Georgia,"Times New Roman",serif}.mpf-page-head p{margin:0;color:#587087;font:11px Arial,sans-serif}
+.mpf-page-head-actions{margin-left:auto}.mpf-page-head .secondary{font:700 11px Arial,sans-serif}
+.marriage-profile-form{padding:0 10px 10px;background:#f9fbfc;border:0;border-radius:0;box-shadow:0 5px 22px rgba(17,52,90,.06);overflow:visible}
+.mpf-upload-strip{margin-top:-66px;position:relative;z-index:3}.mpf-profile-card{width:122px}.mpf-photo-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}.mpf-photo-change{position:absolute;left:6px;right:6px;bottom:6px;z-index:2;padding:4px 6px;border-radius:4px;background:rgba(17,52,90,.86);color:#fff;font:700 9px Arial,sans-serif}.mpf-upload-card.is-filled .mpf-upload-copy{display:none}
+.mpf-upload-card.is-filled{border-style:solid}.mpf-static-title{cursor:default}.mpf-consent .privacy-note{margin:0;background:#f2f8f7;border-left:3px solid var(--mpf-teal);padding:10px 12px;font:11px/1.45 Arial,sans-serif}
+.mpf-document-preview{position:absolute;inset:5px;width:calc(100% - 10px);height:calc(100% - 10px);object-fit:cover;border-radius:4px}.mpf-upload-card.is-filled .mpf-upload-copy{display:none}
+.mpf-family-merged{margin-top:-1px;border-top:0;border-radius:0 0 8px 8px;box-shadow:none}.mpf-family-merged .mpf-section-title{display:none}.mpf-family-merged .mpf-section-body{padding-top:0}
+.mpf-grid>.mpf-field select[multiple]{height:34px;min-height:34px;overflow:hidden}.mpf-preference-grid>.mpf-col-4 textarea{height:46px;min-height:46px}.mpf-preference-grid>.mpf-col-6 textarea{height:46px;min-height:46px}
+.mpf-field input[type=number]{appearance:textfield}.mpf-field input[type=number]::-webkit-inner-spin-button{opacity:.65}
+
+/* FORM SIZE CONTROLS — change these pixel values to tune individual field widths. */
+.mpf-form{--mpf-identity-width:150px;--mpf-whatsapp-width:155px;--mpf-city-width:165px;--mpf-siblings-width:76px;--mpf-language-width:150px;--mpf-caste-width:150px}
+.mpf-field:has(#id_identity_number) input{max-width:var(--mpf-identity-width)}
+.mpf-field:has(#id_whatsapp_number) input{max-width:var(--mpf-whatsapp-width)}
+.mpf-field:has(#id_city) input{max-width:var(--mpf-city-width)}
+.mpf-field:has(#id_brothers_count) input,.mpf-field:has(#id_sisters_count) input{max-width:var(--mpf-siblings-width)}
+.mpf-field:has(#id_languages) .mpf-multi,.mpf-field:has(#id_languages) .mpf-multi>summary{max-width:var(--mpf-language-width)}
+.mpf-field:has(#id_caste_tribe) .mpf-multi,.mpf-field:has(#id_caste_tribe) .mpf-multi>summary{max-width:var(--mpf-caste-width)}
+
+/* Personal-info compact controls; tune these values independently if needed. */
+.mpf-form{--mpf-mobile-width:118px;--mpf-email-width:210px;--mpf-weight-width:92px;--mpf-status-width:145px;--mpf-health-width:145px;--mpf-toggle-width:132px}
+.mpf-field:has(#id_mobile) input{max-width:var(--mpf-mobile-width)}.mpf-field:has(#id_whatsapp_number) input{max-width:var(--mpf-mobile-width)}.mpf-field:has(#id_email) input{max-width:var(--mpf-email-width)}.mpf-field:has(#id_weight_kg) input{max-width:var(--mpf-weight-width)}.mpf-field:has(#id_family_type) select{max-width:var(--mpf-status-width)}.mpf-field:has(#id_physical_status) select,.mpf-field:has(#id_disability_status) select,.mpf-field:has(#id_known_diseases) .mpf-multi{max-width:var(--mpf-health-width)}.mpf-compact .mpf-seg{max-width:var(--mpf-toggle-width)}
+@media(max-width:1023px){.mpf-page-shell{width:calc(100% - 16px);margin:8px auto 22px}.mpf-upload-strip{margin-top:0}.mpf-page-head{min-height:0}}
+@media(max-width:767px){.mpf-page-shell{width:100%;margin:0}.mpf-page-head{padding:12px 10px 8px}.mpf-page-head h1{font-size:22px}.marriage-profile-form{padding:0 7px 8px}.mpf-upload-strip{margin:0 0 8px}.mpf-profile-card{width:100%}.mpf-photo-change{font-size:10px}.mpf-grid>.mpf-field select[multiple]{height:40px;min-height:40px}}
+
+/* Keep all ten row-two fields compact and contiguous. */
+.mpf-row-10{column-gap:6px}.mpf-row-10 .mpf-field{margin:0}.mpf-row-10 .mpf-field:has(#id_marital_status) select{max-width:110px}.mpf-sibling-pair{grid-column:span 1!important}.mpf-sibling-pair>div{gap:2px}.mpf-sibling-pair>div>span{grid-template-columns:auto 42px;gap:2px}.mpf-sibling-pair>div small{font-size:9px}.mpf-sibling-pair input{width:42px!important;padding-left:3px!important;padding-right:1px!important}
+
+@media (min-width:768px){.mpf-heading-jamatkhana{min-width:900px}.mpf-heading-jamatkhana select{width:570px}}
+
+/* Final desktop layout overrides: these intentionally win over earlier responsive rules. */
+@media (min-width:768px){
+  .mpf-section-header .mpf-heading-jamatkhana{width:900px!important;min-width:900px!important}
+  .mpf-section-header .mpf-heading-jamatkhana select{width:870px!important;min-width:870px!important;max-width:none!important}
+  .mpf-section-header .mpf-heading-jamatkhana .select2-lite{width:870px!important;min-width:870px!important}
+  .mpf-section-header .mpf-heading-jamatkhana .select2-lite-input{width:870px!important;min-width:870px!important}
+  .mpf-row-10 .mpf-sibling-pair{grid-column:span 1!important;width:100%!important;min-width:0!important}
+  .mpf-row-10 .mpf-sibling-pair>div{display:flex!important;width:100%!important;gap:1px!important}
+  .mpf-row-10 .mpf-sibling-pair>div>span{grid-template-columns:auto 38px!important;gap:1px!important}
+  .mpf-row-10 .mpf-sibling-pair input{width:38px!important;min-width:38px!important}
+}
+
+/* Requested compact tablet/phone order (360px and wider). */
+@media (min-width:360px) and (max-width:767px){
+  .mpf-section-header .mpf-heading-jamatkhana{width:auto!important;min-width:0!important}
+  .mpf-section-header .mpf-heading-jamatkhana .select2-lite,.mpf-section-header .mpf-heading-jamatkhana .select2-lite-input{width:100%!important;min-width:0!important}
+  .mpf-four-row-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .mpf-four-row-layout .mpf-row{display:contents}
+  .mpf-four-row-layout .mpf-field{grid-column:auto!important;grid-row:auto!important}
+  .mpf-four-row-layout .mpf-field:has(#id_middle_name){display:none}
+  .mpf-four-row-layout .mpf-field:has(#id_title){grid-column:1;grid-row:1}.mpf-four-row-layout .mpf-field:has(#id_first_name){grid-column:2;grid-row:1}.mpf-four-row-layout .mpf-field:has(#id_last_name){grid-column:3;grid-row:1}
+  .mpf-four-row-layout .mpf-field:has(#id_gender){grid-column:1;grid-row:2}.mpf-four-row-layout .mpf-field:has(#id_date_of_birth){grid-column:2;grid-row:2}.mpf-four-row-layout .mpf-field:has(#id_nationality){grid-column:3;grid-row:2}
+  .mpf-four-row-layout .mpf-field:has(#id_identity_type){grid-column:1;grid-row:3}.mpf-four-row-layout .mpf-field:has(#id_identity_number){grid-column:2 / span 2;grid-row:3}
+  .mpf-four-row-layout .mpf-field:has([name="caste_tribe"]){grid-column:1;grid-row:4}.mpf-four-row-layout .mpf-field:has(#id_mobile){grid-column:2 / span 2;grid-row:4}
+  .mpf-four-row-layout .mpf-field:has(#id_whatsapp_number){grid-column:1;grid-row:5}.mpf-four-row-layout .mpf-field:has(#id_email){grid-column:2 / span 2;grid-row:5}
+  .mpf-four-row-layout .mpf-field:has(#id_country){grid-column:1;grid-row:6}.mpf-four-row-layout .mpf-field:has(#id_city){grid-column:2 / span 2;grid-row:6}
+  .mpf-four-row-layout .mpf-field:has(#id_height_feet){grid-column:1;grid-row:7}.mpf-four-row-layout .mpf-field:has(#id_weight_kg){grid-column:2 / span 2;grid-row:7}
+  .mpf-four-row-layout .mpf-field:has(#id_marital_status){grid-column:1;grid-row:8}.mpf-four-row-layout .mpf-field:has(#id_family_type){grid-column:2 / span 2;grid-row:8}
+  .mpf-four-row-layout .mpf-sibling-pair{grid-column:1 / -1!important;grid-row:9}.mpf-four-row-layout .mpf-field:has(#id_permanent_address){grid-column:1 / -1;grid-row:10}.mpf-four-row-layout .mpf-field:has(#id_current_address){grid-column:1 / span 2;grid-row:11}.mpf-four-row-layout .mpf-field:has(#id_family_background){grid-column:3;grid-row:11}
+  .mpf-four-row-layout .mpf-row-13{display:grid;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));grid-row:12;gap:8px}
+}
+
+@media (min-width:768px){.mpf-section-header .mpf-heading-jamatkhana{width:600px!important;min-width:600px!important}.mpf-section-header .mpf-heading-jamatkhana .select2-lite,.mpf-section-header .mpf-heading-jamatkhana .select2-lite-input{width:570px!important;min-width:570px!important}}
+
+/* Compact personal-information header and duplicate-ID dialog. */
+.mpf-section-header{padding:0 14px}.mpf-section-header .mpf-section-title{flex:0 0 auto;width:auto;padding:0}.mpf-heading-jamatkhana{min-width:520px}.mpf-heading-jamatkhana select{width:450px}.duplicate-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(12,32,47,.58)}.duplicate-modal[hidden]{display:none}.duplicate-modal-card{width:min(480px,100%);padding:24px;border-radius:10px;background:#fff;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Arial,sans-serif;color:#173c61}.duplicate-modal-card h2{font:700 20px Georgia,serif;margin:0 0 12px}.duplicate-modal-card p{font-size:14px;line-height:1.5}.duplicate-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.duplicate-modal-actions button{padding:9px 13px;border:1px solid #b8c9d6;border-radius:5px;background:#fff;color:#11345a;font-weight:700;cursor:pointer}.duplicate-modal-actions button:first-child{background:#0b7f79;color:#fff;border-color:#0b7f79}
+
+/* Final narrow-screen row order.  Applies even when the browser scrollbar reduces a 360px device viewport. */
+@media (max-width:767px){
+  .mpf-four-row-layout{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}.mpf-four-row-layout .mpf-row{display:contents!important}.mpf-four-row-layout .mpf-field{grid-column:auto!important;grid-row:auto!important}.mpf-four-row-layout .mpf-field:has(#id_middle_name){display:none!important}
+  .mpf-four-row-layout .mpf-field:has(#id_title){grid-column:1!important;grid-row:1!important}.mpf-four-row-layout .mpf-field:has(#id_first_name){grid-column:2!important;grid-row:1!important}.mpf-four-row-layout .mpf-field:has(#id_last_name){grid-column:3!important;grid-row:1!important}.mpf-four-row-layout .mpf-field:has(#id_gender){grid-column:1!important;grid-row:2!important}.mpf-four-row-layout .mpf-field:has(#id_date_of_birth){grid-column:2!important;grid-row:2!important}.mpf-four-row-layout .mpf-field:has(#id_nationality){grid-column:3!important;grid-row:2!important}.mpf-four-row-layout .mpf-field:has(#id_identity_type){grid-column:1!important;grid-row:3!important}.mpf-four-row-layout .mpf-field:has(#id_identity_number){grid-column:2 / span 2!important;grid-row:3!important}.mpf-four-row-layout .mpf-field:has([name="caste_tribe"]){grid-column:1!important;grid-row:4!important}.mpf-four-row-layout .mpf-field:has(#id_mobile){grid-column:2 / span 2!important;grid-row:4!important}.mpf-four-row-layout .mpf-field:has(#id_whatsapp_number){grid-column:1!important;grid-row:5!important}.mpf-four-row-layout .mpf-field:has(#id_email){grid-column:2 / span 2!important;grid-row:5!important}.mpf-four-row-layout .mpf-field:has(#id_country){grid-column:1!important;grid-row:6!important}.mpf-four-row-layout .mpf-field:has(#id_city){grid-column:2 / span 2!important;grid-row:6!important}.mpf-four-row-layout .mpf-field:has(#id_height_feet){grid-column:1!important;grid-row:7!important}.mpf-four-row-layout .mpf-field:has(#id_weight_kg){grid-column:2 / span 2!important;grid-row:7!important}.mpf-four-row-layout .mpf-field:has(#id_marital_status){grid-column:1!important;grid-row:8!important}.mpf-four-row-layout .mpf-field:has(#id_family_type){grid-column:2 / span 2!important;grid-row:8!important}.mpf-four-row-layout .mpf-sibling-pair{grid-column:1/-1!important;grid-row:9!important}.mpf-four-row-layout .mpf-field:has(#id_permanent_address){grid-column:1/-1!important;grid-row:10!important}.mpf-four-row-layout .mpf-field:has(#id_current_address){grid-column:1 / span 2!important;grid-row:11!important}.mpf-four-row-layout .mpf-field:has(#id_family_background){grid-column:3!important;grid-row:11!important}.mpf-four-row-layout .mpf-row-13{display:grid!important;grid-column:1/-1!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-row:12!important;gap:8px!important}
+  .mpf-preference-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}.mpf-preference-grid>.mpf-field{grid-column:auto!important}.mpf-preference-grid>.mpf-field:nth-child(4),.mpf-preference-grid>.mpf-field:nth-child(5),.mpf-preference-grid>.mpf-field:nth-child(6),.mpf-preference-grid>.mpf-field:nth-child(7),.mpf-preference-grid>.mpf-field:nth-child(8),.mpf-preference-grid>.mpf-field:nth-child(9),.mpf-preference-grid>.mpf-field:nth-child(10),.mpf-preference-grid>.mpf-field:nth-child(11){grid-column:span 1!important}.mpf-preference-grid>.mpf-field:nth-child(n+12){grid-column:1/-1!important}
+}
+
+@media (max-width:767px){
+  .mpf-form .mpf-field>label{font-size:10px}
+  .mpf-form .mpf-field input,.mpf-form .mpf-field select,.mpf-form .mpf-field textarea,.mpf-form .mpf-multi>summary{font-size:13px}
+  .mpf-form .mpf-gender .mpf-seg-btn{font-size:11px}
+}
+
+@media (max-width:767px){
+  .mpf-form .mpf-field input:not([type=checkbox]):not([type=radio]):not([type=file]),.mpf-form .mpf-field select,.mpf-form .mpf-multi>summary{height:34px;min-height:34px;padding:4px 6px}
+  .mpf-form .mpf-field textarea{height:42px;min-height:42px;padding:5px 6px}
+  .mpf-form .mpf-gender .mpf-seg-btn{height:34px;padding:0 5px;font-size:10px}
+  .mpf-form #id_date_of_birth{font-size:11px;letter-spacing:-.35px;padding-left:3px;padding-right:2px}
+}
+
+/* Mobile row layout: flex rows, not grid columns.  Adjust each flex-basis value independently. */
+@media (max-width:767px){
+  .mpf-four-row-layout{display:flex!important;flex-wrap:wrap!important;gap:8px 0!important}.mpf-four-row-layout .mpf-row{display:contents!important}.mpf-four-row-layout .mpf-field{box-sizing:border-box;padding-right:6px;min-width:0!important;grid-column:auto!important;grid-row:auto!important}.mpf-four-row-layout .mpf-row-13{display:contents!important}.mpf-four-row-layout .mpf-field:has(#id_middle_name){display:none!important}
+  /* Rows 1–3 */
+  .mpf-four-row-layout .mpf-field:has(#id_title){order:1;flex:0 0 30%}.mpf-four-row-layout .mpf-field:has(#id_first_name){order:1;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_last_name){order:1;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_gender){order:2;flex:0 0 30%}.mpf-four-row-layout .mpf-field:has(#id_date_of_birth){order:2;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_nationality){order:2;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_identity_type){order:3;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_identity_number){order:3;flex:0 0 65%}
+  /* Rows 4–11 */
+  .mpf-four-row-layout .mpf-field:has([name="caste_tribe"]){order:4;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_mobile){order:4;flex:0 0 65%}.mpf-four-row-layout .mpf-field:has(#id_whatsapp_number){order:5;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_email){order:5;flex:0 0 65%}.mpf-four-row-layout .mpf-field:has(#id_country){order:6;flex:0 0 35%}.mpf-four-row-layout .mpf-field:has(#id_city){order:6;flex:0 0 65%}.mpf-four-row-layout .mpf-field:has(#id_height_feet){order:7;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has(#id_weight_kg){order:7;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has(#id_marital_status){order:8;flex:0 0 45%}.mpf-four-row-layout .mpf-field:has(#id_family_type){order:8;flex:0 0 55%}.mpf-four-row-layout .mpf-sibling-pair{order:9;flex:0 0 100%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_permanent_address){order:10;flex:0 0 100%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_current_address){order:11;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has(#id_family_background){order:11;flex:0 0 50%;padding-right:0}
+  /* Rows 12–19 */
+  .mpf-four-row-layout .mpf-field:has(#id_smoking){order:13;flex:0 0 33.33%}.mpf-four-row-layout .mpf-field:has(#id_owns_car){order:13;flex:0 0 33.33%}.mpf-four-row-layout .mpf-field:has(#id_owns_house){order:13;flex:0 0 33.34%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_willingness_to_relocate){order:12;flex:0 0 100%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_physical_status){order:14;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has(#id_disability_status){order:14;flex:0 0 50%;padding-right:0}.mpf-four-row-layout .mpf-field:has([name="known_diseases"]){order:15;flex:0 0 100%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_education_level){order:16;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has(#id_qualification){order:16;flex:0 0 50%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_institution){order:17;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has([name="profession"]){order:17;flex:0 0 50%;padding-right:0}.mpf-four-row-layout .mpf-field:has(#id_employer_or_business){order:18;flex:0 0 100%;padding-right:0}.mpf-four-row-layout .mpf-field:has([name="income_range"]){order:19;flex:0 0 50%}.mpf-four-row-layout .mpf-field:has([name="languages"]){order:19;flex:0 0 50%;padding-right:0}
+}

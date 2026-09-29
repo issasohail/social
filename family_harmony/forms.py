@@ -9,6 +9,11 @@ def _datalist(field, list_id, values):
     field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
 
 
+def _select(field, values, placeholder):
+    """Render configured profile lists as real selects, not browser datalists."""
+    field.widget = forms.Select(choices=[('', placeholder)] + [(value, value) for value in (values or [])])
+
+
 YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
 
 
@@ -16,34 +21,53 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
     height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)')
     height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)')
     known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
+    languages = forms.MultipleChoiceField(required=False, label='Languages')
+    caste_tribe = forms.MultipleChoiceField(required=False, label='Caste / tribe')
+    marital_status = forms.ChoiceField(required=False, label='Marital status')
+    profession = forms.MultipleChoiceField(required=False, label='Profession')
+    income_range = forms.MultipleChoiceField(required=False, label='Income range')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         cfg = FamilyHarmonySettings.current()
         self.fields['status'].required = False
         self.fields['status'].initial = self.instance.status if self.instance and self.instance.pk else FamilyHarmonyProfile.Status.DRAFT
-        for name, values in [
-            ('education_level', cfg.education_levels), ('profession', cfg.occupation_options),
-            ('income_range', cfg.income_ranges), ('family_type', cfg.family_type_options),
-            ('marital_status', cfg.marital_status_options), ('caste_tribe', cfg.caste_tribe_options),
-            ('languages', cfg.language_options),
+        for name, values, placeholder in [
+            ('marital_status', cfg.marital_status_options, ''),
+            ('education_level', cfg.education_levels, ''),
+            ('family_type', cfg.family_type_options, ''),
         ]:
-            _datalist(self.fields[name], f'{name}-options', values)
+            _select(self.fields[name], values, placeholder)
+        for name, values in [
+            ('languages', cfg.language_options), ('caste_tribe', cfg.caste_tribe_options),
+            ('profession', cfg.occupation_options),
+            ('income_range', cfg.income_ranges),
+        ]:
+            choices = [(value, value) for value in (values or [])]
+            self.fields[name].choices = choices
+            self.fields[name].widget = forms.CheckboxSelectMultiple(choices=choices)
         self.fields['physical_status'].widget = forms.Select(
-            choices=[('', 'Select physical status')] + [(v, v) for v in cfg.physical_status_options]
+            choices=[('', '')] + [(v, v) for v in cfg.physical_status_options]
         )
         self.fields['disability_status'].widget = forms.Select(
-            choices=[('', 'Select disability status')] + [(v, v) for v in cfg.disability_options]
+            choices=[('', '')] + [(v, v) for v in cfg.disability_options]
         )
         disease_choices = [(v, v) for v in cfg.known_disease_options]
         self.fields['known_diseases'].choices = disease_choices
         self.fields['known_diseases'].widget = forms.CheckboxSelectMultiple(choices=disease_choices)
-        self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
-        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
-        self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
-        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
+        self.fields['smoking'].widget = forms.Select(choices=[('', 'Select smoking status'), ('No', 'No'), ('Yes', 'Yes')])
+        self.fields['owns_house'].widget = forms.Select(choices=[('', 'Select house ownership'), ('true', 'Yes'), ('false', 'No')])
+        self.fields['owns_car'].widget = forms.Select(choices=[('', 'Select car ownership'), ('true', 'Yes'), ('false', 'No')])
+        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1', 'placeholder': 'Optional'})
+        self.fields['brothers_count'].widget.attrs.update({'min': '0', 'max': '30', 'placeholder': '0'})
+        self.fields['sisters_count'].widget.attrs.update({'min': '0', 'max': '30', 'placeholder': '0'})
         if self.instance and self.instance.pk:
             self.initial['known_diseases'] = self.instance.known_diseases or []
+            self.initial['languages'] = [value.strip() for value in (self.instance.languages or '').split(',') if value.strip()]
+            self.initial['caste_tribe'] = [value.strip() for value in (self.instance.caste_tribe or '').split(',') if value.strip()]
+            self.initial['marital_status'] = (self.instance.marital_status or '').split(',')[0].strip()
+            self.initial['profession'] = [value.strip() for value in (self.instance.profession or '').split(',') if value.strip()]
+            self.initial['income_range'] = [value.strip() for value in (self.instance.income_range or '').split(',') if value.strip()]
         if self.instance and self.instance.height_cm:
             total = round(self.instance.height_cm / 2.54)
             self.initial['height_feet'] = total // 12
@@ -58,6 +82,11 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         elif not self.cleaned_data.get('height_inches'):
             obj.height_cm = None
         obj.known_diseases = self.cleaned_data.get('known_diseases') or []
+        obj.languages = ', '.join(self.cleaned_data.get('languages') or [])
+        obj.caste_tribe = ', '.join(self.cleaned_data.get('caste_tribe') or [])
+        obj.marital_status = self.cleaned_data.get('marital_status') or ''
+        obj.profession = ', '.join(self.cleaned_data.get('profession') or [])
+        obj.income_range = ', '.join(self.cleaned_data.get('income_range') or [])
         if commit:
             obj.save()
             self.save_m2m()
@@ -100,10 +129,13 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
         for name, values in mapping.items():
             choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
             self.fields[name].choices = choices
-            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '4'})
+            self.fields[name].widget = forms.CheckboxSelectMultiple(choices=choices)
         for name in ('minimum_age', 'maximum_age'):
             self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
         self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+        self.fields['preferred_family_type'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.family_type_options or [])])
+        self.fields['preferred_caste_tribe'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.caste_tribe_options or [])])
+        self.fields['preferred_country'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.country_options or [])])
 
     def clean(self):
         cleaned = super().clean()

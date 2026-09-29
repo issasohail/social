@@ -49,6 +49,8 @@ class FamilyHarmonyProfile(models.Model):
     mother_name = models.CharField(max_length=180, blank=True)
     mother_occupation = models.CharField(max_length=180, blank=True)
     siblings_summary = models.CharField(max_length=255, blank=True)
+    brothers_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    sisters_count = models.PositiveSmallIntegerField(null=True, blank=True)
     family_residence = models.CharField(max_length=180, blank=True)
     family_type = models.CharField(max_length=80, blank=True)
     caste_tribe = models.CharField(max_length=120, blank=True)
@@ -109,6 +111,9 @@ class FamilyHarmonyPreference(models.Model):
     preferred_personality = models.TextField(blank=True)
     willingness_to_relocate = models.BooleanField(default=False)
     preferred_languages = models.JSONField(default=list, blank=True)
+    preferred_family_type = models.CharField(max_length=80, blank=True)
+    preferred_caste_tribe = models.CharField(max_length=120, blank=True)
+    preferred_country = models.CharField(max_length=120, blank=True)
     other_expectations = models.TextField(blank=True)
     free_text_seeking_description = models.TextField(blank=True)
 

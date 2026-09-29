@@ -1,8 +1,10 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{{ title }} | Social Welfare{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}">{% endblock %}
 {% block content %}
-<section class="profile-editor-shell">
-  <div class="profile-editor-head">
+<section class="profile-editor-shell mpf-page-shell">
+  <div class="profile-editor-head mpf-page-head">
     <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><p>Marriage Profile · responsive staff entry</p></div>
     <div class="profile-editor-head-actions"><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div>
   </div>

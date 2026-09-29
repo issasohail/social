@@ -1,0 +1,233 @@
+diff --git a/config/views.py b/config/views.py
+index 65a7633..75b681c 100644
+--- a/config/views.py
++++ b/config/views.py
+@@ -563,7 +563,7 @@ def _marriage_profile_pdf_response(profile):
+     section('Family', [
+         ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'),
+         ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
+-        ('Siblings', profile.siblings_summary), ('Family Residence', profile.family_residence),
++        ('Brothers', profile.brothers_count), ('Sisters', profile.sisters_count), ('Family Residence', profile.family_residence),
+         ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
+     ])
+     section('Education & Career', [
+diff --git a/family_harmony/forms.py b/family_harmony/forms.py
+index caff48b..58f37a5 100644
+--- a/family_harmony/forms.py
++++ b/family_harmony/forms.py
+@@ -41,7 +41,9 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
+         self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
+         self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+         self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+-        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
++        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1', 'placeholder': 'Optional'})
++        self.fields['brothers_count'].widget.attrs.update({'min': '0', 'max': '30', 'placeholder': '0'})
++        self.fields['sisters_count'].widget.attrs.update({'min': '0', 'max': '30', 'placeholder': '0'})
+         if self.instance and self.instance.pk:
+             self.initial['known_diseases'] = self.instance.known_diseases or []
+         if self.instance and self.instance.height_cm:
+@@ -104,6 +106,9 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
+         for name in ('minimum_age', 'maximum_age'):
+             self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
+         self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['preferred_family_type'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.family_type_options or [])])
++        self.fields['preferred_caste_tribe'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.caste_tribe_options or [])])
++        self.fields['preferred_country'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.country_options or [])])
+ 
+     def clean(self):
+         cleaned = super().clean()
+diff --git a/family_harmony/migrations/0008_mockup_profile_fields.py b/family_harmony/migrations/0008_mockup_profile_fields.py
+new file mode 100644
+index 0000000..81e45d7
+--- /dev/null
++++ b/family_harmony/migrations/0008_mockup_profile_fields.py
+@@ -0,0 +1,13 @@
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++    dependencies = [("family_harmony", "0007_profile_health_assets")]
++
++    operations = [
++        migrations.AddField(model_name="familyharmonyprofile", name="brothers_count", field=models.PositiveSmallIntegerField(blank=True, null=True)),
++        migrations.AddField(model_name="familyharmonyprofile", name="sisters_count", field=models.PositiveSmallIntegerField(blank=True, null=True)),
++        migrations.AddField(model_name="familyharmonypreference", name="preferred_family_type", field=models.CharField(blank=True, max_length=80)),
++        migrations.AddField(model_name="familyharmonypreference", name="preferred_caste_tribe", field=models.CharField(blank=True, max_length=120)),
++        migrations.AddField(model_name="familyharmonypreference", name="preferred_country", field=models.CharField(blank=True, max_length=120)),
++    ]
+diff --git a/family_harmony/models.py b/family_harmony/models.py
+index f152a63..7fa2049 100644
+--- a/family_harmony/models.py
++++ b/family_harmony/models.py
+@@ -49,6 +49,8 @@ class FamilyHarmonyProfile(models.Model):
+     mother_name = models.CharField(max_length=180, blank=True)
+     mother_occupation = models.CharField(max_length=180, blank=True)
+     siblings_summary = models.CharField(max_length=255, blank=True)
++    brothers_count = models.PositiveSmallIntegerField(null=True, blank=True)
++    sisters_count = models.PositiveSmallIntegerField(null=True, blank=True)
+     family_residence = models.CharField(max_length=180, blank=True)
+     family_type = models.CharField(max_length=80, blank=True)
+     caste_tribe = models.CharField(max_length=120, blank=True)
+@@ -109,6 +111,9 @@ class FamilyHarmonyPreference(models.Model):
+     preferred_personality = models.TextField(blank=True)
+     willingness_to_relocate = models.BooleanField(default=False)
+     preferred_languages = models.JSONField(default=list, blank=True)
++    preferred_family_type = models.CharField(max_length=80, blank=True)
++    preferred_caste_tribe = models.CharField(max_length=120, blank=True)
++    preferred_country = models.CharField(max_length=120, blank=True)
+     other_expectations = models.TextField(blank=True)
+     free_text_seeking_description = models.TextField(blank=True)
+ 
+diff --git a/static/marriage_form.css b/static/marriage_form.css
+index 4da043e..4a41104 100644
+--- a/static/marriage_form.css
++++ b/static/marriage_form.css
+@@ -94,3 +94,16 @@
+   .mpf-field textarea{height:52px}
+   .mpf-multi-menu{left:0;right:auto;width:100%}
+ }
++
++/* Final integration refinements against the approved mockup */
++.mpf-page-shell{width:min(1540px,calc(100% - 24px));margin:18px auto 32px}
++.mpf-page-head{min-height:78px;padding:12px 14px 10px;background:#fff;color:var(--mpf-navy,#11345a);border:0;border-radius:0;box-shadow:none}
++.mpf-page-head .eyebrow{display:none}.mpf-page-head h1{margin:0 0 4px;color:#11345a;font:700 31px/1.08 Georgia,"Times New Roman",serif}.mpf-page-head p{margin:0;color:#587087;font:11px Arial,sans-serif}
++.mpf-page-head-actions{margin-left:auto}.mpf-page-head .secondary{font:700 11px Arial,sans-serif}
++.marriage-profile-form{padding:0 10px 10px;background:#f9fbfc;border:0;border-radius:0;box-shadow:0 5px 22px rgba(17,52,90,.06)}
++.mpf-upload-strip{margin-top:-66px;position:relative;z-index:3}.mpf-profile-card{width:122px}.mpf-photo-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}.mpf-photo-change{position:absolute;left:6px;right:6px;bottom:6px;z-index:2;padding:4px 6px;border-radius:4px;background:rgba(17,52,90,.86);color:#fff;font:700 9px Arial,sans-serif}.mpf-upload-card.is-filled .mpf-upload-copy{display:none}
++.mpf-upload-card.is-filled{border-style:solid}.mpf-static-title{cursor:default}.mpf-consent .privacy-note{margin:0;background:#f2f8f7;border-left:3px solid var(--mpf-teal);padding:10px 12px;font:11px/1.45 Arial,sans-serif}
++.mpf-grid>.mpf-field select[multiple]{height:34px;min-height:34px;overflow:hidden}.mpf-preference-grid>.mpf-col-4 textarea{height:46px;min-height:46px}.mpf-preference-grid>.mpf-col-6 textarea{height:46px;min-height:46px}
++.mpf-field input[type=number]{appearance:textfield}.mpf-field input[type=number]::-webkit-inner-spin-button{opacity:.65}
++@media(max-width:1023px){.mpf-page-shell{width:calc(100% - 16px);margin:8px auto 22px}.mpf-upload-strip{margin-top:0}.mpf-page-head{min-height:0}}
++@media(max-width:767px){.mpf-page-shell{width:100%;margin:0}.mpf-page-head{padding:12px 10px 8px}.mpf-page-head h1{font-size:22px}.marriage-profile-form{padding:0 7px 8px}.mpf-upload-strip{margin:0 0 8px}.mpf-profile-card{width:100%}.mpf-photo-change{font-size:10px}.mpf-grid>.mpf-field select[multiple]{height:40px;min-height:40px}}
+diff --git a/templates/family_harmony/_marriage_form_fields.html b/templates/family_harmony/_marriage_form_fields.html
+index 867c7d5..3fa8c33 100644
+--- a/templates/family_harmony/_marriage_form_fields.html
++++ b/templates/family_harmony/_marriage_form_fields.html
+@@ -4,22 +4,22 @@
+ {% endif %}
+ 
+ <div class="mpf-upload-strip">
+-  <label class="mpf-upload-card mpf-profile-card" for="id_photo">
+-    <svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
++  <label class="mpf-upload-card mpf-profile-card{% if person_form.instance.photo %} is-filled{% endif %}" for="id_photo">
++    {% if person_form.instance.photo %}<img id="photoPreview" class="mpf-photo-cover" src="{{ person_form.instance.photo.url }}" alt="Profile photo"><span class="mpf-photo-change">Change photo</span>{% else %}<img id="photoPreview" class="mpf-photo-cover" hidden alt="Profile preview"><span class="mpf-photo-change" hidden>Change photo</span>{% endif %}
++    <span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+     <strong>Click to upload<br>Profile photo</strong>
+-    <small>(JPG, PNG, max 5 MB)</small>
++    <small>(JPG, PNG, max 5 MB)</small></span>
+   </label>
+   <label class="mpf-upload-card" for="id_cnic_front">
+     <svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+     <strong>Click to upload<br>CNIC Front</strong>
+-    <small>(max 5 MB)</small>
++    <small>{% if person_form.instance.cnic_front %}Current front uploaded · click to replace{% else %}(max 5 MB){% endif %}</small>
+   </label>
+   <label class="mpf-upload-card" for="id_cnic_back">
+     <svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+     <strong>Click to upload<br>CNIC Back</strong>
+-    <small>(max 5 MB)</small>
++    <small>{% if person_form.instance.cnic_back %}Current back uploaded · click to replace{% else %}(max 5 MB){% endif %}</small>
+   </label>
+-  {% if person_form.instance.photo %}<img id="photoPreview" class="mpf-photo-thumb" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" class="mpf-photo-thumb" hidden alt="Profile preview">{% endif %}
+   <div class="mpf-hidden-file">{{ person_form.photo }}{{ person_form.cnic_front }}{{ person_form.cnic_back }}</div>
+ </div>
+ 
+@@ -87,7 +87,8 @@
+     <div class="mpf-grid">
+       {% include "./_marriage_form_field.html" with field=profile_form.marital_status %}
+       {% include "./_marriage_form_field.html" with field=profile_form.family_type %}
+-      {% include "./_marriage_form_field.html" with field=profile_form.siblings_summary %}
++      {% include "./_marriage_form_field.html" with field=profile_form.brothers_count label="Brothers" %}
++      {% include "./_marriage_form_field.html" with field=profile_form.sisters_count label="Sisters" %}
+       {% include "./_marriage_form_field.html" with field=profile_form.education_level %}
+       {% include "./_marriage_form_field.html" with field=profile_form.qualification %}
+       {% include "./_marriage_form_field.html" with field=profile_form.institution %}
+@@ -110,16 +111,24 @@
+     <span class="mpf-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>
+   </button>
+   <div class="mpf-section-body">
+-    <div class="mpf-grid">
+-      {% for field in preference_form %}
+-        {% if field.name == 'free_text_seeking_description' or field.name == 'other_expectations' %}
+-          {% include "./_marriage_form_field.html" with field=field css="mpf-col-6" %}
+-        {% elif field.name == 'willingness_to_relocate' %}
+-          {% include "./_marriage_form_field.html" with field=field css="mpf-seg" %}
+-        {% else %}
+-          {% include "./_marriage_form_field.html" with field=field %}
+-        {% endif %}
+-      {% endfor %}
++    <div class="mpf-grid mpf-preference-grid">
++      {% include "./_marriage_form_field.html" with field=preference_form.minimum_age label="Min Age" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.maximum_age label="Max Age" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_marital_status_options label="Marital Status" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_education_options label="Education" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_professions label="Profession" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_income_options label="Income" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_type label="Family Type" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_caste_tribe label="Caste / Tribe" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_country label="Country" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_cities label="City" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_languages label="Languages" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.willingness_to_relocate label="Willing to Relocate" css="mpf-seg" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_values label="Family Values" css="mpf-col-4" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.preferred_personality label="Personality" css="mpf-col-4" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.other_expectations label="Other Expectations" css="mpf-col-4" %}
++      {% include "./_marriage_form_field.html" with field=preference_form.free_text_seeking_description label="What are you looking for?" css="mpf-col-6" %}
++      <div class="mpf-preserved">{{ preference_form.preferred_locations }}</div>
+     </div>
+   </div>
+ </section>
+@@ -192,6 +201,8 @@
+       if (id === 'id_photo' && thumb) {
+         thumb.src = URL.createObjectURL(file);
+         thumb.hidden = false;
++        var copy = card.querySelector('.mpf-upload-copy'); if (copy) { copy.hidden = true; }
++        var change = card.querySelector('.mpf-photo-change'); if (change) { change.hidden = false; }
+       }
+     });
+   });
+diff --git a/templates/family_harmony/detail.html b/templates/family_harmony/detail.html
+index fd91171..da42c53 100644
+--- a/templates/family_harmony/detail.html
++++ b/templates/family_harmony/detail.html
+@@ -10,7 +10,7 @@
+     <div class="biodata-item"><small>Local Council</small><strong>{{ profile.person.local_council|default:'—' }}</strong></div><div class="biodata-item"><small>Regional Council</small><strong>{{ profile.person.region|default:'—' }}</strong></div><div class="biodata-item"><small>Mobile</small><strong>{{ profile.person.mobile|default:'—' }}</strong></div><div class="biodata-item"><small>Email</small><strong>{{ profile.person.email|default:'—' }}</strong></div>
+   </div></section>
+   <section class="biodata-section"><h2>Physical & Health</h2><div class="biodata-grid"><div class="biodata-item"><small>Height</small><strong>{% if profile.height_cm %}{{ profile.height_cm }} cm{% else %}—{% endif %}</strong></div><div class="biodata-item"><small>Weight</small><strong>{% if profile.weight_kg %}{{ profile.weight_kg }} kg{% else %}—{% endif %}</strong></div><div class="biodata-item"><small>Physical Status</small><strong>{{ profile.physical_status|default:'—' }}</strong></div><div class="biodata-item"><small>Disability</small><strong>{{ profile.disability_status|default:'—' }}</strong></div><div class="biodata-item wide"><small>Known Diseases</small><strong>{{ profile.known_diseases|join:', '|default:'—' }}</strong></div><div class="biodata-item wide"><small>Health Notes</small><strong>{{ profile.health_information|default:'—' }}</strong></div></div></section>
+-  <section class="biodata-section"><h2>Family</h2><div class="biodata-grid"><div class="biodata-item"><small>Father</small><strong>{{ profile.father_name|default:'—' }}</strong></div><div class="biodata-item"><small>Father Occupation</small><strong>{{ profile.father_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Mother</small><strong>{{ profile.mother_name|default:'—' }}</strong></div><div class="biodata-item"><small>Mother Occupation</small><strong>{{ profile.mother_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Siblings</small><strong>{{ profile.siblings_summary|default:'—' }}</strong></div><div class="biodata-item"><small>Family Residence</small><strong>{{ profile.family_residence|default:'—' }}</strong></div><div class="biodata-item"><small>Family Type</small><strong>{{ profile.family_type|default:'—' }}</strong></div><div class="biodata-item"><small>Caste / Tribe</small><strong>{{ profile.caste_tribe|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Background</small><strong>{{ profile.family_background|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Values</small><strong>{{ profile.family_values|default:'—' }}</strong></div></div></section>
++  <section class="biodata-section"><h2>Family</h2><div class="biodata-grid"><div class="biodata-item"><small>Father</small><strong>{{ profile.father_name|default:'—' }}</strong></div><div class="biodata-item"><small>Father Occupation</small><strong>{{ profile.father_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Mother</small><strong>{{ profile.mother_name|default:'—' }}</strong></div><div class="biodata-item"><small>Mother Occupation</small><strong>{{ profile.mother_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Brothers</small><strong>{{ profile.brothers_count|default:'—' }}</strong></div><div class="biodata-item"><small>Sisters</small><strong>{{ profile.sisters_count|default:'—' }}</strong></div><div class="biodata-item"><small>Family Residence</small><strong>{{ profile.family_residence|default:'—' }}</strong></div><div class="biodata-item"><small>Family Type</small><strong>{{ profile.family_type|default:'—' }}</strong></div><div class="biodata-item"><small>Caste / Tribe</small><strong>{{ profile.caste_tribe|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Background</small><strong>{{ profile.family_background|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Values</small><strong>{{ profile.family_values|default:'—' }}</strong></div></div></section>
+   <section class="biodata-section"><h2>Education & Career</h2><div class="biodata-grid"><div class="biodata-item"><small>Education</small><strong>{{ profile.qualification|default:profile.education_level|default:profile.person.education|default:'—' }}</strong></div><div class="biodata-item"><small>Institution</small><strong>{{ profile.institution|default:'—' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ profile.profession|default:profile.person.occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Employer / Business</small><strong>{{ profile.employer_or_business|default:profile.person.employer_or_business|default:'—' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ profile.income_range|default:profile.person.income_range|default:'—' }}</strong></div><div class="biodata-item"><small>Experience</small><strong>{{ profile.years_experience|default:'—' }}</strong></div><div class="biodata-item"><small>House</small><strong>{{ profile.owns_house|yesno:'Yes,No,—' }}</strong></div><div class="biodata-item"><small>Car</small><strong>{{ profile.owns_car|yesno:'Yes,No,—' }}</strong></div></div></section>
+   <section class="biodata-section"><h2>Lifestyle & About</h2><div class="biodata-grid"><div class="biodata-item"><small>Languages</small><strong>{{ profile.languages|default:profile.person.languages|default:'—' }}</strong></div><div class="biodata-item"><small>Smoking</small><strong>{{ profile.smoking|default:'—' }}</strong></div><div class="biodata-item wide"><small>Interests</small><strong>{{ profile.interests|default:profile.person.interests|default:'—' }}</strong></div><div class="biodata-item wide"><small>Personal Statement</small><strong>{{ profile.personal_statement|default:'—' }}</strong></div></div></section>
+   {% if profile.preferences %}<section class="biodata-section"><h2>Preferences for Prospective Match</h2>{% with p=profile.preferences %}<div class="biodata-grid"><div class="biodata-item"><small>Age Range</small><strong>{{ p.minimum_age|default:'Any' }} – {{ p.maximum_age|default:'Any' }}</strong></div><div class="biodata-item"><small>Education</small><strong>{{ p.preferred_education_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ p.preferred_professions|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Location</small><strong>{{ p.preferred_cities|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ p.preferred_income_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Marital Status</small><strong>{{ p.preferred_marital_status_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Relocate</small><strong>{{ p.willingness_to_relocate|yesno:'Yes,No' }}</strong></div><div class="biodata-item wide"><small>Other Expectations</small><strong>{{ p.other_expectations|default:p.free_text_seeking_description|default:'—' }}</strong></div></div>{% endwith %}</section>{% endif %}
+diff --git a/templates/family_harmony/form.html b/templates/family_harmony/form.html
+index db5ccde..5a74f50 100644
+--- a/templates/family_harmony/form.html
++++ b/templates/family_harmony/form.html
+@@ -1,8 +1,10 @@
+ {% extends 'base.html' %}
++{% load static %}
+ {% block title %}{{ title }} | Social Welfare{% endblock %}
++{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}">{% endblock %}
+ {% block content %}
+-<section class="profile-editor-shell">
+-  <div class="profile-editor-head">
++<section class="profile-editor-shell mpf-page-shell">
++  <div class="profile-editor-head mpf-page-head">
+     <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><p>Marriage Profile · responsive staff entry</p></div>
+     <div class="profile-editor-head-actions"><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div>
+   </div>
+diff --git a/templates/family_harmony/public_form.html b/templates/family_harmony/public_form.html
+index fb2393c..87755e2 100644
+--- a/templates/family_harmony/public_form.html
++++ b/templates/family_harmony/public_form.html
+@@ -1,7 +1,7 @@
+-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"></head><body class="public-profile-page"><main class="profile-editor-shell public-profile-shell">
+-<div class="profile-editor-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>Marriage Profile Submission Form</h1><p>Secure public form · no username or password required.</p></div></div>
++{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"><link rel="stylesheet" href="{% static 'marriage_form.css' %}"></head><body class="public-profile-page"><main class="profile-editor-shell public-profile-shell mpf-page-shell">
++<div class="profile-editor-head mpf-page-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>Marriage Profile Submission Form</h1><p>Secure public form · no username or password required.</p></div></div>
+ {% if error %}<div class="profile-errors">{{ error }}</div>{% endif %}
+-<form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}{% include 'family_harmony/_marriage_form_fields.html' %}<section class="mp-section"><h2><span>7</span> Confidentiality & Consent</h2><div class="privacy-note">Information is used only for Family Harmony matchmaking and authorized review. By submitting, you confirm the information is accurate and consent to its use for this purpose.</div></section><div class="sticky-form-actions"><button class="primary" type="submit" id="submit-button">Submit for review</button></div></form>
++<form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}{% include 'family_harmony/_marriage_form_fields.html' %}<section class="mpf-section mpf-consent"><div class="mpf-section-title mpf-static-title"><span class="mpf-section-icon">&#128274;</span><b>Confidentiality &amp; Consent</b></div><div class="mpf-section-body"><div class="privacy-note">Information is used only for Family Harmony matchmaking and authorized review. By submitting, you confirm the information is accurate and consent to its use for this purpose.</div></div></section><div class="sticky-form-actions"><button class="primary" type="submit" id="submit-button">Submit for review</button></div></form>
+ </main><script src="{% static 'app.js' %}"></script><script>
+ (function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});const id=document.getElementById('id_identity_number'),status=document.getElementById('id-status'),submit=document.getElementById('submit-button');let timer;if(id)id.addEventListener('input',()=>{clearTimeout(timer);if(status)status.textContent='';if(submit)submit.disabled=false;if(id.value.trim().length<5)return;timer=setTimeout(async()=>{try{const r=await fetch('{% url "identity_duplicate_check" %}?identity_number='+encodeURIComponent(id.value.trim()));const d=await r.json();if(status){status.textContent=d.exists?'Record already exists. Please contact the Family Harmony team.':'ID number is available for a new record.';status.style.color=d.exists?'#a52828':'#236c58'}if(submit)submit.disabled=d.exists}catch(e){}},350)});})();
+ </script></body></html>

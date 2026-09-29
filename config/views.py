@@ -14,6 +14,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.cache import never_cache
 from django.core.paginator import Paginator
 
@@ -139,17 +140,37 @@ def people_list(request):
         people = people.filter(gender=request.GET['gender'])
     if request.GET.get('city'):
         people = people.filter(city__icontains=request.GET['city'])
+    if request.GET.get('education'):
+        people = people.filter(education__icontains=request.GET['education'])
+    if request.GET.get('occupation'):
+        people = people.filter(occupation__icontains=request.GET['occupation'])
+    if request.GET.get('house') in ('yes', 'no'):
+        people = people.filter(harmony_profile__owns_house=request.GET['house'] == 'yes')
+    if request.GET.get('car') in ('yes', 'no'):
+        people = people.filter(harmony_profile__owns_car=request.GET['car'] == 'yes')
     if request.GET.get('local_council'):
         people = people.filter(local_council_id=request.GET['local_council'])
     if request.GET.get('jamatkhana'):
         people = people.filter(jamatkhana_id=request.GET['jamatkhana'])
+    sort_map = {'name': 'full_name', 'age': 'date_of_birth', 'gender': 'gender', 'city': 'city', 'phone': 'mobile', 'education': 'education', 'occupation': 'occupation'}
+    sort_key = request.GET.get('sort', 'name')
+    ordering = sort_map.get(sort_key, 'full_name')
+    if request.GET.get('dir') == 'desc':
+        ordering = f'-{ordering}'
     context = {
         'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
         'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
         'local_council': request.GET.get('local_council', ''),
         'jamatkhana': request.GET.get('jamatkhana', ''),
+        'people_total': Person.objects.filter(is_active=True).count(),
+        'people_male': Person.objects.filter(is_active=True, gender='Male').count(),
+        'people_female': Person.objects.filter(is_active=True, gender='Female').count(),
+        'city_count': Person.objects.filter(is_active=True).exclude(city='').values('city').distinct().count(),
+        'local_count': LocalCouncil.objects.filter(is_active=True).count(),
+        'jk_count': Jamatkhana.objects.filter(is_active=True).count(),
     }
-    return _people_response(request, people.distinct().order_by('full_name'), query, context)
+    context.update({'sort': sort_key, 'sort_dir': request.GET.get('dir', 'asc')})
+    return _people_response(request, people.distinct().order_by(ordering), query, context)
 
 
 @login_required
@@ -167,13 +188,24 @@ def harmony_list(request):
         profiles = profiles.filter(person__city__icontains=request.GET['city'])
     if request.GET.get('profession'):
         profiles = profiles.filter(profession__icontains=request.GET['profession'])
+    if request.GET.get('education'):
+        profiles = profiles.filter(education_level__icontains=request.GET['education'])
+    if request.GET.get('house') in ('yes', 'no'):
+        profiles = profiles.filter(owns_house=request.GET['house'] == 'yes')
+    if request.GET.get('car') in ('yes', 'no'):
+        profiles = profiles.filter(owns_car=request.GET['car'] == 'yes')
     if request.GET.get('portfolio'):
         profiles = profiles.filter(portfolio=request.GET['portfolio'])
     if request.GET.get('local_council'):
         profiles = profiles.filter(owning_local_council_id=request.GET['local_council'])
     if request.GET.get('jamatkhana'):
         profiles = profiles.filter(owning_jamatkhana_id=request.GET['jamatkhana'])
-    return _harmony_response(request, profiles.order_by('person__full_name'), status, {
+    sort_map = {'name': 'person__full_name', 'age': 'person__date_of_birth', 'gender': 'person__gender', 'city': 'person__city', 'phone': 'person__mobile', 'education': 'education_level', 'profession': 'profession', 'status': 'status'}
+    sort_key = request.GET.get('sort', 'name')
+    ordering = sort_map.get(sort_key, 'person__full_name')
+    if request.GET.get('dir') == 'desc':
+        ordering = f'-{ordering}'
+    return _harmony_response(request, profiles.order_by(ordering), status, {
         'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
         'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
         'portfolio_options': FamilyHarmonySettings.current().portfolio_options,
@@ -181,6 +213,12 @@ def harmony_list(request):
         'portfolio': request.GET.get('portfolio', ''),
         'local_council': request.GET.get('local_council', ''),
         'jamatkhana': request.GET.get('jamatkhana', ''),
+        'profile_total': FamilyHarmonyProfile.objects.count(),
+        'profile_approved': FamilyHarmonyProfile.objects.filter(status=FamilyHarmonyProfile.Status.ACTIVE).count(),
+        'profile_pending': FamilyHarmonyProfile.objects.filter(status=FamilyHarmonyProfile.Status.AWAITING_CONSENT).count(),
+        'profile_male': FamilyHarmonyProfile.objects.filter(person__gender='Male').count(),
+        'profile_female': FamilyHarmonyProfile.objects.filter(person__gender='Female').count(),
+        'sort': sort_key, 'sort_dir': request.GET.get('dir', 'asc'),
     })
 
 
@@ -332,6 +370,14 @@ def person_detail(request, person_id):
     return render(request, 'people/detail.html', {'person': get_object_or_404(Person, pk=person_id)})
 
 
+def _profile_pdf_filename(person, jamatkhana):
+    """Return a portable, descriptive download filename: name-jk-age.pdf."""
+    name = slugify(person.full_name) or f'person-{person.pk}'
+    jk = slugify(str(jamatkhana or 'no-jamatkhana')) or 'no-jamatkhana'
+    age = person.age if person.age is not None else 'age-unknown'
+    return f'{name}-{jk}-{age}.pdf'
+
+
 @login_required
 def person_export(request, person_id, export_format):
     person=get_object_or_404(Person,pk=person_id)
@@ -355,7 +401,8 @@ def person_export(request, person_id, export_format):
                 text=str(value or '—').replace('\n',' ')[:115]; c.setFillColorRGB(.2,.25,.25); c.setFont('Helvetica-Bold',7.5); c.drawString(35,y,label+':'); c.setFont('Helvetica',7.5); c.drawString(135,y,text); y-=13
             y-=5
         c.setStrokeColorRGB(.75,.8,.78); c.line(30,34,W-30,34); c.setFont('Helvetica',6.5); c.setFillColorRGB(.35,.4,.4); c.drawString(32,22,'Confidential Social Welfare record'); c.drawRightString(W-32,22,'US Letter · Page 1 of 1'); c.save()
-        r=HttpResponse(output.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{person.serial_number.lower()}-person.pdf"'; return r
+        filename = _profile_pdf_filename(person, person.jamatkhana)
+        r=HttpResponse(output.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{filename}"'; return r
     rows=[(person.serial_number,person.full_name,person.age or '',person.gender or '—',person.city or '—',person.mobile or '—',person.occupation or '—',person.masked_identity_number() or '—')]
     export=_export_response(request,rows,['Serial','Name','Age','Gender','City','Phone','Occupation','CNIC'],f'Person: {person.full_name}','Person detail',export_format=export_format)
     if export is not None:return export
@@ -397,7 +444,8 @@ def inline_update_person(request):
     allowed_fields = {
         'first_name', 'middle_name', 'last_name', 'title', 'gender', 'city', 'occupation',
         'mobile', 'alternate_mobile', 'whatsapp_number', 'email', 'marital_status',
-        'identity_number', 'current_address', 'permanent_address'
+        'identity_number', 'current_address', 'permanent_address', 'nationality', 'education',
+        'education_details', 'employer_or_business', 'income_range', 'languages', 'interests'
     }
     if field_name not in allowed_fields:
         return HttpResponse('Unsupported field', status=400)
@@ -563,7 +611,7 @@ def _marriage_profile_pdf_response(profile):
     section('Family', [
         ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'),
         ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
-        ('Siblings', profile.siblings_summary), ('Family Residence', profile.family_residence),
+        ('Brothers', profile.brothers_count), ('Sisters', profile.sisters_count), ('Family Residence', profile.family_residence),
         ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
     ])
     section('Education & Career', [
@@ -598,7 +646,7 @@ def _marriage_profile_pdf_response(profile):
     pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
     pdf.save()
     response = HttpResponse(output.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{profile.serial_number.lower()}-marriage-profile.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(person, profile.owning_jamatkhana or person.jamatkhana)}"'
     return response
 
 @login_required
@@ -687,7 +735,7 @@ def harmony_inline_update(request):
     value = request.POST.get('value', '')
     profile = get_object_or_404(FamilyHarmonyProfile, pk=profile_id)
 
-    allowed_fields = {'status', 'profession', 'education_level', 'institution', 'employer_or_business', 'financial_status', 'city'}
+    allowed_fields = {'status', 'profession', 'education_level', 'institution', 'employer_or_business', 'financial_status', 'city', 'physical_status', 'disability_status', 'family_background', 'family_values', 'family_type', 'caste_tribe', 'family_residence', 'father_name', 'father_occupation', 'mother_name', 'mother_occupation', 'income_range', 'languages', 'smoking', 'interests', 'personal_statement', 'health_information'}
     if field_name not in allowed_fields:
         return HttpResponse('Unsupported field', status=400)
 
@@ -752,8 +800,13 @@ def public_form(request, token):
 def identity_duplicate_check(request):
     value=(request.GET.get('identity_number') or '').strip()
     normalized=''.join(normalize_cnic(value).split()).upper()
-    exists=bool(normalized and Person.objects.filter(normalized_identity_number=normalized).exists())
-    return JsonResponse({'exists': exists, 'message': 'Record already exists.' if exists else ''})
+    person = Person.objects.filter(normalized_identity_number=normalized).first() if normalized else None
+    return JsonResponse({
+        'exists': bool(person),
+        'name': person.full_name if person else '',
+        'phone': person.mobile if person else '',
+        'message': 'Record already exists.' if person else '',
+    })
 
 
 @never_cache

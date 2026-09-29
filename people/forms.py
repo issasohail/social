@@ -11,7 +11,7 @@ class PersonForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         cfg = FamilyHarmonySettings.current()
         self.fields['title'].widget = forms.Select(choices=[('', 'Select title')] + [(v, v) for v in cfg.title_options])
-        self.fields['gender'].widget = forms.Select(choices=[('', 'Select gender'), ('Male', 'Male'), ('Female', 'Female')])
+        self.fields['gender'].widget = forms.Select(choices=[('', 'Select gender'), ('Male', 'M'), ('Female', 'F')])
         select_lists = [
             ('nationality', cfg.nationality_options), ('country', cfg.country_options),
             ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
