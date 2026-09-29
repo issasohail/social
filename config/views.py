@@ -335,6 +335,8 @@ def person_detail(request, person_id):
 @login_required
 def person_export(request, person_id, export_format):
     person=get_object_or_404(Person,pk=person_id)
+    if export_format == 'pdf' and hasattr(person, 'harmony_profile'):
+        return harmony_export(request, person.harmony_profile.pk, 'pdf')
     if export_format=='pdf':
         from reportlab.lib.pagesizes import letter
         from reportlab.pdfgen import canvas
@@ -424,6 +426,9 @@ def harmony_create(request):
         person.save()
         profile = profile_form.save(commit=False)
         profile.person = person
+        profile.owning_jamatkhana = person.jamatkhana
+        profile.owning_local_council = person.local_council
+        profile.owning_region = person.region
         profile.save()
         pref = preference_form.save(commit=False); pref.profile = profile; pref.save()
         return redirect('harmony_detail', profile_id=profile.pk)
@@ -436,50 +441,172 @@ def harmony_detail(request, profile_id):
     return render(request, 'family_harmony/detail.html', {'profile': profile})
 
 
+
+def _marriage_profile_pdf_response(profile):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    from reportlab.pdfgen import canvas
+
+    person = profile.person
+    pref = getattr(profile, 'preferences', None)
+    output = BytesIO()
+    width, height = letter
+    pdf = canvas.Canvas(output, pagesize=letter)
+    pdf.setTitle(f'Marriage Profile - {person.full_name}')
+    navy = (0.09, 0.20, 0.29)
+    pale = (0.91, 0.94, 0.96)
+    ink = (0.12, 0.20, 0.25)
+    muted = (0.38, 0.46, 0.50)
+
+    def clean(value):
+        if value in (None, '', []):
+            return '—'
+        if isinstance(value, (list, tuple)):
+            return ', '.join(str(v) for v in value) or '—'
+        return str(value)
+
+    def wrap(text, font='Helvetica', size=6.8, max_width=175, max_lines=2):
+        words = clean(text).replace('\n', ' ').split()
+        lines, line = [], ''
+        for word in words:
+            test = (line + ' ' + word).strip()
+            if stringWidth(test, font, size) <= max_width:
+                line = test
+            else:
+                if line:
+                    lines.append(line)
+                line = word
+                if len(lines) >= max_lines:
+                    break
+        if line and len(lines) < max_lines:
+            lines.append(line)
+        if not lines:
+            lines = ['—']
+        if len(lines) == max_lines and len(words) > sum(len(x.split()) for x in lines):
+            lines[-1] = lines[-1][:-1] + '…' if len(lines[-1]) > 2 else lines[-1]
+        return lines
+
+    # Header mirrors the desktop biodata card.
+    pdf.setFillColorRGB(*navy)
+    pdf.rect(0, height - 138, width, 138, fill=1, stroke=0)
+    photo_x, photo_y, photo_w, photo_h = 28, height - 128, 88, 106
+    if person.photo:
+        try:
+            pdf.drawImage(ImageReader(person.photo.path), photo_x, photo_y, photo_w, photo_h,
+                          preserveAspectRatio=True, anchor='c', mask='auto')
+        except (OSError, ValueError):
+            pass
+    pdf.setStrokeColorRGB(0.75, 0.83, 0.87)
+    pdf.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
+    pdf.setFillColorRGB(1, 1, 1)
+    pdf.setFont('Helvetica-Bold', 20)
+    pdf.drawString(134, height - 48, person.full_name[:38])
+    pdf.setFont('Helvetica', 8)
+    pdf.drawString(134, height - 68, f'{profile.serial_number}   |   Marriage Profile')
+    pdf.drawString(134, height - 84, 'Aga Khan Social Welfare Board - Central Region')
+    badges = [f'{person.age or "—"} yrs', person.gender or '—', profile.marital_status or person.marital_status or '—']
+    bx = 134
+    for badge in badges:
+        bw = stringWidth(str(badge), 'Helvetica-Bold', 7) + 14
+        pdf.setFillColorRGB(1, 1, 1)
+        pdf.roundRect(bx, height - 112, bw, 18, 9, fill=1, stroke=0)
+        pdf.setFillColorRGB(*navy)
+        pdf.setFont('Helvetica-Bold', 7)
+        pdf.drawCentredString(bx + bw / 2, height - 106, str(badge))
+        bx += bw + 6
+
+    y = height - 156
+
+    def section(title, items):
+        nonlocal y
+        pdf.setFillColorRGB(*pale)
+        pdf.roundRect(26, y - 2, width - 52, 17, 3, fill=1, stroke=0)
+        pdf.setFillColorRGB(*navy)
+        pdf.setFont('Helvetica-Bold', 8.5)
+        pdf.drawString(32, y + 3, title)
+        y -= 16
+        col_w = (width - 64) / 2
+        row_height = 22
+        for index in range(0, len(items), 2):
+            pair = items[index:index + 2]
+            max_lines = 1
+            rendered = []
+            for label, value in pair:
+                lines = wrap(value, max_width=col_w - 82, max_lines=2)
+                max_lines = max(max_lines, len(lines))
+                rendered.append((label, lines))
+            row_height = 10 + (max_lines * 7)
+            for col, (label, lines) in enumerate(rendered):
+                x = 32 + col * col_w
+                pdf.setFillColorRGB(*muted)
+                pdf.setFont('Helvetica-Bold', 6.3)
+                pdf.drawString(x, y, label.upper())
+                pdf.setFillColorRGB(*ink)
+                pdf.setFont('Helvetica', 6.8)
+                for line_no, line in enumerate(lines):
+                    pdf.drawString(x + 76, y - (line_no * 7), line)
+            y -= row_height
+        y -= 4
+
+    height_text = '—'
+    if profile.height_cm:
+        total_inches = round(profile.height_cm / 2.54)
+        height_text = f'{total_inches // 12} ft {total_inches % 12} in'
+    section('Personal Information', [
+        ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'),
+        ('Gender', person.gender), ('Marital Status', profile.marital_status or person.marital_status),
+        ('Height / Weight', f'{height_text} / {profile.weight_kg or "—"} kg'),
+        ('Physical Status', profile.physical_status), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
+        ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
+    ])
+    section('Family', [
+        ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'),
+        ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
+        ('Siblings', profile.siblings_summary), ('Family Residence', profile.family_residence),
+        ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
+    ])
+    section('Education & Career', [
+        ('Education', profile.qualification or profile.education_level or person.education),
+        ('Institution', profile.institution), ('Profession', profile.profession or person.occupation),
+        ('Employer / Business', profile.employer_or_business or person.employer_or_business),
+        ('Income', profile.income_range or person.income_range), ('Experience', profile.years_experience),
+        ('House', 'Yes' if profile.owns_house is True else 'No' if profile.owns_house is False else '—'),
+        ('Car', 'Yes' if profile.owns_car is True else 'No' if profile.owns_car is False else '—'),
+    ])
+    section('Health & Lifestyle', [
+        ('Disability', profile.disability_status), ('Known Diseases', profile.known_diseases),
+        ('Smoking', profile.smoking), ('Languages', profile.languages or person.languages),
+        ('Interests', profile.interests or person.interests), ('Health Notes', profile.health_information),
+    ])
+    if pref:
+        section('Preferences for Prospective Match', [
+            ('Age Range', f'{pref.minimum_age or "Any"} - {pref.maximum_age or "Any"}'),
+            ('Education', pref.preferred_education_options), ('Profession', pref.preferred_professions),
+            ('Location', pref.preferred_cities or pref.preferred_locations), ('Income', pref.preferred_income_options),
+            ('Marital Status', pref.preferred_marital_status_options), ('Languages', pref.preferred_languages),
+            ('Relocation', 'Yes' if pref.willingness_to_relocate else 'No'),
+        ])
+    if y > 62:
+        section('About', [('Personal Statement', profile.personal_statement), ('Other Expectations', pref.other_expectations if pref else profile.expectations)])
+
+    pdf.setStrokeColorRGB(0.78, 0.82, 0.84)
+    pdf.line(26, 34, width - 26, 34)
+    pdf.setFillColorRGB(*muted)
+    pdf.setFont('Helvetica', 6.3)
+    pdf.drawString(28, 22, 'Confidential Family Harmony profile. CNIC images and internal documents are not included.')
+    pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
+    pdf.save()
+    response = HttpResponse(output.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{profile.serial_number.lower()}-marriage-profile.pdf"'
+    return response
+
 @login_required
 def harmony_export(request, profile_id, export_format):
     profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person','owning_region','owning_local_council','owning_jamatkhana'), pk=profile_id)
     person=profile.person; pref=getattr(profile,'preferences',None); serial=profile.serial_number
     if export_format == 'pdf':
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.utils import ImageReader
-        from reportlab.pdfgen import canvas
-        from reportlab.pdfbase.pdfmetrics import stringWidth
-        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Marriage Profile - {person.full_name}')
-        green=(0.12,0.36,0.31); c.setFillColorRGB(*green); c.rect(0,H-72,W,72,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',16); c.drawString(28,H-32,'Marriage Profile'); c.setFont('Helvetica',8); c.drawString(28,H-49,f'Aga Khan Social Welfare Board - Central Region   |   {serial}')
-        if person.photo:
-            try: c.drawImage(ImageReader(person.photo.path),W-92,H-68,54,54,preserveAspectRatio=True,mask='auto')
-            except (OSError,ValueError): pass
-        def clean(v):
-            if v is None or v=='' or v==[]: return '—'
-            if isinstance(v,list): return ', '.join(map(str,v)) or '—'
-            return str(v)
-        rows=[
-          ('Personal Information',[('Name',person.full_name),('Gender',person.gender),('Age',person.age),('Marital Status',profile.marital_status or person.marital_status),('Height',f'{profile.height_cm} cm' if profile.height_cm else ''),('Current City/Country',f'{person.city}, {person.country}'.strip(', '))]),
-          ('Family Background',[('Father',f'{profile.father_name} / {profile.father_occupation}'.strip(' /')),('Mother',f'{profile.mother_name} / {profile.mother_occupation}'.strip(' /')),('Siblings',profile.siblings_summary),('Family Residence',profile.family_residence),('Family Type',profile.family_type),('Caste / Tribe',profile.caste_tribe)]),
-          ('Education & Career',[('Highest Education',profile.qualification or profile.education_level or person.education),('Institution',profile.institution),('Occupation',profile.profession or person.occupation),('Employer / Business',profile.employer_or_business or person.employer_or_business),('Monthly Income',profile.income_range or person.income_range),('Languages',profile.languages or person.languages)]),
-          ('Preferences for Prospective Match',[('Age Range',f'{pref.minimum_age or "—"} - {pref.maximum_age or "—"}' if pref else '—'),('Education',clean(pref.preferred_education_options) if pref else '—'),('Profession',clean(pref.preferred_professions) if pref else '—'),('City / Location',clean(pref.preferred_cities or pref.preferred_locations) if pref else '—'),('Income',clean(pref.preferred_income_options) if pref else '—'),('Marital Status',clean(pref.preferred_marital_status_options) if pref else '—'),('Languages',clean(pref.preferred_languages) if pref else '—')]),
-          ('About',[('Interests',profile.interests or person.interests),('Personal Description',profile.personal_statement),('Other Expectations',pref.other_expectations if pref else profile.expectations),('Guardian / Contact',profile.guardian_contact)]),
-        ]
-        y=H-91; labelw=106; right=W-28
-        for heading,items in rows:
-            c.setFillColorRGB(.88,.94,.91); c.rect(26,y-3,W-52,14,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',8.5); c.drawString(31,y+1,heading); y-=15
-            for label,value in items:
-                text=clean(value).replace('\n',' ')
-                c.setFont('Helvetica-Bold',6.9); c.setFillColorRGB(.18,.25,.25); c.drawString(31,y,label+':')
-                c.setFont('Helvetica',6.9); maxw=right-(31+labelw); words=text.split(); lines=[]; line=''
-                for word in words:
-                    test=(line+' '+word).strip()
-                    if stringWidth(test,'Helvetica',6.9)<=maxw: line=test
-                    else:
-                        if line: lines.append(line)
-                        line=word
-                if line: lines.append(line)
-                lines=lines[:2] or ['—']
-                for i,line in enumerate(lines): c.drawString(31+labelw,y-(i*8),line[:120])
-                y-=8*max(1,len(lines))+2
-        c.setStrokeColorRGB(.75,.8,.78); c.line(26,34,W-26,34); c.setFillColorRGB(.35,.4,.4); c.setFont('Helvetica',6.5); c.drawString(28,23,'Confidential: for Family Harmony matchmaking only. Contact details are withheld from this profile copy.')
-        c.drawRightString(W-28,23,'Page 1 of 1'); c.save(); response=HttpResponse(output.getvalue(),content_type='application/pdf'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.pdf"'; return response
+        return _marriage_profile_pdf_response(profile)
     if export_format == 'jpg':
         from PIL import Image, ImageDraw
         image=Image.new('RGB',(1275,1650),'white'); draw=ImageDraw.Draw(image); draw.text((50,40),f'Marriage Profile - {person.full_name}',fill='black'); draw.text((50,90),'Use the PDF export for the designed one-page Letter profile.',fill='black'); output=BytesIO(); image.save(output,format='JPEG',quality=92); response=HttpResponse(output.getvalue(),content_type='image/jpeg'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.jpg"'; return response
@@ -529,7 +656,13 @@ def harmony_edit(request, profile_id):
     preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
     preference_form = FamilyHarmonyPreferenceForm(request.POST or None, instance=preference)
     if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
-        person_form.save(); profile_form.save(); preference_form.save()
+        person = person_form.save()
+        profile = profile_form.save(commit=False)
+        profile.owning_jamatkhana = person.jamatkhana
+        profile.owning_local_council = person.local_council
+        profile.owning_region = person.region
+        profile.save()
+        preference_form.save()
         return redirect('harmony_detail', profile_id=profile.pk)
     return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'title': 'Edit Family Harmony profile'})
 
@@ -583,22 +716,37 @@ def public_form(request, token):
         identity = (request.POST.get('identity_number') or '').strip()
         normalized = ''.join(normalize_cnic(identity).split()).upper() or None
         if normalized and Person.objects.filter(normalized_identity_number=normalized).exists():
-            return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'error': 'A record with this ID number already exists. Please contact the Family Harmony team instead of submitting again.'})
+            person_form = PersonForm(request.POST, request.FILES)
+            profile_form = FamilyHarmonyProfileForm(request.POST)
+            preference_form = FamilyHarmonyPreferenceForm(request.POST)
+            return render(request, 'family_harmony/public_form.html', {
+                'invitation': invitation, 'settings': settings, 'person_form': person_form,
+                'profile_form': profile_form, 'preference_form': preference_form,
+                'error': 'A record with this ID number already exists. Please contact the Family Harmony team instead of submitting again.', 'public_mode': True
+            })
         person_form = PersonForm(request.POST, request.FILES)
         profile_form = FamilyHarmonyProfileForm(request.POST)
         preference_form = FamilyHarmonyPreferenceForm(request.POST)
         if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
             person = person_form.save(commit=False)
-            person.region=invitation.preselected_region; person.local_council=invitation.preselected_local_council; person.jamatkhana=invitation.preselected_jamatkhana
+            # Jamatkhana is authoritative; RC/LC remain internal derived assignments.
+            if not person.jamatkhana and invitation.preselected_jamatkhana:
+                person.jamatkhana = invitation.preselected_jamatkhana
+            if person.jamatkhana:
+                person.local_council = person.jamatkhana.local_council
+                person.region = person.local_council.regional_council
+            else:
+                person.local_council = invitation.preselected_local_council
+                person.region = invitation.preselected_region
             person.save()
             profile=profile_form.save(commit=False); profile.person=person; profile.status=FamilyHarmonyProfile.Status.AWAITING_CONSENT
-            profile.owning_region=invitation.preselected_region; profile.owning_local_council=invitation.preselected_local_council; profile.owning_jamatkhana=invitation.preselected_jamatkhana; profile.save()
+            profile.owning_region=person.region; profile.owning_local_council=person.local_council; profile.owning_jamatkhana=person.jamatkhana; profile.save()
             pref=preference_form.save(commit=False); pref.profile=profile; pref.save()
             invitation.profile=profile; invitation.submitted_at=timezone.now(); invitation.save(update_fields=['profile','submitted_at'])
             return render(request, 'family_harmony/public_submitted.html')
     else:
         person_form=PersonForm(); profile_form=FamilyHarmonyProfileForm(); preference_form=FamilyHarmonyPreferenceForm()
-    return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form})
+    return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'public_mode': True})
 
 @never_cache
 def identity_duplicate_check(request):

@@ -1,0 +1,1143 @@
+diff --git a/family_harmony/forms.py b/family_harmony/forms.py
+index caff48b..6846cc7 100644
+--- a/family_harmony/forms.py
++++ b/family_harmony/forms.py
+@@ -1,129 +1,135 @@
+-from django import forms
+-
+-from settings_app.models import FamilyHarmonySettings
+-
+-from .models import FamilyHarmonyPreference, FamilyHarmonyProfile
+-
+-
+-def _datalist(field, list_id, values):
+-    field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
+-
+-
+-YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
+-
+-
+-class FamilyHarmonyProfileForm(forms.ModelForm):
+-    height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)')
+-    height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)')
+-    known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
+-
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        cfg = FamilyHarmonySettings.current()
+-        self.fields['status'].required = False
+-        self.fields['status'].initial = self.instance.status if self.instance and self.instance.pk else FamilyHarmonyProfile.Status.DRAFT
+-        for name, values in [
+-            ('education_level', cfg.education_levels), ('profession', cfg.occupation_options),
+-            ('income_range', cfg.income_ranges), ('family_type', cfg.family_type_options),
+-            ('marital_status', cfg.marital_status_options), ('caste_tribe', cfg.caste_tribe_options),
+-            ('languages', cfg.language_options),
+-        ]:
+-            _datalist(self.fields[name], f'{name}-options', values)
+-        self.fields['physical_status'].widget = forms.Select(
+-            choices=[('', 'Select physical status')] + [(v, v) for v in cfg.physical_status_options]
+-        )
+-        self.fields['disability_status'].widget = forms.Select(
+-            choices=[('', 'Select disability status')] + [(v, v) for v in cfg.disability_options]
+-        )
+-        disease_choices = [(v, v) for v in cfg.known_disease_options]
+-        self.fields['known_diseases'].choices = disease_choices
+-        self.fields['known_diseases'].widget = forms.CheckboxSelectMultiple(choices=disease_choices)
+-        self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
+-        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+-        self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+-        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
+-        if self.instance and self.instance.pk:
+-            self.initial['known_diseases'] = self.instance.known_diseases or []
+-        if self.instance and self.instance.height_cm:
+-            total = round(self.instance.height_cm / 2.54)
+-            self.initial['height_feet'] = total // 12
+-            self.initial['height_inches'] = total % 12
+-
+-    def save(self, commit=True):
+-        obj = super().save(commit=False)
+-        ft = self.cleaned_data.get('height_feet')
+-        inch = self.cleaned_data.get('height_inches')
+-        if ft is not None:
+-            obj.height_cm = round((ft * 12 + (inch or 0)) * 2.54)
+-        elif not self.cleaned_data.get('height_inches'):
+-            obj.height_cm = None
+-        obj.known_diseases = self.cleaned_data.get('known_diseases') or []
+-        if commit:
+-            obj.save()
+-            self.save_m2m()
+-        return obj
+-
+-    class Meta:
+-        model = FamilyHarmonyProfile
+-        exclude = (
+-            'person', 'assigned_officer', 'created_at', 'updated_at', 'is_demo', 'consent_reviewed',
+-            'height_cm', 'owning_region', 'owning_local_council', 'owning_jamatkhana'
+-        )
+-        widgets = {
+-            x: forms.Textarea(attrs={'rows': 2}) for x in (
+-                'family_background', 'family_values', 'personality', 'health_information',
+-                'personal_statement', 'expectations', 'notes', 'other_lifestyle_details',
+-                'child_details', 'previous_marriage_notes', 'disabilities'
+-            )
+-        }
+-
+-
+-class FamilyHarmonyPreferenceForm(forms.ModelForm):
+-    preferred_locations = forms.CharField(required=False)
+-    preferred_cities = forms.CharField(required=False)
+-    preferred_education_options = forms.MultipleChoiceField(required=False)
+-    preferred_professions = forms.MultipleChoiceField(required=False)
+-    preferred_income_options = forms.MultipleChoiceField(required=False)
+-    preferred_marital_status_options = forms.MultipleChoiceField(required=False)
+-    preferred_languages = forms.MultipleChoiceField(required=False)
+-
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        cfg = FamilyHarmonySettings.current()
+-        mapping = {
+-            'preferred_education_options': cfg.education_levels,
+-            'preferred_professions': cfg.occupation_options,
+-            'preferred_income_options': cfg.income_ranges,
+-            'preferred_marital_status_options': cfg.marital_status_options,
+-            'preferred_languages': cfg.language_options,
+-        }
+-        for name, values in mapping.items():
+-            choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
+-            self.fields[name].choices = choices
+-            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '4'})
+-        for name in ('minimum_age', 'maximum_age'):
+-            self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
+-        self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+-
+-    def clean(self):
+-        cleaned = super().clean()
+-        for name in ('preferred_locations', 'preferred_cities'):
+-            value = (self.data.get(name) or '').strip()
+-            cleaned[name] = [x.strip() for x in value.replace('\n', ',').split(',') if x.strip()]
+-        for name in (
+-            'preferred_education_options', 'preferred_professions', 'preferred_income_options',
+-            'preferred_marital_status_options', 'preferred_languages'
+-        ):
+-            values = self.data.getlist(name)
+-            cleaned[name] = ['Any'] if 'Any' in values else values
+-        return cleaned
+-
+-    class Meta:
+-        model = FamilyHarmonyPreference
+-        exclude = ('profile', 'preferred_education', 'preferred_income', 'preferred_marital_status', 'preferred_regions')
+-        widgets = {
+-            'preferred_family_values': forms.Textarea(attrs={'rows': 2}),
+-            'preferred_personality': forms.Textarea(attrs={'rows': 2}),
+-            'other_expectations': forms.Textarea(attrs={'rows': 2}),
+-            'free_text_seeking_description': forms.Textarea(attrs={'rows': 2}),
+-        }
++from django import forms
++
++from settings_app.models import FamilyHarmonySettings
++
++from .models import FamilyHarmonyPreference, FamilyHarmonyProfile
++
++
++def _datalist(field, list_id, values):
++    field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
++
++
++YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
++
++
++class FamilyHarmonyProfileForm(forms.ModelForm):
++    height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)', widget=forms.Select(choices=[('', 'ft')] + [(i, f'{i} ft') for i in range(3, 9)]))
++    height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)', widget=forms.Select(choices=[('', 'in')] + [(i, f'{i} in') for i in range(0, 12)]))
++    known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        self.fields['status'].required = False
++        self.fields['status'].initial = self.instance.status if self.instance and self.instance.pk else FamilyHarmonyProfile.Status.DRAFT
++        for name, values in [
++            ('education_level', cfg.education_levels), ('profession', cfg.occupation_options),
++            ('income_range', cfg.income_ranges), ('family_type', cfg.family_type_options),
++            ('marital_status', cfg.marital_status_options), ('caste_tribe', cfg.caste_tribe_options),
++            ('languages', cfg.language_options), ('employer_or_business', cfg.employer_options),
++        ]:
++            self.fields[name].widget = forms.Select(choices=[('', 'Select')] + [(v, v) for v in (values or [])])
++        self.fields['physical_status'].widget = forms.Select(
++            choices=[('', 'Select physical status')] + [(v, v) for v in cfg.physical_status_options]
++        )
++        self.fields['disability_status'].widget = forms.Select(
++            choices=[('', 'Select disability status')] + [(v, v) for v in cfg.disability_options]
++        )
++        disease_choices = [(v, v) for v in cfg.known_disease_options]
++        self.fields['known_diseases'].choices = disease_choices
++        self.fields['known_diseases'].widget = forms.SelectMultiple(choices=disease_choices, attrs={'class': 'mp-compact-multiselect', 'size': '1'})
++        self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
++        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
++        self.fields['number_of_brothers'].widget = forms.Select(choices=[('', 'Select')] + [(i, str(i)) for i in range(0, 11)])
++        self.fields['number_of_sisters'].widget = forms.Select(choices=[('', 'Select')] + [(i, str(i)) for i in range(0, 11)])
++        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Own'), (False, 'Rented')])
++        if self.instance and self.instance.pk:
++            self.initial['known_diseases'] = self.instance.known_diseases or []
++        if self.instance and self.instance.height_cm:
++            total = round(self.instance.height_cm / 2.54)
++            self.initial['height_feet'] = total // 12
++            self.initial['height_inches'] = total % 12
++
++    def save(self, commit=True):
++        obj = super().save(commit=False)
++        ft = self.cleaned_data.get('height_feet')
++        inch = self.cleaned_data.get('height_inches')
++        if ft is not None:
++            obj.height_cm = round((ft * 12 + (inch or 0)) * 2.54)
++        elif not self.cleaned_data.get('height_inches'):
++            obj.height_cm = None
++        obj.known_diseases = self.cleaned_data.get('known_diseases') or []
++        if commit:
++            obj.save()
++            self.save_m2m()
++        return obj
++
++    class Meta:
++        model = FamilyHarmonyProfile
++        exclude = (
++            'person', 'assigned_officer', 'created_at', 'updated_at', 'is_demo', 'consent_reviewed',
++            'height_cm', 'owning_region', 'owning_local_council', 'owning_jamatkhana'
++        )
++        widgets = {
++            x: forms.Textarea(attrs={'rows': 2}) for x in (
++                'family_background', 'family_values', 'personality', 'health_information',
++                'personal_statement', 'expectations', 'notes', 'other_lifestyle_details',
++                'child_details', 'previous_marriage_notes', 'disabilities'
++            )
++        }
++
++
++class FamilyHarmonyPreferenceForm(forms.ModelForm):
++    preferred_locations = forms.CharField(required=False)
++    preferred_cities = forms.CharField(required=False)
++    preferred_education_options = forms.MultipleChoiceField(required=False)
++    preferred_professions = forms.MultipleChoiceField(required=False)
++    preferred_income_options = forms.MultipleChoiceField(required=False)
++    preferred_marital_status_options = forms.MultipleChoiceField(required=False)
++    preferred_languages = forms.MultipleChoiceField(required=False)
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        mapping = {
++            'preferred_education_options': cfg.education_levels,
++            'preferred_professions': cfg.occupation_options,
++            'preferred_income_options': cfg.income_ranges,
++            'preferred_marital_status_options': cfg.marital_status_options,
++            'preferred_languages': cfg.language_options,
++        }
++        for name, values in mapping.items():
++            choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
++            self.fields[name].choices = choices
++            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '4'})
++        for name in ('minimum_age', 'maximum_age'):
++            self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
++        self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['preferred_family_type'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.family_type_options or [])])
++        self.fields['preferred_caste_tribe'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.caste_tribe_options or [])])
++        self.fields['preferred_country'].widget = forms.Select(choices=[('', 'Any')] + [(v, v) for v in (cfg.country_options or [])])
++
++    def clean(self):
++        cleaned = super().clean()
++        for name in ('preferred_locations', 'preferred_cities'):
++            value = (self.data.get(name) or '').strip()
++            cleaned[name] = [x.strip() for x in value.replace('\n', ',').split(',') if x.strip()]
++        for name in (
++            'preferred_education_options', 'preferred_professions', 'preferred_income_options',
++            'preferred_marital_status_options', 'preferred_languages'
++        ):
++            values = self.data.getlist(name)
++            cleaned[name] = ['Any'] if 'Any' in values else values
++        return cleaned
++
++    class Meta:
++        model = FamilyHarmonyPreference
++        exclude = ('profile', 'preferred_education', 'preferred_income', 'preferred_marital_status', 'preferred_regions')
++        widgets = {
++            'preferred_family_values': forms.Textarea(attrs={'rows': 2}),
++            'preferred_personality': forms.Textarea(attrs={'rows': 2}),
++            'other_expectations': forms.Textarea(attrs={'rows': 2}),
++            'free_text_seeking_description': forms.Textarea(attrs={'rows': 2}),
++        }
+diff --git a/family_harmony/migrations/0008_mockup_profile_fields.py b/family_harmony/migrations/0008_mockup_profile_fields.py
+new file mode 100644
+index 0000000..90e2453
+--- /dev/null
++++ b/family_harmony/migrations/0008_mockup_profile_fields.py
+@@ -0,0 +1,12 @@
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++    dependencies = [('family_harmony', '0007_profile_health_assets')]
++    operations = [
++        migrations.AddField(model_name='familyharmonyprofile', name='number_of_brothers', field=models.PositiveSmallIntegerField(blank=True, null=True)),
++        migrations.AddField(model_name='familyharmonyprofile', name='number_of_sisters', field=models.PositiveSmallIntegerField(blank=True, null=True)),
++        migrations.AddField(model_name='familyharmonypreference', name='preferred_family_type', field=models.CharField(blank=True, max_length=80)),
++        migrations.AddField(model_name='familyharmonypreference', name='preferred_caste_tribe', field=models.CharField(blank=True, max_length=120)),
++        migrations.AddField(model_name='familyharmonypreference', name='preferred_country', field=models.CharField(blank=True, max_length=100)),
++    ]
+diff --git a/family_harmony/models.py b/family_harmony/models.py
+index f152a63..afe702c 100644
+--- a/family_harmony/models.py
++++ b/family_harmony/models.py
+@@ -1,194 +1,199 @@
+-from django.conf import settings
+-from django.core.exceptions import ValidationError
+-from django.db import models
+-from django.utils import timezone
+-
+-from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
+-from people.models import Person
+-
+-
+-class FamilyHarmonyProfile(models.Model):
+-    class Status(models.TextChoices):
+-        DRAFT = 'DRAFT', 'Draft'
+-        AWAITING_CONSENT = 'AWAITING_CONSENT', 'Awaiting consent'
+-        ACTIVE = 'ACTIVE', 'Active'
+-        PAUSED = 'PAUSED', 'Paused'
+-        INTRODUCTION_PENDING = 'INTRODUCTION_PENDING', 'Introduction pending'
+-        IN_DISCUSSION = 'IN_DISCUSSION', 'In discussion'
+-        FAMILY_MEETING = 'FAMILY_MEETING', 'Family meeting'
+-        ENGAGED = 'ENGAGED', 'Engaged'
+-        MARRIED = 'MARRIED', 'Married'
+-        CLOSED = 'CLOSED', 'Closed'
+-        ARCHIVED = 'ARCHIVED', 'Archived'
+-
+-    person = models.OneToOneField(Person, on_delete=models.PROTECT, related_name='harmony_profile')
+-    portfolio = models.CharField(max_length=100, default='Family Harmony', blank=True)
+-    status = models.CharField(max_length=30, choices=Status.choices, default=Status.DRAFT)
+-    assigned_officer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+-    owning_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT)
+-    owning_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT)
+-    owning_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT)
+-    height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
+-    weight_kg = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+-    physical_status = models.CharField(max_length=100, blank=True)
+-    disability_status = models.CharField(max_length=120, blank=True)
+-    known_diseases = models.JSONField(default=list, blank=True)
+-    owns_house = models.BooleanField(null=True, blank=True)
+-    owns_car = models.BooleanField(null=True, blank=True)
+-    education_level = models.CharField(max_length=100, blank=True)
+-    qualification = models.CharField(max_length=180, blank=True)
+-    institution = models.CharField(max_length=180, blank=True)
+-    profession = models.CharField(max_length=180, blank=True)
+-    employer_or_business = models.CharField(max_length=180, blank=True)
+-    years_experience = models.CharField(max_length=80, blank=True)
+-    income_range = models.CharField(max_length=120, blank=True)
+-    financial_status = models.CharField(max_length=120, blank=True)
+-    family_background = models.TextField(blank=True)
+-    father_name = models.CharField(max_length=180, blank=True)
+-    father_occupation = models.CharField(max_length=180, blank=True)
+-    mother_name = models.CharField(max_length=180, blank=True)
+-    mother_occupation = models.CharField(max_length=180, blank=True)
+-    siblings_summary = models.CharField(max_length=255, blank=True)
+-    family_residence = models.CharField(max_length=180, blank=True)
+-    family_type = models.CharField(max_length=80, blank=True)
+-    caste_tribe = models.CharField(max_length=120, blank=True)
+-    guardian_contact = models.CharField(max_length=180, blank=True)
+-    place_of_origin = models.CharField(max_length=160, blank=True)
+-    family_values = models.TextField(blank=True)
+-    personality = models.TextField(blank=True)
+-    interests = models.TextField(blank=True)
+-    languages = models.CharField(max_length=255, blank=True)
+-    smoking = models.CharField(max_length=60, blank=True)
+-    other_lifestyle_details = models.TextField(blank=True)
+-    children_count = models.PositiveSmallIntegerField(null=True, blank=True)
+-    child_details = models.TextField(blank=True)
+-    previous_marriage_notes = models.TextField(blank=True)
+-    marital_status = models.CharField(max_length=60, blank=True)
+-    disabilities = models.TextField(blank=True)
+-    health_information = models.TextField(blank=True)
+-    personal_statement = models.TextField(blank=True)
+-    expectations = models.TextField(blank=True)
+-    notes = models.TextField(blank=True)
+-    facebook_url = models.URLField(blank=True)
+-    instagram_url = models.URLField(blank=True)
+-    linkedin_url = models.URLField(blank=True)
+-    consent_reviewed = models.BooleanField(default=False)
+-    created_at = models.DateTimeField(auto_now_add=True)
+-    updated_at = models.DateTimeField(auto_now=True)
+-    is_demo = models.BooleanField(default=False)
+-
+-    class Meta:
+-        permissions = [('share_profile', 'Can share profile'), ('release_contact', 'Can release contact'), ('approve_cross_region', 'Can approve cross-jurisdiction introductions')]
+-        indexes = [models.Index(fields=['status']), models.Index(fields=['owning_region', 'owning_local_council', 'owning_jamatkhana']), models.Index(fields=['assigned_officer', 'status'])]
+-
+-    @property
+-    def serial_number(self):
+-        return f'FH-{self.pk:05d}' if self.pk else 'FH-00000'
+-
+-    def clean(self):
+-        if self.status == self.Status.ACTIVE:
+-            if not self.person.date_of_birth or (self.person.age or 0) < 18:
+-                raise ValidationError('Family Harmony profiles must have a date of birth and the candidate must be at least 18.')
+-
+-
+-class FamilyHarmonyPreference(models.Model):
+-    profile = models.OneToOneField(FamilyHarmonyProfile, on_delete=models.CASCADE, related_name='preferences')
+-    minimum_age = models.PositiveSmallIntegerField(null=True, blank=True)
+-    maximum_age = models.PositiveSmallIntegerField(null=True, blank=True)
+-    preferred_locations = models.JSONField(default=list, blank=True)
+-    preferred_regions = models.JSONField(default=list, blank=True)
+-    preferred_cities = models.JSONField(default=list, blank=True)
+-    preferred_education = models.CharField(max_length=180, blank=True)
+-    preferred_education_options = models.JSONField(default=list, blank=True)
+-    preferred_professions = models.JSONField(default=list, blank=True)
+-    preferred_income = models.CharField(max_length=120, blank=True)
+-    preferred_income_options = models.JSONField(default=list, blank=True)
+-    preferred_marital_status = models.CharField(max_length=120, blank=True)
+-    preferred_marital_status_options = models.JSONField(default=list, blank=True)
+-    preferred_family_values = models.TextField(blank=True)
+-    preferred_personality = models.TextField(blank=True)
+-    willingness_to_relocate = models.BooleanField(default=False)
+-    preferred_languages = models.JSONField(default=list, blank=True)
+-    other_expectations = models.TextField(blank=True)
+-    free_text_seeking_description = models.TextField(blank=True)
+-
+-
+-class Consent(models.Model):
+-    person = models.ForeignKey(Person, on_delete=models.PROTECT, related_name='consents')
+-    profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.PROTECT, related_name='consents')
+-    consent_type = models.CharField(max_length=80)
+-    consent_given = models.BooleanField(default=False)
+-    consent_datetime = models.DateTimeField(default=timezone.now)
+-    method = models.CharField(max_length=80, blank=True)
+-    obtained_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+-    profile_sharing_allowed = models.BooleanField(default=False)
+-    photo_sharing_allowed = models.BooleanField(default=False)
+-    contact_release_allowed = models.BooleanField(default=False)
+-    health_data_sharing_allowed = models.BooleanField(default=False)
+-    disability_data_sharing_allowed = models.BooleanField(default=False)
+-    notes = models.TextField(blank=True)
+-    revoked_at = models.DateTimeField(null=True, blank=True)
+-    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='consents_revoked')
+-    revocation_reason = models.TextField(blank=True)
+-
+-
+-class PublicFormInvitation(models.Model):
+-    profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name='form_invitations')
+-    token_hash = models.CharField(max_length=64, unique=True)
+-    candidate_name = models.CharField(max_length=180, blank=True)
+-    candidate_phone = models.CharField(max_length=40, blank=True)
+-    preselected_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
+-    preselected_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
+-    preselected_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.SET_NULL)
+-    expires_at = models.DateTimeField()
+-    submitted_at = models.DateTimeField(null=True, blank=True)
+-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+-    created_at = models.DateTimeField(auto_now_add=True)
+-
+-    def is_available(self):
+-        return self.submitted_at is None and self.expires_at > timezone.now()
+-
+-
+-class CrossJurisdictionRequest(models.Model):
+-    class Status(models.TextChoices):
+-        PENDING = 'PENDING', 'Pending'
+-        APPROVED = 'APPROVED', 'Approved'
+-        REJECTED = 'REJECTED', 'Rejected'
+-        MORE_INFO = 'MORE_INFO', 'More information requested'
+-
+-    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+-    requester_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+-    requester_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+-    requester_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
+-    target_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+-    target_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+-    target_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
+-    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='cross_requests_source')
+-    target_profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_target')
+-    reason = models.TextField()
+-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+-    requested_at = models.DateTimeField(auto_now_add=True)
+-    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='cross_requests_reviewed')
+-    reviewed_at = models.DateTimeField(null=True, blank=True)
+-    notes = models.TextField(blank=True)
+-
+-
+-class Introduction(models.Model):
+-    class Status(models.TextChoices):
+-        PENDING = 'PENDING', 'Pending'
+-        MUTUAL_INTEREST = 'MUTUAL_INTEREST', 'Mutual interest'
+-        IN_DISCUSSION = 'IN_DISCUSSION', 'In discussion'
+-        FAMILY_MEETING = 'FAMILY_MEETING', 'Family meeting'
+-        ENGAGED = 'ENGAGED', 'Engaged'
+-        MARRIED = 'MARRIED', 'Married'
+-        CLOSED = 'CLOSED', 'Closed'
+-
+-    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_started')
+-    target_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_received')
+-    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
+-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+-    contact_released_at = models.DateTimeField(null=True, blank=True)
+-    contact_released_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='contact_releases')
+-    marriage_date = models.DateField(null=True, blank=True)
+-    notes = models.TextField(blank=True)
+-    created_at = models.DateTimeField(auto_now_add=True)
++from django.conf import settings
++from django.core.exceptions import ValidationError
++from django.db import models
++from django.utils import timezone
++
++from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
++from people.models import Person
++
++
++class FamilyHarmonyProfile(models.Model):
++    class Status(models.TextChoices):
++        DRAFT = 'DRAFT', 'Draft'
++        AWAITING_CONSENT = 'AWAITING_CONSENT', 'Awaiting consent'
++        ACTIVE = 'ACTIVE', 'Active'
++        PAUSED = 'PAUSED', 'Paused'
++        INTRODUCTION_PENDING = 'INTRODUCTION_PENDING', 'Introduction pending'
++        IN_DISCUSSION = 'IN_DISCUSSION', 'In discussion'
++        FAMILY_MEETING = 'FAMILY_MEETING', 'Family meeting'
++        ENGAGED = 'ENGAGED', 'Engaged'
++        MARRIED = 'MARRIED', 'Married'
++        CLOSED = 'CLOSED', 'Closed'
++        ARCHIVED = 'ARCHIVED', 'Archived'
++
++    person = models.OneToOneField(Person, on_delete=models.PROTECT, related_name='harmony_profile')
++    portfolio = models.CharField(max_length=100, default='Family Harmony', blank=True)
++    status = models.CharField(max_length=30, choices=Status.choices, default=Status.DRAFT)
++    assigned_officer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
++    owning_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT)
++    owning_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT)
++    owning_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT)
++    height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
++    weight_kg = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
++    physical_status = models.CharField(max_length=100, blank=True)
++    disability_status = models.CharField(max_length=120, blank=True)
++    known_diseases = models.JSONField(default=list, blank=True)
++    owns_house = models.BooleanField(null=True, blank=True)
++    owns_car = models.BooleanField(null=True, blank=True)
++    education_level = models.CharField(max_length=100, blank=True)
++    qualification = models.CharField(max_length=180, blank=True)
++    institution = models.CharField(max_length=180, blank=True)
++    profession = models.CharField(max_length=180, blank=True)
++    employer_or_business = models.CharField(max_length=180, blank=True)
++    years_experience = models.CharField(max_length=80, blank=True)
++    income_range = models.CharField(max_length=120, blank=True)
++    financial_status = models.CharField(max_length=120, blank=True)
++    family_background = models.TextField(blank=True)
++    father_name = models.CharField(max_length=180, blank=True)
++    father_occupation = models.CharField(max_length=180, blank=True)
++    mother_name = models.CharField(max_length=180, blank=True)
++    mother_occupation = models.CharField(max_length=180, blank=True)
++    siblings_summary = models.CharField(max_length=255, blank=True)
++    number_of_brothers = models.PositiveSmallIntegerField(null=True, blank=True)
++    number_of_sisters = models.PositiveSmallIntegerField(null=True, blank=True)
++    family_residence = models.CharField(max_length=180, blank=True)
++    family_type = models.CharField(max_length=80, blank=True)
++    caste_tribe = models.CharField(max_length=120, blank=True)
++    guardian_contact = models.CharField(max_length=180, blank=True)
++    place_of_origin = models.CharField(max_length=160, blank=True)
++    family_values = models.TextField(blank=True)
++    personality = models.TextField(blank=True)
++    interests = models.TextField(blank=True)
++    languages = models.CharField(max_length=255, blank=True)
++    smoking = models.CharField(max_length=60, blank=True)
++    other_lifestyle_details = models.TextField(blank=True)
++    children_count = models.PositiveSmallIntegerField(null=True, blank=True)
++    child_details = models.TextField(blank=True)
++    previous_marriage_notes = models.TextField(blank=True)
++    marital_status = models.CharField(max_length=60, blank=True)
++    disabilities = models.TextField(blank=True)
++    health_information = models.TextField(blank=True)
++    personal_statement = models.TextField(blank=True)
++    expectations = models.TextField(blank=True)
++    notes = models.TextField(blank=True)
++    facebook_url = models.URLField(blank=True)
++    instagram_url = models.URLField(blank=True)
++    linkedin_url = models.URLField(blank=True)
++    consent_reviewed = models.BooleanField(default=False)
++    created_at = models.DateTimeField(auto_now_add=True)
++    updated_at = models.DateTimeField(auto_now=True)
++    is_demo = models.BooleanField(default=False)
++
++    class Meta:
++        permissions = [('share_profile', 'Can share profile'), ('release_contact', 'Can release contact'), ('approve_cross_region', 'Can approve cross-jurisdiction introductions')]
++        indexes = [models.Index(fields=['status']), models.Index(fields=['owning_region', 'owning_local_council', 'owning_jamatkhana']), models.Index(fields=['assigned_officer', 'status'])]
++
++    @property
++    def serial_number(self):
++        return f'FH-{self.pk:05d}' if self.pk else 'FH-00000'
++
++    def clean(self):
++        if self.status == self.Status.ACTIVE:
++            if not self.person.date_of_birth or (self.person.age or 0) < 18:
++                raise ValidationError('Family Harmony profiles must have a date of birth and the candidate must be at least 18.')
++
++
++class FamilyHarmonyPreference(models.Model):
++    profile = models.OneToOneField(FamilyHarmonyProfile, on_delete=models.CASCADE, related_name='preferences')
++    minimum_age = models.PositiveSmallIntegerField(null=True, blank=True)
++    maximum_age = models.PositiveSmallIntegerField(null=True, blank=True)
++    preferred_locations = models.JSONField(default=list, blank=True)
++    preferred_regions = models.JSONField(default=list, blank=True)
++    preferred_cities = models.JSONField(default=list, blank=True)
++    preferred_education = models.CharField(max_length=180, blank=True)
++    preferred_education_options = models.JSONField(default=list, blank=True)
++    preferred_professions = models.JSONField(default=list, blank=True)
++    preferred_income = models.CharField(max_length=120, blank=True)
++    preferred_income_options = models.JSONField(default=list, blank=True)
++    preferred_marital_status = models.CharField(max_length=120, blank=True)
++    preferred_marital_status_options = models.JSONField(default=list, blank=True)
++    preferred_family_values = models.TextField(blank=True)
++    preferred_personality = models.TextField(blank=True)
++    willingness_to_relocate = models.BooleanField(default=False)
++    preferred_languages = models.JSONField(default=list, blank=True)
++    preferred_family_type = models.CharField(max_length=80, blank=True)
++    preferred_caste_tribe = models.CharField(max_length=120, blank=True)
++    preferred_country = models.CharField(max_length=100, blank=True)
++    other_expectations = models.TextField(blank=True)
++    free_text_seeking_description = models.TextField(blank=True)
++
++
++class Consent(models.Model):
++    person = models.ForeignKey(Person, on_delete=models.PROTECT, related_name='consents')
++    profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.PROTECT, related_name='consents')
++    consent_type = models.CharField(max_length=80)
++    consent_given = models.BooleanField(default=False)
++    consent_datetime = models.DateTimeField(default=timezone.now)
++    method = models.CharField(max_length=80, blank=True)
++    obtained_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
++    profile_sharing_allowed = models.BooleanField(default=False)
++    photo_sharing_allowed = models.BooleanField(default=False)
++    contact_release_allowed = models.BooleanField(default=False)
++    health_data_sharing_allowed = models.BooleanField(default=False)
++    disability_data_sharing_allowed = models.BooleanField(default=False)
++    notes = models.TextField(blank=True)
++    revoked_at = models.DateTimeField(null=True, blank=True)
++    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='consents_revoked')
++    revocation_reason = models.TextField(blank=True)
++
++
++class PublicFormInvitation(models.Model):
++    profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name='form_invitations')
++    token_hash = models.CharField(max_length=64, unique=True)
++    candidate_name = models.CharField(max_length=180, blank=True)
++    candidate_phone = models.CharField(max_length=40, blank=True)
++    preselected_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
++    preselected_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.SET_NULL)
++    preselected_jamatkhana = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.SET_NULL)
++    expires_at = models.DateTimeField()
++    submitted_at = models.DateTimeField(null=True, blank=True)
++    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
++    created_at = models.DateTimeField(auto_now_add=True)
++
++    def is_available(self):
++        return self.submitted_at is None and self.expires_at > timezone.now()
++
++
++class CrossJurisdictionRequest(models.Model):
++    class Status(models.TextChoices):
++        PENDING = 'PENDING', 'Pending'
++        APPROVED = 'APPROVED', 'Approved'
++        REJECTED = 'REJECTED', 'Rejected'
++        MORE_INFO = 'MORE_INFO', 'More information requested'
++
++    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
++    requester_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
++    requester_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
++    requester_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_from')
++    target_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
++    target_local = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
++    target_jk = models.ForeignKey(Jamatkhana, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_to')
++    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='cross_requests_source')
++    target_profile = models.ForeignKey(FamilyHarmonyProfile, null=True, blank=True, on_delete=models.PROTECT, related_name='cross_requests_target')
++    reason = models.TextField()
++    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
++    requested_at = models.DateTimeField(auto_now_add=True)
++    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='cross_requests_reviewed')
++    reviewed_at = models.DateTimeField(null=True, blank=True)
++    notes = models.TextField(blank=True)
++
++
++class Introduction(models.Model):
++    class Status(models.TextChoices):
++        PENDING = 'PENDING', 'Pending'
++        MUTUAL_INTEREST = 'MUTUAL_INTEREST', 'Mutual interest'
++        IN_DISCUSSION = 'IN_DISCUSSION', 'In discussion'
++        FAMILY_MEETING = 'FAMILY_MEETING', 'Family meeting'
++        ENGAGED = 'ENGAGED', 'Engaged'
++        MARRIED = 'MARRIED', 'Married'
++        CLOSED = 'CLOSED', 'Closed'
++
++    source_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_started')
++    target_profile = models.ForeignKey(FamilyHarmonyProfile, on_delete=models.PROTECT, related_name='introductions_received')
++    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
++    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
++    contact_released_at = models.DateTimeField(null=True, blank=True)
++    contact_released_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='contact_releases')
++    marriage_date = models.DateField(null=True, blank=True)
++    notes = models.TextField(blank=True)
++    created_at = models.DateTimeField(auto_now_add=True)
+diff --git a/people/forms.py b/people/forms.py
+index d4734e3..1d65d8e 100644
+--- a/people/forms.py
++++ b/people/forms.py
+@@ -1,64 +1,70 @@
+-from django import forms
+-
+-from organization.models import Jamatkhana
+-from settings_app.models import FamilyHarmonySettings
+-
+-from .models import Person
+-
+-
+-class PersonForm(forms.ModelForm):
+-    def __init__(self, *args, **kwargs):
+-        super().__init__(*args, **kwargs)
+-        cfg = FamilyHarmonySettings.current()
+-        self.fields['title'].widget = forms.Select(choices=[('', 'Select title')] + [(v, v) for v in cfg.title_options])
+-        self.fields['gender'].widget = forms.Select(choices=[('', 'Select gender'), ('Male', 'Male'), ('Female', 'Female')])
+-        select_lists = [
+-            ('nationality', cfg.nationality_options), ('country', cfg.country_options),
+-            ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
+-            ('occupation', cfg.occupation_options), ('employer_or_business', cfg.employer_options),
+-            ('income_range', cfg.income_ranges),
+-        ]
+-        for name, values in select_lists:
+-            self.fields[name].widget = forms.Select(choices=[('', 'Select')] + [(v, v) for v in (values or [])])
+-            self.fields[name].choices = [('', 'Select')] + [(v, v) for v in (values or [])]
+-        self.fields['languages'].widget = forms.TextInput(attrs={
+-            'list': 'person-languages-options', 'data-options': '|'.join(cfg.language_options or [])
+-        })
+-        self.fields['jamatkhana'].queryset = Jamatkhana.objects.select_related(
+-            'local_council__regional_council'
+-        ).filter(is_active=True).order_by('name')
+-        self.fields['jamatkhana'].label = 'Jamatkhana'
+-        self.fields['jamatkhana'].label_from_instance = lambda o: (
+-            f'{o.name} — {o.local_council.name} — {o.local_council.regional_council.name}'
+-        )
+-        self.fields['jamatkhana'].widget.attrs['data-searchable'] = 'true'
+-        for field_name in ('photo', 'cnic_front', 'cnic_back'):
+-            self.fields[field_name].widget.attrs['accept'] = 'image/*'
+-        self.fields['cnic_front'].label = 'CNIC front'
+-        self.fields['cnic_back'].label = 'CNIC back'
+-
+-    def save(self, commit=True):
+-        person = super().save(commit=False)
+-        if person.jamatkhana_id:
+-            person.local_council = person.jamatkhana.local_council
+-            person.region = person.local_council.regional_council
+-        else:
+-            person.local_council = None
+-            person.region = None
+-        if commit:
+-            person.save()
+-            self.save_m2m()
+-        return person
+-
+-    class Meta:
+-        model = Person
+-        exclude = (
+-            'full_name', 'normalized_identity_number', 'created_by', 'updated_by', 'created_at',
+-            'updated_at', 'archived_at', 'is_demo', 'region', 'local_council'
+-        )
+-        widgets = {
+-            'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
+-            'current_address': forms.Textarea(attrs={'rows': 2}),
+-            'permanent_address': forms.Textarea(attrs={'rows': 2}),
+-            'interests': forms.Textarea(attrs={'rows': 2}),
+-        }
++from django import forms
++
++from organization.models import Jamatkhana
++from settings_app.models import FamilyHarmonySettings
++
++from .models import Person
++
++
++class PersonForm(forms.ModelForm):
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        self.fields['title'].widget = forms.Select(choices=[('', 'Select title')] + [(v, v) for v in cfg.title_options])
++        self.fields['gender'].widget = forms.RadioSelect(choices=[('Male', 'Male'), ('Female', 'Female')], attrs={'class': 'mp-segment-input'})
++        select_lists = [
++            ('nationality', cfg.nationality_options), ('country', cfg.country_options),
++            ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
++            ('occupation', cfg.occupation_options), ('employer_or_business', cfg.employer_options),
++            ('income_range', cfg.income_ranges),
++        ]
++        for name, values in select_lists:
++            self.fields[name].widget = forms.Select(choices=[('', 'Select')] + [(v, v) for v in (values or [])])
++            self.fields[name].choices = [('', 'Select')] + [(v, v) for v in (values or [])]
++        self.fields['languages'].widget = forms.TextInput(attrs={
++            'list': 'person-languages-options', 'data-options': '|'.join(cfg.language_options or [])
++        })
++        self.fields['jamatkhana'].queryset = Jamatkhana.objects.select_related(
++            'local_council__regional_council'
++        ).filter(is_active=True).order_by('name')
++        self.fields['jamatkhana'].label = 'Jamatkhana'
++        self.fields['jamatkhana'].label_from_instance = lambda o: (
++            f'{o.name} — {o.local_council.name} — {o.local_council.regional_council.name}'
++        )
++        self.fields['jamatkhana'].widget.attrs['data-searchable'] = 'true'
++        for field_name in ('photo', 'cnic_front', 'cnic_back'):
++            self.fields[field_name].widget.attrs['accept'] = 'image/*'
++        self.fields['cnic_front'].label = 'CNIC front'
++        self.fields['cnic_back'].label = 'CNIC back'
++        self.fields['first_name'].required = True
++        self.fields['gender'].required = True
++        self.fields['last_name'].required = True
++        self.fields['mobile'].required = True
++        self.fields['jamatkhana'].required = True
++        self.fields['identity_type'].initial = self.instance.identity_type if self.instance and self.instance.pk else Person.IdentityType.CNIC
++
++    def save(self, commit=True):
++        person = super().save(commit=False)
++        if person.jamatkhana_id:
++            person.local_council = person.jamatkhana.local_council
++            person.region = person.local_council.regional_council
++        else:
++            person.local_council = None
++            person.region = None
++        if commit:
++            person.save()
++            self.save_m2m()
++        return person
++
++    class Meta:
++        model = Person
++        exclude = (
++            'full_name', 'normalized_identity_number', 'created_by', 'updated_by', 'created_at',
++            'updated_at', 'archived_at', 'is_demo', 'region', 'local_council'
++        )
++        widgets = {
++            'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
++            'current_address': forms.Textarea(attrs={'rows': 2}),
++            'permanent_address': forms.Textarea(attrs={'rows': 2}),
++            'interests': forms.Textarea(attrs={'rows': 2}),
++        }
+diff --git a/static/app.css b/static/app.css
+index d2a62d3..2d313fb 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -28,3 +28,9 @@
+ .sidebar-scrim{display:none;border:0;padding:0}.sidebar{z-index:42}.social-topbar{min-width:0}.top-actions{min-width:0}.main{overflow-x:hidden}
+ @media(max-width:760px){body.sidebar-open{overflow:hidden}.sidebar{display:flex!important;transform:translateX(-105%);transition:transform .2s ease;width:min(82vw,280px);box-shadow:12px 0 35px rgba(0,0,0,.25)}body.sidebar-open .sidebar{transform:translateX(0)}.sidebar-scrim{position:fixed;inset:0;z-index:41;background:rgba(8,18,27,.48)}body.sidebar-open .sidebar-scrim{display:block}.social-topbar{height:58px;position:sticky;padding:0 8px}.social-topbar .menu{display:block;color:#fff;margin:0 3px 0 0}.top-actions{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.top-actions::-webkit-scrollbar{display:none}.top-btn{flex:0 0 auto}.view-toggle{flex:0 0 auto}.page-head{padding-top:24px}}
+ @media(max-width:420px){.top-btn{padding:6px;font-size:9px}.social-topbar{gap:5px}.top-actions{gap:3px}}
++
++/* Approved marriage form mockup fidelity — 2026-09-29 */
++.public-profile-page{margin:0;background:#f5faf8;color:#082f54;font-family:Arial,sans-serif}.mp-public-topbar{height:58px;background:linear-gradient(90deg,#07314c,#052c46);color:#fff;display:flex;align-items:center;padding:0 18px;box-shadow:0 2px 9px rgba(5,44,70,.22);position:sticky;top:0;z-index:30}.mp-brand{display:flex;align-items:center;gap:9px}.mp-brand>span{width:34px;height:34px;border-radius:7px;background:linear-gradient(135deg,#ff765b,#ff5c4e);display:grid;place-items:center;font-weight:800}.mp-brand div{display:grid}.mp-brand strong{font-size:14px}.mp-brand small{font-size:9px;font-weight:400}.mp-public-view{margin-left:auto;display:grid;grid-template-columns:auto auto;gap:0 5px;font-size:12px;align-items:center}.mp-public-view small{grid-column:2;font-size:9px}.mp-public-menu{display:none;margin-left:16px;border:0;background:none;color:#fff;font-size:20px}.profile-editor-shell.public-profile-shell{width:min(1900px,100%);margin:0 auto 20px}.public-profile-shell .marriage-profile-form{border:0;border-radius:0;box-shadow:none;background:transparent;padding:0 14px 8px}.profile-editor-head.mp-approved-head{background:#fff;color:#082f54;border-radius:0;box-shadow:0 5px 18px rgba(22,64,80,.06);padding:18px 32px;min-height:132px;display:grid;grid-template-columns:minmax(400px,1fr) auto;gap:24px}.profile-editor-head.mp-approved-head h1{font-family:Georgia,serif;font-size:34px;font-weight:700;margin:0 0 8px;color:#082f54}.profile-editor-head.mp-approved-head p{font:12px/1.45 Arial,sans-serif;color:#48647c}.profile-editor-head.mp-approved-head p span{font-size:11px}.profile-editor-head.mp-approved-head p b,.required-field>label:after{color:#e72e37}.required-field>label:after{content:' *'}.mp-upload-deck{display:flex;align-items:center;gap:10px}.mp-upload-card{width:128px;height:104px;border:1px dashed #7ebbc2;border-radius:5px;background:#f9fdfd;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;color:#08345a;position:relative;overflow:hidden}.mp-upload-card input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.mp-upload-card .mp-camera{width:30px;height:24px;border-radius:5px;background:#3f8490;color:#fff;display:grid;place-items:center;font-size:0;margin-bottom:7px}.mp-upload-card .mp-camera:after{content:'●';font-size:15px;color:#fff}.mp-upload-card strong{font:11px/1.25 Arial,sans-serif}.mp-upload-card small{font:9px Arial,sans-serif;margin-top:2px}.mp-upload-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mp-current-photo{width:82px;height:104px;object-fit:cover;border-radius:5px;border:4px solid #f4ede7;box-shadow:0 2px 8px rgba(0,0,0,.08)}
++.marriage-profile-form .mp-section{padding:8px 0 0;border:0;background:transparent}.mp-section-title{width:100%;height:40px;border:0;border-radius:5px;background:#fff;color:#0a3c6a;display:flex;align-items:center;gap:10px;padding:0 18px;text-align:left;font:700 17px Georgia,serif;cursor:pointer;box-shadow:0 2px 12px rgba(15,59,75,.06)}.mp-section-icon{font-family:Arial,sans-serif;font-size:20px;color:#06467c}.mp-chevron{margin-left:auto;font:700 15px Arial,sans-serif}.mp-section:not(.is-open) .mp-chevron{transform:rotate(180deg)}.mp-section:not(.is-open) .mp-section-body{display:none}.mp-section-body{background:#fff;border-radius:0 0 5px 5px;padding:12px 18px 14px}.mp-grid{display:grid;gap:10px 12px}.mp-personal-fields{grid-template-columns:repeat(6,minmax(0,1fr))}.mp-span-email{grid-column:span 1}.mp-span-jk{grid-column:span 2}.mp-span-city{grid-column:span 2}.mp-address{grid-column:span 3}.mp-bottom-personal{display:grid;grid-template-columns:1.1fr .85fr .9fr .9fr .9fr 1.1fr 1.15fr 1.3fr;gap:10px;margin-top:10px}.mp-height-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}.mp-family-career-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.mp-family-caste{grid-column:span 2}.mp-about-family{grid-column:span 3}.mp-preference-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.marriage-profile-form .form-field>label{font:500 11px/1.2 Arial,sans-serif;color:#082f54;margin-bottom:5px}.marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{height:36px;min-height:36px;padding:7px 9px;border:1px solid #c9d7df;border-radius:4px;font:12px Arial,sans-serif;color:#0c3558;background:#fff}.marriage-profile-form textarea{height:36px;min-height:36px;resize:none}.marriage-profile-form input::placeholder,.marriage-profile-form textarea::placeholder{color:#8b9fb2}.mp-segment-field>div,.mp-segment-field>ul{display:flex!important;list-style:none!important;padding:0!important;margin:0!important;gap:0!important;height:36px}.mp-segment-field>div>div,.mp-segment-field>ul>li{flex:1;margin:0!important}.mp-segment-field label:has(input),.mp-segment-field li label{height:36px!important;border:1px solid #c9d7df!important;border-radius:0!important;background:#fff!important;padding:0 12px!important;display:flex!important;align-items:center!important;justify-content:center!important;color:#082f54!important;font:500 12px Arial,sans-serif!important;cursor:pointer}.mp-segment-field>div>div:first-child label,.mp-segment-field li:first-child label{border-radius:4px 0 0 4px!important}.mp-segment-field>div>div:last-child label,.mp-segment-field li:last-child label{border-radius:0 4px 4px 0!important}.mp-segment-field input[type=radio]{position:absolute;opacity:0;width:1px;height:1px}.mp-segment-field label:has(input:checked),.mp-segment-field li label:has(input:checked){background:#078a83!important;color:#fff!important;border-color:#078a83!important}.mp-compact-multiselect{overflow:hidden}.mp-internal-compact{display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;background:#fff;padding:12px 18px;margin-top:8px}.mp-form-footer{display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 18px 12px;margin-top:8px;border-radius:0 0 5px 5px}.mp-form-footer .primary{background:linear-gradient(180deg,#07998e,#047c76);border-radius:4px;padding:9px 17px;font:700 12px Arial,sans-serif;box-shadow:0 3px 7px rgba(0,125,118,.18)}.mp-form-footer .secondary{border-color:#078d88;color:#073d64;padding:8px 18px;font:700 12px Arial,sans-serif}.profile-editor-shell:not(.public-profile-shell){width:min(1500px,calc(100% - 28px));margin-top:18px}.profile-editor-shell:not(.public-profile-shell) .mp-approved-head{border-radius:10px 10px 0 0}.profile-editor-shell:not(.public-profile-shell) .marriage-profile-form{border-radius:0 0 10px 10px;background:#f5faf8;padding:0 10px 8px}
++@media(max-width:1023px){.profile-editor-head.mp-approved-head{padding:14px 20px;grid-template-columns:1fr;gap:12px}.profile-editor-head.mp-approved-head h1{font-size:25px}.mp-upload-deck{justify-content:flex-start}.mp-upload-card{width:96px;height:84px}.mp-current-photo{width:64px;height:84px}.mp-personal-fields{grid-template-columns:repeat(3,minmax(0,1fr))}.mp-span-jk{grid-column:span 2}.mp-span-city{grid-column:span 1}.mp-address{grid-column:span 3}.mp-bottom-personal{grid-template-columns:repeat(4,minmax(0,1fr))}.mp-family-career-grid,.mp-preference-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mp-family-caste{grid-column:auto}.mp-about-family{grid-column:span 2}.mp-section-title{font-size:16px}.mp-public-menu{display:block}}
++@media(max-width:767px){.mp-public-topbar{height:50px;padding:0 10px}.mp-brand>span{width:30px;height:30px}.mp-brand strong{font-size:12px}.mp-public-view{font-size:11px}.profile-editor-head.mp-approved-head{padding:12px 14px}.profile-editor-head.mp-approved-head h1{font-size:22px;line-height:1.05}.profile-editor-head.mp-approved-head p{font-size:10px}.mp-upload-deck{display:grid;grid-template-columns:1fr 72px;gap:5px}.mp-upload-card{width:auto;height:68px}.mp-upload-photo{grid-row:span 2;height:141px}.mp-current-photo{display:none}.public-profile-shell .marriage-profile-form{padding:0 7px 7px}.mp-section-title{height:38px;padding:0 10px;font-size:14px}.mp-section-body{padding:10px}.mp-personal-fields,.mp-family-career-grid,.mp-preference-grid{grid-template-columns:1fr}.mp-span-email,.mp-span-jk,.mp-span-city,.mp-address,.mp-family-caste,.mp-about-family{grid-column:auto}.mp-bottom-personal{grid-template-columns:1fr}.marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{font-size:16px;height:38px}.mp-section:not(:first-of-type) .mp-section-body{display:none}.mp-section:not(:first-of-type).is-open .mp-section-body{display:block}.mp-internal-compact{grid-template-columns:1fr}.mp-form-footer{position:sticky;bottom:0;z-index:8;padding:9px 10px}.mp-form-footer .primary{margin-left:auto}.profile-editor-shell:not(.public-profile-shell){width:calc(100% - 10px);margin-top:5px}}
+diff --git a/templates/family_harmony/_marriage_form_fields.html b/templates/family_harmony/_marriage_form_fields.html
+index e154c8f..9fd0c3c 100644
+--- a/templates/family_harmony/_marriage_form_fields.html
++++ b/templates/family_harmony/_marriage_form_fields.html
+@@ -1,126 +1,93 @@
+-{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>{% endif %}
+-
+-<section class="mp-section">
+-  <h2><span>1</span> Personal Information</h2>
+-  <div class="mp-personal-grid">
+-    <div class="mp-photo-column">
+-      <label class="mp-photo-box" for="id_photo">
+-        {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder">Click to upload<br>profile photo</span>{% endif %}
+-      </label>
+-      <div class="mp-file-field">{{ person_form.photo }}{{ person_form.photo.errors }}<small>Photo is compressed automatically.</small></div>
+-    </div>
+-    <div class="mp-fields">
+-      <div class="mp-grid mp-grid-4">
+-        <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
+-        <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
+-        <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
+-        <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
+-        <div class="form-field">{{ person_form.gender.label_tag }}{{ person_form.gender }}{{ person_form.gender.errors }}</div>
+-        <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
+-        <div class="form-field">{{ person_form.marital_status.label_tag }}{{ person_form.marital_status }}{{ person_form.marital_status.errors }}</div>
+-        <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
+-        <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
+-        <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status" class="id-status"></small></div>
+-        <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
+-        <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
+-        <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
+-        <div class="form-field">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
+-        <div class="form-field">{{ person_form.province.label_tag }}{{ person_form.province }}{{ person_form.province.errors }}</div>
+-        <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
+-      </div>
+-      <div class="mp-grid mp-grid-2">
+-        <div class="form-field">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
+-        <div class="form-field">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
+-      </div>
+-    </div>
+-  </div>
+-  <div class="mp-grid mp-grid-3 mp-upload-row">
+-    <div class="form-field">{{ person_form.cnic_front.label_tag }}{{ person_form.cnic_front }}{{ person_form.cnic_front.errors }}{% if person_form.instance.cnic_front %}<a class="file-current" href="{{ person_form.instance.cnic_front.url }}" target="_blank">View current front</a>{% endif %}</div>
+-    <div class="form-field">{{ person_form.cnic_back.label_tag }}{{ person_form.cnic_back }}{{ person_form.cnic_back.errors }}{% if person_form.instance.cnic_back %}<a class="file-current" href="{{ person_form.instance.cnic_back.url }}" target="_blank">View current back</a>{% endif %}</div>
+-    <div class="form-field">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}<small id="org-derived">LC and RC are assigned automatically from the selected Jamatkhana.</small></div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>2</span> Physical & Health</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.height_feet.label_tag }}{{ profile_form.height_feet }}{{ profile_form.height_feet.errors }}</div>
+-    <div class="form-field">{{ profile_form.height_inches.label_tag }}{{ profile_form.height_inches }}{{ profile_form.height_inches.errors }}</div>
+-    <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
+-    <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
+-    <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
+-    <div class="form-field mp-span-3">{{ profile_form.known_diseases.label_tag }}<div class="choice-chips">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.disabilities.label_tag }}{{ profile_form.disabilities }}{{ profile_form.disabilities.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.health_information.label_tag }}{{ profile_form.health_information }}{{ profile_form.health_information.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>3</span> Family</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.father_name.label_tag }}{{ profile_form.father_name }}{{ profile_form.father_name.errors }}</div>
+-    <div class="form-field">{{ profile_form.father_occupation.label_tag }}{{ profile_form.father_occupation }}{{ profile_form.father_occupation.errors }}</div>
+-    <div class="form-field">{{ profile_form.mother_name.label_tag }}{{ profile_form.mother_name }}{{ profile_form.mother_name.errors }}</div>
+-    <div class="form-field">{{ profile_form.mother_occupation.label_tag }}{{ profile_form.mother_occupation }}{{ profile_form.mother_occupation.errors }}</div>
+-    <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
+-    <div class="form-field">{{ profile_form.family_residence.label_tag }}{{ profile_form.family_residence }}{{ profile_form.family_residence.errors }}</div>
+-    <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
+-    <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
+-    <div class="form-field">{{ profile_form.place_of_origin.label_tag }}{{ profile_form.place_of_origin }}{{ profile_form.place_of_origin.errors }}</div>
+-    <div class="form-field">{{ profile_form.guardian_contact.label_tag }}{{ profile_form.guardian_contact }}{{ profile_form.guardian_contact.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.family_values.label_tag }}{{ profile_form.family_values }}{{ profile_form.family_values.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>4</span> Education & Career</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
+-    <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
+-    <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
+-    <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
+-    <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
+-    <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
+-    <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
+-    <div class="form-field">{{ profile_form.financial_status.label_tag }}{{ profile_form.financial_status }}{{ profile_form.financial_status.errors }}</div>
+-    <div class="form-field toggle-field"><label>Own house</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
+-    <div class="form-field toggle-field"><label>Own car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>5</span> Lifestyle & About</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
+-    <div class="form-field toggle-field">{{ profile_form.smoking.label_tag }}{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
+-    <div class="form-field">{{ profile_form.children_count.label_tag }}{{ profile_form.children_count }}{{ profile_form.children_count.errors }}</div>
+-    <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.personality.label_tag }}{{ profile_form.personality }}{{ profile_form.personality.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.interests.label_tag }}{{ profile_form.interests }}{{ profile_form.interests.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.personal_statement.label_tag }}{{ profile_form.personal_statement }}{{ profile_form.personal_statement.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.other_lifestyle_details.label_tag }}{{ profile_form.other_lifestyle_details }}{{ profile_form.other_lifestyle_details.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.child_details.label_tag }}{{ profile_form.child_details }}{{ profile_form.child_details.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.previous_marriage_notes.label_tag }}{{ profile_form.previous_marriage_notes }}{{ profile_form.previous_marriage_notes.errors }}</div>
+-  </div>
+-</section>
+-
+-{% if preference_form %}
+-<section class="mp-section">
+-  <h2><span>6</span> Preferences for Prospective Match</h2>
+-  <div class="mp-grid mp-grid-4">
+-    {% for field in preference_form %}<div class="form-field {% if field.name == 'preferred_family_values' or field.name == 'preferred_personality' or field.name == 'other_expectations' or field.name == 'free_text_seeking_description' %}mp-span-2{% endif %} {% if field.name == 'willingness_to_relocate' %}toggle-field{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+-  </div>
+-</section>
+-{% endif %}
+-
+-{% if not public_mode %}
+-<section class="mp-section mp-internal">
+-  <h2><span>7</span> Internal / Workflow</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
+-    <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
+-  </div>
+-</section>
+-{% endif %}
++{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>{% endif %}
++
++<section class="mp-section is-open" data-mp-section>
++  <button class="mp-section-title" type="button" data-mp-toggle><span class="mp-section-icon">♟</span><b>1. Personal Information</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-grid mp-personal-fields">
++      <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
++      <div class="form-field required-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
++      <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
++      <div class="form-field required-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
++      <div class="form-field required-field mp-segment-field"><label>Gender</label>{{ person_form.gender }}{{ person_form.gender.errors }}</div>
++      <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
++
++      <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
++      <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
++      <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status"></small></div>
++      <div class="form-field required-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
++      <div class="form-field">{{ person_form.alternate_mobile.label_tag }}{{ person_form.alternate_mobile }}{{ person_form.alternate_mobile.errors }}</div>
++      <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
++
++      <div class="form-field mp-span-email">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
++      <div class="form-field required-field mp-span-jk">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}</div>
++      <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
++      <div class="form-field mp-span-city">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
++
++      <div class="form-field mp-address">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
++      <div class="form-field mp-address">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
++    </div>
++
++    <div class="mp-bottom-personal">
++      <div class="form-field mp-height"><label>Height</label><div class="mp-height-pair">{{ profile_form.height_feet }}{{ profile_form.height_inches }}</div></div>
++      <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
++      <div class="form-field mp-segment-field"><label>Smoking</label>{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
++      <div class="form-field mp-segment-field"><label>Own a car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
++      <div class="form-field mp-segment-field"><label>House</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
++      <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
++      <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
++      <div class="form-field">{{ profile_form.known_diseases.label_tag }}{{ profile_form.known_diseases }}{{ profile_form.known_diseases.errors }}</div>
++    </div>
++  </div>
++</section>
++
++<section class="mp-section is-open" data-mp-section>
++  <button class="mp-section-title" type="button" data-mp-toggle><span class="mp-section-icon">▣</span><b>Family, Education &amp; Career</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-grid mp-family-career-grid">
++      <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}</div>
++      <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}</div>
++      <div class="form-field">{{ profile_form.number_of_brothers.label_tag }}{{ profile_form.number_of_brothers }}</div>
++      <div class="form-field">{{ profile_form.number_of_sisters.label_tag }}{{ profile_form.number_of_sisters }}</div>
++      <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}</div>
++      <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}</div>
++      <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}</div>
++      <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}</div>
++      <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}</div>
++      <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}</div>
++      <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}</div>
++      <div class="form-field">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}</div>
++      <div class="form-field mp-family-caste">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}</div>
++      <div class="form-field mp-about-family">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}</div>
++    </div>
++  </div>
++</section>
++
++{% if preference_form %}
++<section class="mp-section is-open" data-mp-section>
++  <button class="mp-section-title" type="button" data-mp-toggle><span class="mp-section-icon">♥</span><b>Preferences for Prospective Match</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-grid mp-preference-grid">
++      <div class="form-field">{{ preference_form.minimum_age.label_tag }}{{ preference_form.minimum_age }}</div>
++      <div class="form-field">{{ preference_form.maximum_age.label_tag }}{{ preference_form.maximum_age }}</div>
++      <div class="form-field">{{ preference_form.preferred_marital_status_options.label_tag }}{{ preference_form.preferred_marital_status_options }}</div>
++      <div class="form-field">{{ preference_form.preferred_education_options.label_tag }}{{ preference_form.preferred_education_options }}</div>
++      <div class="form-field">{{ preference_form.preferred_professions.label_tag }}{{ preference_form.preferred_professions }}</div>
++      <div class="form-field">{{ preference_form.preferred_income_options.label_tag }}{{ preference_form.preferred_income_options }}</div>
++      <div class="form-field">{{ preference_form.preferred_family_type.label_tag }}{{ preference_form.preferred_family_type }}</div>
++      <div class="form-field">{{ preference_form.preferred_caste_tribe.label_tag }}{{ preference_form.preferred_caste_tribe }}</div>
++      <div class="form-field">{{ preference_form.preferred_languages.label_tag }}{{ preference_form.preferred_languages }}</div>
++      <div class="form-field">{{ preference_form.preferred_country.label_tag }}{{ preference_form.preferred_country }}</div>
++      <div class="form-field mp-segment-field">{{ preference_form.willingness_to_relocate.label_tag }}{{ preference_form.willingness_to_relocate }}</div>
++      <div class="form-field">{{ preference_form.other_expectations.label_tag }}{{ preference_form.other_expectations }}</div>
++    </div>
++  </div>
++</section>
++{% endif %}
++
++{% if not public_mode %}
++<section class="mp-internal-compact">
++  <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}</div>
++  <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}</div>
++  <div class="form-field mp-internal-notes">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}</div>
++</section>
++{% endif %}
+diff --git a/templates/family_harmony/_marriage_uploads.html b/templates/family_harmony/_marriage_uploads.html
+new file mode 100644
+index 0000000..1eb4053
+--- /dev/null
++++ b/templates/family_harmony/_marriage_uploads.html
+@@ -0,0 +1,9 @@
++<div class="mp-upload-deck">
++  <label class="mp-upload-card mp-upload-photo" for="id_photo">
++    {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder" class="mp-camera">●</span>{% endif %}
++    <strong>Click to upload<br>Profile photo</strong><small>(JPG, PNG, max 5 MB)</small>{{ person_form.photo }}
++  </label>
++  <label class="mp-upload-card" for="id_cnic_front"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Front</strong><small>(max 5 MB)</small>{{ person_form.cnic_front }}</label>
++  <label class="mp-upload-card" for="id_cnic_back"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Back</strong><small>(max 5 MB)</small>{{ person_form.cnic_back }}</label>
++  {% if person_form.instance.photo %}<img class="mp-current-photo" src="{{ person_form.instance.photo.url }}" alt="Current profile photo">{% endif %}
++</div>
+diff --git a/templates/family_harmony/form.html b/templates/family_harmony/form.html
+index db5ccde..47915f3 100644
+--- a/templates/family_harmony/form.html
++++ b/templates/family_harmony/form.html
+@@ -1,17 +1,17 @@
+-{% extends 'base.html' %}
+-{% block title %}{{ title }} | Social Welfare{% endblock %}
+-{% block content %}
+-<section class="profile-editor-shell">
+-  <div class="profile-editor-head">
+-    <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><p>Marriage Profile · responsive staff entry</p></div>
+-    <div class="profile-editor-head-actions"><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div>
+-  </div>
+-  <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}<input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
+-    {% include 'family_harmony/_marriage_form_fields.html' %}
+-    <div class="sticky-form-actions"><button class="primary" type="submit">Save profile</button></div>
+-  </form>
+-</section>
+-{% endblock %}
+-{% block extra_js %}<script>
+-(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});})();
+-</script>{% endblock %}
++{% extends 'base.html' %}
++{% block title %}{{ title }} | Social Welfare{% endblock %}
++{% block content %}
++<section class="profile-editor-shell">
++  <div class="profile-editor-head mp-approved-head">
++    <div><h1>Marriage Profile Submission Form</h1><p>Staff profile entry · fields marked with <b>*</b> are required.</p></div>
++    {% include 'family_harmony/_marriage_uploads.html' %}
++  </div>
++  <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}<input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
++    {% include 'family_harmony/_marriage_form_fields.html' %}
++    <div class="mp-form-footer"><a class="secondary" href="{% url 'family_harmony' %}">Cancel</a><button class="primary" type="submit">➤ &nbsp; Save Profile &nbsp;→</button></div>
++  </form>
++</section>
++{% endblock %}
++{% block extra_js %}<script>
++(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});document.querySelectorAll('[data-mp-toggle]').forEach(b=>b.addEventListener('click',()=>b.closest('[data-mp-section]').classList.toggle('is-open')));})();
++</script>{% endblock %}
+diff --git a/templates/family_harmony/public_form.html b/templates/family_harmony/public_form.html
+index fb2393c..8cb5f48 100644
+--- a/templates/family_harmony/public_form.html
++++ b/templates/family_harmony/public_form.html
+@@ -1,7 +1,15 @@
+-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"></head><body class="public-profile-page"><main class="profile-editor-shell public-profile-shell">
+-<div class="profile-editor-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>Marriage Profile Submission Form</h1><p>Secure public form · no username or password required.</p></div></div>
+-{% if error %}<div class="profile-errors">{{ error }}</div>{% endif %}
+-<form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}{% include 'family_harmony/_marriage_form_fields.html' %}<section class="mp-section"><h2><span>7</span> Confidentiality & Consent</h2><div class="privacy-note">Information is used only for Family Harmony matchmaking and authorized review. By submitting, you confirm the information is accurate and consent to its use for this purpose.</div></section><div class="sticky-form-actions"><button class="primary" type="submit" id="submit-button">Submit for review</button></div></form>
+-</main><script src="{% static 'app.js' %}"></script><script>
+-(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});const id=document.getElementById('id_identity_number'),status=document.getElementById('id-status'),submit=document.getElementById('submit-button');let timer;if(id)id.addEventListener('input',()=>{clearTimeout(timer);if(status)status.textContent='';if(submit)submit.disabled=false;if(id.value.trim().length<5)return;timer=setTimeout(async()=>{try{const r=await fetch('{% url "identity_duplicate_check" %}?identity_number='+encodeURIComponent(id.value.trim()));const d=await r.json();if(status){status.textContent=d.exists?'Record already exists. Please contact the Family Harmony team.':'ID number is available for a new record.';status.style.color=d.exists?'#a52828':'#236c58'}if(submit)submit.disabled=d.exists}catch(e){}},350)});})();
+-</script></body></html>
++{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"></head><body class="public-profile-page">
++<header class="mp-public-topbar"><div class="mp-brand"><span>SW</span><div><strong>Social Welfare</strong><small>Center Database</small></div></div><div class="mp-public-view">☑ <b>View</b><small id="viewportSize"></small></div><button type="button" class="mp-public-menu">☰</button></header>
++<main class="profile-editor-shell public-profile-shell">
++  <div class="profile-editor-head mp-approved-head"><div><h1>Marriage Profile Submission Form</h1><p>Secure public form · no username or password required.<br><span>All fields are optional unless marked with <b>*</b>.</span></p></div>{% include 'family_harmony/_marriage_uploads.html' %}</div>
++  {% if error %}<div class="profile-errors">{{ error }}</div>{% endif %}
++  <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}{% include 'family_harmony/_marriage_form_fields.html' %}<div class="mp-form-footer"><button class="secondary" type="reset">Clear Form</button><button class="primary" type="submit" id="submit-button">➤ &nbsp; Submit Profile &nbsp;→</button></div></form>
++</main><script src="{% static 'app.js' %}"></script><script>
++(function(){
++ const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');
++ if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});
++ document.querySelectorAll('[data-mp-toggle]').forEach(b=>b.addEventListener('click',()=>b.closest('[data-mp-section]').classList.toggle('is-open')));
++ const size=document.getElementById('viewportSize'); function viewport(){if(size)size.textContent=window.innerWidth+' × '+window.innerHeight} viewport(); window.addEventListener('resize',viewport);
++ const id=document.getElementById('id_identity_number'),status=document.getElementById('id-status'),submit=document.getElementById('submit-button');let timer;if(id)id.addEventListener('input',()=>{clearTimeout(timer);if(status)status.textContent='';if(submit)submit.disabled=false;if(id.value.trim().length<5)return;timer=setTimeout(async()=>{try{const r=await fetch('{% url "identity_duplicate_check" %}?identity_number='+encodeURIComponent(id.value.trim()));const d=await r.json();if(status){status.textContent=d.exists?'Record already exists. Please contact the Family Harmony team.':'ID number is available for a new record.';status.style.color=d.exists?'#a52828':'#236c58'}if(submit)submit.disabled=d.exists}catch(e){}},350)});
++})();
++</script></body></html>

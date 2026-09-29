@@ -1,0 +1,129 @@
+{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}
+<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>
+{% endif %}
+
+<div class="mp-upload-strip">
+  <label class="mp-upload-card mp-profile-upload" for="id_photo">
+    <span class="mp-camera">●</span>
+    <strong>Click to upload<br>Profile photo</strong>
+    <small>(JPG, PNG, max 5 MB)</small>
+    {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview">{% endif %}
+  </label>
+  <label class="mp-upload-card" for="id_cnic_front"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Front</strong><small>(max 5 MB)</small></label>
+  <label class="mp-upload-card" for="id_cnic_back"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Back</strong><small>(max 5 MB)</small></label>
+  <div class="mp-hidden-file">{{ person_form.photo }}{{ person_form.cnic_front }}{{ person_form.cnic_back }}</div>
+</div>
+
+<section class="mp-section mp-approved-section is-open">
+  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♟</span><b>1. Personal Information</b><span class="mp-chevron">⌃</span></button>
+  <div class="mp-section-body">
+    <div class="mp-approved-grid personal-top">
+      <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
+      <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
+      <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
+      <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
+      <div class="form-field mp-gender-field"><label>Gender{% if person_form.gender.field.required %} <span class="required">*</span>{% endif %}</label><div class="mp-segmented">{{ person_form.gender }}</div>{{ person_form.gender.errors }}</div>
+      <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
+
+      <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
+      <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
+      <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status"></small></div>
+      <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
+      <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
+      <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
+
+      <div class="form-field mp-jk">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}</div>
+      <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
+      <div class="form-field mp-city">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
+
+      <div class="form-field mp-address">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
+      <div class="form-field mp-address">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
+    </div>
+
+    <div class="mp-compact-row">
+      <div class="form-field mp-height"><label>Height</label><div class="mp-height-pair">{{ profile_form.height_feet }}{{ profile_form.height_inches }}</div></div>
+      <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
+      <div class="form-field mp-toggle"><label>Smoking</label>{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
+      <div class="form-field mp-toggle"><label>Own a car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
+      <div class="form-field mp-toggle"><label>House</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
+      <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
+      <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
+      <div class="form-field mp-disease">{{ profile_form.known_diseases.label_tag }}<div class="mp-disease-select">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="mp-section mp-approved-section">
+  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">▣</span><b>2. Family, Education &amp; Career</b><span class="mp-chevron">⌃</span></button>
+  <div class="mp-section-body">
+    <div class="mp-family-career-grid">
+      <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
+      <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
+      <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
+      <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
+      <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
+      <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
+      <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
+      <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
+      <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
+      <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
+      <div class="form-field mp-languages">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
+      <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
+      <div class="form-field mp-about-family">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
+    </div>
+  </div>
+</section>
+
+{% if preference_form %}
+<section class="mp-section mp-approved-section">
+  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♥</span><b>3. Preferences for Prospective Match</b><span class="mp-chevron">⌃</span></button>
+  <div class="mp-section-body">
+    <div class="mp-preference-grid">
+      {% for field in preference_form %}
+        <div class="form-field {% if field.name == 'free_text_seeking_description' or field.name == 'other_expectations' %}mp-pref-wide{% endif %} {% if field.name == 'willingness_to_relocate' %}mp-toggle{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if not public_mode %}
+<section class="mp-section mp-approved-section mp-internal">
+  <button class="mp-section-title" type="button" aria-expanded="false"><span class="mp-section-icon">⚙</span><b>Internal / Workflow</b><span class="mp-chevron">⌄</span></button>
+  <div class="mp-section-body">
+    <div class="mp-approved-grid">
+      <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
+      <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
+      <div class="form-field mp-address">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="mp-preserved-fields">
+  {{ person_form.province }}
+  {{ profile_form.father_name }}{{ profile_form.father_occupation }}{{ profile_form.mother_name }}{{ profile_form.mother_occupation }}
+  {{ profile_form.family_residence }}{{ profile_form.place_of_origin }}{{ profile_form.guardian_contact }}{{ profile_form.family_values }}
+  {{ profile_form.financial_status }}{{ profile_form.children_count }}{{ profile_form.personality }}{{ profile_form.interests }}
+  {{ profile_form.personal_statement }}{{ profile_form.other_lifestyle_details }}{{ profile_form.child_details }}
+  {{ profile_form.previous_marriage_notes }}{{ profile_form.disabilities }}{{ profile_form.health_information }}
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('.mp-section-title').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var section = btn.closest('.mp-approved-section');
+      section.classList.toggle('mp-collapsed');
+      var collapsed = section.classList.contains('mp-collapsed');
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      var c = btn.querySelector('.mp-chevron'); if(c) c.textContent = collapsed ? '⌄' : '⌃';
+    });
+  });
+  var photo = document.getElementById('id_photo'), preview = document.getElementById('photoPreview');
+  if(photo && preview) photo.addEventListener('change', function(){
+    var f=this.files&&this.files[0]; if(!f) return;
+    preview.src=URL.createObjectURL(f); preview.hidden=false;
+  });
+})();
+</script>

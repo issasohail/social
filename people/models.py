@@ -3,6 +3,7 @@ from datetime import date
 
 from django.conf import settings
 from django.db import models
+from django.core.files.base import ContentFile
 
 from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
 
@@ -68,6 +69,8 @@ class Person(models.Model):
     languages = models.CharField(max_length=255, blank=True)
     interests = models.TextField(blank=True)
     photo = models.ImageField(upload_to='people/%Y/%m/', blank=True)
+    cnic_front = models.ImageField(upload_to='people/cnic/%Y/%m/', blank=True)
+    cnic_back = models.ImageField(upload_to='people/cnic/%Y/%m/', blank=True)
     facebook_url = models.URLField(blank=True)
     linkedin_url = models.URLField(blank=True)
     instagram_url = models.URLField(blank=True)
@@ -94,11 +97,20 @@ class Person(models.Model):
         self.alternate_mobile = normalize_phone_number(self.alternate_mobile)
         self.whatsapp_number = normalize_phone_number(self.whatsapp_number)
         self.normalized_identity_number = ''.join((self.identity_number or '').split()).upper() or None
-        if self.photo and hasattr(self.photo, 'name') and self.photo.name and self.photo.name not in ('', 'None'):
-            if not self.photo.name.lower().endswith('.jpg') and not self.photo.name.lower().endswith('.jpeg'):
+        if self.photo and hasattr(self.photo, 'file') and not getattr(self.photo, '_committed', True):
+            try:
+                from io import BytesIO
+                from PIL import Image, ImageOps
+                image = Image.open(self.photo)
+                image = ImageOps.exif_transpose(image).convert('RGB')
+                image.thumbnail((1200, 1200))
+                output = BytesIO()
+                image.save(output, format='JPEG', quality=82, optimize=True)
                 base_name = self.normalized_identity_number or self.full_name or 'person'
                 cleaned = re.sub(r'[^a-zA-Z0-9_\-]+', '-', base_name).strip('-') or 'person'
-                self.photo.name = f'{cleaned}.jpg'
+                self.photo.save(f'{cleaned}.jpg', ContentFile(output.getvalue()), save=False)
+            except Exception:
+                pass
         super().save(*args, **kwargs)
 
     @property

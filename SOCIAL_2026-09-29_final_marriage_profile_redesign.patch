@@ -1,0 +1,1329 @@
+diff --git a/config/views.py b/config/views.py
+index f648fab2a6935623da4249edaea7c6aad13b8054..65a76337f066dff0eae409ab08025f1471da9b13 100644
+--- a/config/views.py
++++ b/config/views.py
+@@ -335,6 +335,8 @@ def person_detail(request, person_id):
+ @login_required
+ def person_export(request, person_id, export_format):
+     person=get_object_or_404(Person,pk=person_id)
++    if export_format == 'pdf' and hasattr(person, 'harmony_profile'):
++        return harmony_export(request, person.harmony_profile.pk, 'pdf')
+     if export_format=='pdf':
+         from reportlab.lib.pagesizes import letter
+         from reportlab.pdfgen import canvas
+@@ -424,6 +426,9 @@ def harmony_create(request):
+         person.save()
+         profile = profile_form.save(commit=False)
+         profile.person = person
++        profile.owning_jamatkhana = person.jamatkhana
++        profile.owning_local_council = person.local_council
++        profile.owning_region = person.region
+         profile.save()
+         pref = preference_form.save(commit=False); pref.profile = profile; pref.save()
+         return redirect('harmony_detail', profile_id=profile.pk)
+@@ -436,50 +441,172 @@ def harmony_detail(request, profile_id):
+     return render(request, 'family_harmony/detail.html', {'profile': profile})
+ 
+ 
++
++def _marriage_profile_pdf_response(profile):
++    from reportlab.lib.pagesizes import letter
++    from reportlab.lib.utils import ImageReader
++    from reportlab.pdfbase.pdfmetrics import stringWidth
++    from reportlab.pdfgen import canvas
++
++    person = profile.person
++    pref = getattr(profile, 'preferences', None)
++    output = BytesIO()
++    width, height = letter
++    pdf = canvas.Canvas(output, pagesize=letter)
++    pdf.setTitle(f'Marriage Profile - {person.full_name}')
++    navy = (0.09, 0.20, 0.29)
++    pale = (0.91, 0.94, 0.96)
++    ink = (0.12, 0.20, 0.25)
++    muted = (0.38, 0.46, 0.50)
++
++    def clean(value):
++        if value in (None, '', []):
++            return '—'
++        if isinstance(value, (list, tuple)):
++            return ', '.join(str(v) for v in value) or '—'
++        return str(value)
++
++    def wrap(text, font='Helvetica', size=6.8, max_width=175, max_lines=2):
++        words = clean(text).replace('\n', ' ').split()
++        lines, line = [], ''
++        for word in words:
++            test = (line + ' ' + word).strip()
++            if stringWidth(test, font, size) <= max_width:
++                line = test
++            else:
++                if line:
++                    lines.append(line)
++                line = word
++                if len(lines) >= max_lines:
++                    break
++        if line and len(lines) < max_lines:
++            lines.append(line)
++        if not lines:
++            lines = ['—']
++        if len(lines) == max_lines and len(words) > sum(len(x.split()) for x in lines):
++            lines[-1] = lines[-1][:-1] + '…' if len(lines[-1]) > 2 else lines[-1]
++        return lines
++
++    # Header mirrors the desktop biodata card.
++    pdf.setFillColorRGB(*navy)
++    pdf.rect(0, height - 138, width, 138, fill=1, stroke=0)
++    photo_x, photo_y, photo_w, photo_h = 28, height - 128, 88, 106
++    if person.photo:
++        try:
++            pdf.drawImage(ImageReader(person.photo.path), photo_x, photo_y, photo_w, photo_h,
++                          preserveAspectRatio=True, anchor='c', mask='auto')
++        except (OSError, ValueError):
++            pass
++    pdf.setStrokeColorRGB(0.75, 0.83, 0.87)
++    pdf.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
++    pdf.setFillColorRGB(1, 1, 1)
++    pdf.setFont('Helvetica-Bold', 20)
++    pdf.drawString(134, height - 48, person.full_name[:38])
++    pdf.setFont('Helvetica', 8)
++    pdf.drawString(134, height - 68, f'{profile.serial_number}   |   Marriage Profile')
++    pdf.drawString(134, height - 84, 'Aga Khan Social Welfare Board - Central Region')
++    badges = [f'{person.age or "—"} yrs', person.gender or '—', profile.marital_status or person.marital_status or '—']
++    bx = 134
++    for badge in badges:
++        bw = stringWidth(str(badge), 'Helvetica-Bold', 7) + 14
++        pdf.setFillColorRGB(1, 1, 1)
++        pdf.roundRect(bx, height - 112, bw, 18, 9, fill=1, stroke=0)
++        pdf.setFillColorRGB(*navy)
++        pdf.setFont('Helvetica-Bold', 7)
++        pdf.drawCentredString(bx + bw / 2, height - 106, str(badge))
++        bx += bw + 6
++
++    y = height - 156
++
++    def section(title, items):
++        nonlocal y
++        pdf.setFillColorRGB(*pale)
++        pdf.roundRect(26, y - 2, width - 52, 17, 3, fill=1, stroke=0)
++        pdf.setFillColorRGB(*navy)
++        pdf.setFont('Helvetica-Bold', 8.5)
++        pdf.drawString(32, y + 3, title)
++        y -= 16
++        col_w = (width - 64) / 2
++        row_height = 22
++        for index in range(0, len(items), 2):
++            pair = items[index:index + 2]
++            max_lines = 1
++            rendered = []
++            for label, value in pair:
++                lines = wrap(value, max_width=col_w - 82, max_lines=2)
++                max_lines = max(max_lines, len(lines))
++                rendered.append((label, lines))
++            row_height = 10 + (max_lines * 7)
++            for col, (label, lines) in enumerate(rendered):
++                x = 32 + col * col_w
++                pdf.setFillColorRGB(*muted)
++                pdf.setFont('Helvetica-Bold', 6.3)
++                pdf.drawString(x, y, label.upper())
++                pdf.setFillColorRGB(*ink)
++                pdf.setFont('Helvetica', 6.8)
++                for line_no, line in enumerate(lines):
++                    pdf.drawString(x + 76, y - (line_no * 7), line)
++            y -= row_height
++        y -= 4
++
++    height_text = '—'
++    if profile.height_cm:
++        total_inches = round(profile.height_cm / 2.54)
++        height_text = f'{total_inches // 12} ft {total_inches % 12} in'
++    section('Personal Information', [
++        ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'),
++        ('Gender', person.gender), ('Marital Status', profile.marital_status or person.marital_status),
++        ('Height / Weight', f'{height_text} / {profile.weight_kg or "—"} kg'),
++        ('Physical Status', profile.physical_status), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
++        ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
++    ])
++    section('Family', [
++        ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'),
++        ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
++        ('Siblings', profile.siblings_summary), ('Family Residence', profile.family_residence),
++        ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
++    ])
++    section('Education & Career', [
++        ('Education', profile.qualification or profile.education_level or person.education),
++        ('Institution', profile.institution), ('Profession', profile.profession or person.occupation),
++        ('Employer / Business', profile.employer_or_business or person.employer_or_business),
++        ('Income', profile.income_range or person.income_range), ('Experience', profile.years_experience),
++        ('House', 'Yes' if profile.owns_house is True else 'No' if profile.owns_house is False else '—'),
++        ('Car', 'Yes' if profile.owns_car is True else 'No' if profile.owns_car is False else '—'),
++    ])
++    section('Health & Lifestyle', [
++        ('Disability', profile.disability_status), ('Known Diseases', profile.known_diseases),
++        ('Smoking', profile.smoking), ('Languages', profile.languages or person.languages),
++        ('Interests', profile.interests or person.interests), ('Health Notes', profile.health_information),
++    ])
++    if pref:
++        section('Preferences for Prospective Match', [
++            ('Age Range', f'{pref.minimum_age or "Any"} - {pref.maximum_age or "Any"}'),
++            ('Education', pref.preferred_education_options), ('Profession', pref.preferred_professions),
++            ('Location', pref.preferred_cities or pref.preferred_locations), ('Income', pref.preferred_income_options),
++            ('Marital Status', pref.preferred_marital_status_options), ('Languages', pref.preferred_languages),
++            ('Relocation', 'Yes' if pref.willingness_to_relocate else 'No'),
++        ])
++    if y > 62:
++        section('About', [('Personal Statement', profile.personal_statement), ('Other Expectations', pref.other_expectations if pref else profile.expectations)])
++
++    pdf.setStrokeColorRGB(0.78, 0.82, 0.84)
++    pdf.line(26, 34, width - 26, 34)
++    pdf.setFillColorRGB(*muted)
++    pdf.setFont('Helvetica', 6.3)
++    pdf.drawString(28, 22, 'Confidential Family Harmony profile. CNIC images and internal documents are not included.')
++    pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
++    pdf.save()
++    response = HttpResponse(output.getvalue(), content_type='application/pdf')
++    response['Content-Disposition'] = f'attachment; filename="{profile.serial_number.lower()}-marriage-profile.pdf"'
++    return response
++
+ @login_required
+ def harmony_export(request, profile_id, export_format):
+     profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person','owning_region','owning_local_council','owning_jamatkhana'), pk=profile_id)
+     person=profile.person; pref=getattr(profile,'preferences',None); serial=profile.serial_number
+     if export_format == 'pdf':
+-        from reportlab.lib.pagesizes import letter
+-        from reportlab.lib.utils import ImageReader
+-        from reportlab.pdfgen import canvas
+-        from reportlab.pdfbase.pdfmetrics import stringWidth
+-        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Marriage Profile - {person.full_name}')
+-        green=(0.12,0.36,0.31); c.setFillColorRGB(*green); c.rect(0,H-72,W,72,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',16); c.drawString(28,H-32,'Marriage Profile'); c.setFont('Helvetica',8); c.drawString(28,H-49,f'Aga Khan Social Welfare Board - Central Region   |   {serial}')
+-        if person.photo:
+-            try: c.drawImage(ImageReader(person.photo.path),W-92,H-68,54,54,preserveAspectRatio=True,mask='auto')
+-            except (OSError,ValueError): pass
+-        def clean(v):
+-            if v is None or v=='' or v==[]: return '—'
+-            if isinstance(v,list): return ', '.join(map(str,v)) or '—'
+-            return str(v)
+-        rows=[
+-          ('Personal Information',[('Name',person.full_name),('Gender',person.gender),('Age',person.age),('Marital Status',profile.marital_status or person.marital_status),('Height',(lambda total: f'{total//12} ft {total%12} in')(round(profile.height_cm/2.54)) if profile.height_cm else ''),('Current City/Country',f'{person.city}, {person.country}'.strip(', '))]),
+-          ('Family Background',[('Father',f'{profile.father_name} / {profile.father_occupation}'.strip(' /')),('Mother',f'{profile.mother_name} / {profile.mother_occupation}'.strip(' /')),('Siblings',profile.siblings_summary),('Family Residence',profile.family_residence),('Family Type',profile.family_type),('Caste / Tribe',profile.caste_tribe)]),
+-          ('Education & Career',[('Highest Education',profile.qualification or profile.education_level or person.education),('Institution',profile.institution),('Occupation',profile.profession or person.occupation),('Employer / Business',profile.employer_or_business or person.employer_or_business),('Monthly Income',profile.income_range or person.income_range),('Languages',profile.languages or person.languages)]),
+-          ('Preferences for Prospective Match',[('Age Range',f'{pref.minimum_age or "—"} - {pref.maximum_age or "—"}' if pref else '—'),('Education',clean(pref.preferred_education_options) if pref else '—'),('Profession',clean(pref.preferred_professions) if pref else '—'),('City / Location',clean(pref.preferred_cities or pref.preferred_locations) if pref else '—'),('Income',clean(pref.preferred_income_options) if pref else '—'),('Marital Status',clean(pref.preferred_marital_status_options) if pref else '—'),('Languages',clean(pref.preferred_languages) if pref else '—')]),
+-          ('About',[('Interests',profile.interests or person.interests),('Personal Description',profile.personal_statement),('Other Expectations',pref.other_expectations if pref else profile.expectations),('Guardian / Contact',profile.guardian_contact)]),
+-        ]
+-        y=H-91; labelw=106; right=W-28
+-        for heading,items in rows:
+-            c.setFillColorRGB(.88,.94,.91); c.rect(26,y-3,W-52,14,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',8.5); c.drawString(31,y+1,heading); y-=15
+-            for label,value in items:
+-                text=clean(value).replace('\n',' ')
+-                c.setFont('Helvetica-Bold',6.9); c.setFillColorRGB(.18,.25,.25); c.drawString(31,y,label+':')
+-                c.setFont('Helvetica',6.9); maxw=right-(31+labelw); words=text.split(); lines=[]; line=''
+-                for word in words:
+-                    test=(line+' '+word).strip()
+-                    if stringWidth(test,'Helvetica',6.9)<=maxw: line=test
+-                    else:
+-                        if line: lines.append(line)
+-                        line=word
+-                if line: lines.append(line)
+-                lines=lines[:2] or ['—']
+-                for i,line in enumerate(lines): c.drawString(31+labelw,y-(i*8),line[:120])
+-                y-=8*max(1,len(lines))+2
+-        c.setStrokeColorRGB(.75,.8,.78); c.line(26,34,W-26,34); c.setFillColorRGB(.35,.4,.4); c.setFont('Helvetica',6.5); c.drawString(28,23,'Confidential: for Family Harmony matchmaking only. Contact details are withheld from this profile copy.')
+-        c.drawRightString(W-28,23,'Page 1 of 1'); c.save(); response=HttpResponse(output.getvalue(),content_type='application/pdf'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.pdf"'; return response
++        return _marriage_profile_pdf_response(profile)
+     if export_format == 'jpg':
+         from PIL import Image, ImageDraw
+         image=Image.new('RGB',(1275,1650),'white'); draw=ImageDraw.Draw(image); draw.text((50,40),f'Marriage Profile - {person.full_name}',fill='black'); draw.text((50,90),'Use the PDF export for the designed one-page Letter profile.',fill='black'); output=BytesIO(); image.save(output,format='JPEG',quality=92); response=HttpResponse(output.getvalue(),content_type='image/jpeg'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.jpg"'; return response
+@@ -529,7 +656,13 @@ def harmony_edit(request, profile_id):
+     preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
+     preference_form = FamilyHarmonyPreferenceForm(request.POST or None, instance=preference)
+     if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
+-        person_form.save(); profile_form.save(); preference_form.save()
++        person = person_form.save()
++        profile = profile_form.save(commit=False)
++        profile.owning_jamatkhana = person.jamatkhana
++        profile.owning_local_council = person.local_council
++        profile.owning_region = person.region
++        profile.save()
++        preference_form.save()
+         return redirect('harmony_detail', profile_id=profile.pk)
+     return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'title': 'Edit Family Harmony profile'})
+ 
+@@ -583,17 +716,28 @@ def public_form(request, token):
+         identity = (request.POST.get('identity_number') or '').strip()
+         normalized = ''.join(normalize_cnic(identity).split()).upper() or None
+         if normalized and Person.objects.filter(normalized_identity_number=normalized).exists():
+-            return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'error': 'A record with this ID number already exists. Please contact the Family Harmony team instead of submitting again.'})
++            person_form = PersonForm(request.POST, request.FILES)
++            profile_form = FamilyHarmonyProfileForm(request.POST)
++            preference_form = FamilyHarmonyPreferenceForm(request.POST)
++            return render(request, 'family_harmony/public_form.html', {
++                'invitation': invitation, 'settings': settings, 'person_form': person_form,
++                'profile_form': profile_form, 'preference_form': preference_form,
++                'error': 'A record with this ID number already exists. Please contact the Family Harmony team instead of submitting again.', 'public_mode': True
++            })
+         person_form = PersonForm(request.POST, request.FILES)
+         profile_form = FamilyHarmonyProfileForm(request.POST)
+         preference_form = FamilyHarmonyPreferenceForm(request.POST)
+         if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
+             person = person_form.save(commit=False)
+-            # The public form may override invitation defaults. Selecting a JK is authoritative and derives LC/RC.
++            # Jamatkhana is authoritative; RC/LC remain internal derived assignments.
++            if not person.jamatkhana and invitation.preselected_jamatkhana:
++                person.jamatkhana = invitation.preselected_jamatkhana
+             if person.jamatkhana:
+-                person.local_council=person.jamatkhana.local_council; person.region=person.local_council.regional_council
++                person.local_council = person.jamatkhana.local_council
++                person.region = person.local_council.regional_council
+             else:
+-                person.region=person.region or invitation.preselected_region; person.local_council=person.local_council or invitation.preselected_local_council; person.jamatkhana=person.jamatkhana or invitation.preselected_jamatkhana
++                person.local_council = invitation.preselected_local_council
++                person.region = invitation.preselected_region
+             person.save()
+             profile=profile_form.save(commit=False); profile.person=person; profile.status=FamilyHarmonyProfile.Status.AWAITING_CONSENT
+             profile.owning_region=person.region; profile.owning_local_council=person.local_council; profile.owning_jamatkhana=person.jamatkhana; profile.save()
+@@ -602,7 +746,7 @@ def public_form(request, token):
+             return render(request, 'family_harmony/public_submitted.html')
+     else:
+         person_form=PersonForm(); profile_form=FamilyHarmonyProfileForm(); preference_form=FamilyHarmonyPreferenceForm()
+-    return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form})
++    return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'public_mode': True})
+ 
+ @never_cache
+ def identity_duplicate_check(request):
+diff --git a/family_harmony/forms.py b/family_harmony/forms.py
+index 4ca6f8adf334e5953dba45d226976522f86e06c3..caff48b3ba6690f422941699f1bf5cf0a6a9805e 100644
+--- a/family_harmony/forms.py
++++ b/family_harmony/forms.py
+@@ -1,62 +1,129 @@
+ from django import forms
+-from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
++
+ from settings_app.models import FamilyHarmonySettings
++
+ from .models import FamilyHarmonyPreference, FamilyHarmonyProfile
+ 
+ 
+ def _datalist(field, list_id, values):
+-    field.widget=forms.TextInput(attrs={'list':list_id,'data-options':'|'.join(values or [])})
++    field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
++
++
++YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
++
+ 
+ class FamilyHarmonyProfileForm(forms.ModelForm):
+-    height_feet=forms.IntegerField(required=False,min_value=3,max_value=8,label='Height (ft)')
+-    height_inches=forms.IntegerField(required=False,min_value=0,max_value=11,label='Height (in)')
+-    def __init__(self,*args,**kwargs):
+-        super().__init__(*args,**kwargs); cfg=FamilyHarmonySettings.current()
+-        for name,values in [('education_level',cfg.education_levels),('profession',cfg.occupation_options),('income_range',cfg.income_ranges),('family_type',cfg.family_type_options),('marital_status',cfg.marital_status_options),('caste_tribe',cfg.caste_tribe_options),('languages',cfg.language_options)]:
+-            _datalist(self.fields[name],f'{name}-options',values)
+-        self.fields['smoking'].widget=forms.Select(choices=[('','Select'),('No','No'),('Yes','Yes')])
+-        self.fields['owning_jamatkhana'].queryset=Jamatkhana.objects.select_related('local_council__regional_council').filter(is_active=True).order_by('name')
+-        self.fields['owning_jamatkhana'].label='Jamatkhana / Council'
+-        self.fields['owning_jamatkhana'].label_from_instance=lambda o:f'{o.name} - {o.local_council.name} - {o.local_council.regional_council.name}'
+-        self.fields['owning_jamatkhana'].widget.attrs['data-searchable']='true'
+-        self.fields['owning_local_council'].queryset=LocalCouncil.objects.select_related('regional_council').filter(is_active=True).order_by('name')
+-        self.fields['owning_local_council'].label='Local Council'; self.fields['owning_local_council'].label_from_instance=lambda o:f'{o.name} - {o.regional_council.name}'; self.fields['owning_local_council'].widget.attrs['data-searchable']='true'
+-        self.fields['owning_region'].queryset=RegionalCouncil.objects.filter(is_active=True).order_by('name'); self.fields['owning_region'].label='Regional Council'; self.fields['owning_region'].widget.attrs['data-searchable']='true'
++    height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)')
++    height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)')
++    known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        self.fields['status'].required = False
++        self.fields['status'].initial = self.instance.status if self.instance and self.instance.pk else FamilyHarmonyProfile.Status.DRAFT
++        for name, values in [
++            ('education_level', cfg.education_levels), ('profession', cfg.occupation_options),
++            ('income_range', cfg.income_ranges), ('family_type', cfg.family_type_options),
++            ('marital_status', cfg.marital_status_options), ('caste_tribe', cfg.caste_tribe_options),
++            ('languages', cfg.language_options),
++        ]:
++            _datalist(self.fields[name], f'{name}-options', values)
++        self.fields['physical_status'].widget = forms.Select(
++            choices=[('', 'Select physical status')] + [(v, v) for v in cfg.physical_status_options]
++        )
++        self.fields['disability_status'].widget = forms.Select(
++            choices=[('', 'Select disability status')] + [(v, v) for v in cfg.disability_options]
++        )
++        disease_choices = [(v, v) for v in cfg.known_disease_options]
++        self.fields['known_diseases'].choices = disease_choices
++        self.fields['known_diseases'].widget = forms.CheckboxSelectMultiple(choices=disease_choices)
++        self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
++        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
++        if self.instance and self.instance.pk:
++            self.initial['known_diseases'] = self.instance.known_diseases or []
+         if self.instance and self.instance.height_cm:
+-            total=round(self.instance.height_cm/2.54); self.initial['height_feet']=total//12; self.initial['height_inches']=total%12
+-    def save(self,commit=True):
+-        obj=super().save(commit=False); ft=self.cleaned_data.get('height_feet'); inch=self.cleaned_data.get('height_inches')
+-        if ft is not None: obj.height_cm=round((ft*12+(inch or 0))*2.54)
+-        if commit: obj.save(); self.save_m2m()
++            total = round(self.instance.height_cm / 2.54)
++            self.initial['height_feet'] = total // 12
++            self.initial['height_inches'] = total % 12
++
++    def save(self, commit=True):
++        obj = super().save(commit=False)
++        ft = self.cleaned_data.get('height_feet')
++        inch = self.cleaned_data.get('height_inches')
++        if ft is not None:
++            obj.height_cm = round((ft * 12 + (inch or 0)) * 2.54)
++        elif not self.cleaned_data.get('height_inches'):
++            obj.height_cm = None
++        obj.known_diseases = self.cleaned_data.get('known_diseases') or []
++        if commit:
++            obj.save()
++            self.save_m2m()
+         return obj
++
+     class Meta:
+-        model=FamilyHarmonyProfile
+-        exclude=('person','assigned_officer','created_at','updated_at','is_demo','consent_reviewed','height_cm')
+-        widgets={x:forms.Textarea(attrs={'rows':2}) for x in ('family_background','family_values','personality','health_information','personal_statement','expectations','notes')}
++        model = FamilyHarmonyProfile
++        exclude = (
++            'person', 'assigned_officer', 'created_at', 'updated_at', 'is_demo', 'consent_reviewed',
++            'height_cm', 'owning_region', 'owning_local_council', 'owning_jamatkhana'
++        )
++        widgets = {
++            x: forms.Textarea(attrs={'rows': 2}) for x in (
++                'family_background', 'family_values', 'personality', 'health_information',
++                'personal_statement', 'expectations', 'notes', 'other_lifestyle_details',
++                'child_details', 'previous_marriage_notes', 'disabilities'
++            )
++        }
++
+ 
+ class FamilyHarmonyPreferenceForm(forms.ModelForm):
+-    preferred_locations=forms.CharField(required=False)
+-    preferred_cities=forms.CharField(required=False)
+-    preferred_education_options=forms.MultipleChoiceField(required=False)
+-    preferred_professions=forms.MultipleChoiceField(required=False)
+-    preferred_income_options=forms.MultipleChoiceField(required=False)
+-    preferred_marital_status_options=forms.MultipleChoiceField(required=False)
+-    preferred_languages=forms.MultipleChoiceField(required=False)
+-    def __init__(self,*args,**kwargs):
+-        super().__init__(*args,**kwargs); cfg=FamilyHarmonySettings.current()
+-        mapping={'preferred_education_options':cfg.education_levels,'preferred_professions':cfg.occupation_options,'preferred_income_options':cfg.income_ranges,'preferred_marital_status_options':cfg.marital_status_options,'preferred_languages':cfg.language_options}
+-        for name,values in mapping.items():
+-            choices=[('Any','Any')]+[(v,v) for v in (values or []) if v!='Any']; self.fields[name].choices=choices; self.fields[name].widget=forms.SelectMultiple(choices=choices,attrs={'size':'4'})
+-        for name in ('minimum_age','maximum_age'):
+-            self.fields[name].widget=forms.Select(choices=[('','Any')]+[(i,str(i)) for i in range(18,81)])
++    preferred_locations = forms.CharField(required=False)
++    preferred_cities = forms.CharField(required=False)
++    preferred_education_options = forms.MultipleChoiceField(required=False)
++    preferred_professions = forms.MultipleChoiceField(required=False)
++    preferred_income_options = forms.MultipleChoiceField(required=False)
++    preferred_marital_status_options = forms.MultipleChoiceField(required=False)
++    preferred_languages = forms.MultipleChoiceField(required=False)
++
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        mapping = {
++            'preferred_education_options': cfg.education_levels,
++            'preferred_professions': cfg.occupation_options,
++            'preferred_income_options': cfg.income_ranges,
++            'preferred_marital_status_options': cfg.marital_status_options,
++            'preferred_languages': cfg.language_options,
++        }
++        for name, values in mapping.items():
++            choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
++            self.fields[name].choices = choices
++            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '4'})
++        for name in ('minimum_age', 'maximum_age'):
++            self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
++        self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
++
+     def clean(self):
+-        cleaned=super().clean()
+-        for name in ('preferred_locations','preferred_cities'):
+-            v=(self.data.get(name) or '').strip(); cleaned[name]=[x.strip() for x in v.replace('\n',',').split(',') if x.strip()]
+-        for name in ('preferred_education_options','preferred_professions','preferred_income_options','preferred_marital_status_options','preferred_languages'):
+-            vals=self.data.getlist(name); cleaned[name]=['Any'] if 'Any' in vals else vals
++        cleaned = super().clean()
++        for name in ('preferred_locations', 'preferred_cities'):
++            value = (self.data.get(name) or '').strip()
++            cleaned[name] = [x.strip() for x in value.replace('\n', ',').split(',') if x.strip()]
++        for name in (
++            'preferred_education_options', 'preferred_professions', 'preferred_income_options',
++            'preferred_marital_status_options', 'preferred_languages'
++        ):
++            values = self.data.getlist(name)
++            cleaned[name] = ['Any'] if 'Any' in values else values
+         return cleaned
++
+     class Meta:
+-        model=FamilyHarmonyPreference
+-        exclude=('profile','preferred_education','preferred_income','preferred_marital_status','preferred_regions')
+-        widgets={'preferred_family_values':forms.Textarea(attrs={'rows':2}),'preferred_personality':forms.Textarea(attrs={'rows':2}),'other_expectations':forms.Textarea(attrs={'rows':2}),'free_text_seeking_description':forms.Textarea(attrs={'rows':2})}
++        model = FamilyHarmonyPreference
++        exclude = ('profile', 'preferred_education', 'preferred_income', 'preferred_marital_status', 'preferred_regions')
++        widgets = {
++            'preferred_family_values': forms.Textarea(attrs={'rows': 2}),
++            'preferred_personality': forms.Textarea(attrs={'rows': 2}),
++            'other_expectations': forms.Textarea(attrs={'rows': 2}),
++            'free_text_seeking_description': forms.Textarea(attrs={'rows': 2}),
++        }
+diff --git a/family_harmony/migrations/0007_profile_health_assets.py b/family_harmony/migrations/0007_profile_health_assets.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..700da12aa0b56b470263db3d114814808dbceab8
+--- /dev/null
++++ b/family_harmony/migrations/0007_profile_health_assets.py
+@@ -0,0 +1,12 @@
++from django.db import migrations, models
++
++class Migration(migrations.Migration):
++    dependencies = [('family_harmony', '0006_marriage_profile_form_fields')]
++    operations = [
++        migrations.AddField(model_name='familyharmonyprofile', name='weight_kg', field=models.DecimalField(blank=True, decimal_places=1, max_digits=5, null=True)),
++        migrations.AddField(model_name='familyharmonyprofile', name='physical_status', field=models.CharField(blank=True, max_length=100)),
++        migrations.AddField(model_name='familyharmonyprofile', name='disability_status', field=models.CharField(blank=True, max_length=120)),
++        migrations.AddField(model_name='familyharmonyprofile', name='known_diseases', field=models.JSONField(blank=True, default=list)),
++        migrations.AddField(model_name='familyharmonyprofile', name='owns_house', field=models.BooleanField(blank=True, null=True)),
++        migrations.AddField(model_name='familyharmonyprofile', name='owns_car', field=models.BooleanField(blank=True, null=True)),
++    ]
+diff --git a/family_harmony/models.py b/family_harmony/models.py
+index dd58ad853456ec9813eb421dd0a0553a98c64fd6..f152a63d71e1ab693087e7cca44b13f89c9da279 100644
+--- a/family_harmony/models.py
++++ b/family_harmony/models.py
+@@ -29,6 +29,12 @@ class FamilyHarmonyProfile(models.Model):
+     owning_local_council = models.ForeignKey(LocalCouncil, null=True, blank=True, on_delete=models.PROTECT)
+     owning_region = models.ForeignKey(RegionalCouncil, null=True, blank=True, on_delete=models.PROTECT)
+     height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
++    weight_kg = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
++    physical_status = models.CharField(max_length=100, blank=True)
++    disability_status = models.CharField(max_length=120, blank=True)
++    known_diseases = models.JSONField(default=list, blank=True)
++    owns_house = models.BooleanField(null=True, blank=True)
++    owns_car = models.BooleanField(null=True, blank=True)
+     education_level = models.CharField(max_length=100, blank=True)
+     qualification = models.CharField(max_length=180, blank=True)
+     institution = models.CharField(max_length=180, blank=True)
+diff --git a/people/forms.py b/people/forms.py
+index 380dc00670585e3a35ca9c987fe726abac17199a..d4734e365bf5c1a4d7d1d6d438467e2c9871c34f 100644
+--- a/people/forms.py
++++ b/people/forms.py
+@@ -1,19 +1,64 @@
+ from django import forms
++
++from organization.models import Jamatkhana
+ from settings_app.models import FamilyHarmonySettings
+-from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
++
+ from .models import Person
+ 
++
+ class PersonForm(forms.ModelForm):
+-    def __init__(self,*args,**kwargs):
+-        super().__init__(*args,**kwargs); cfg=FamilyHarmonySettings.current()
+-        self.fields['title'].widget=forms.Select(choices=[('', 'Select title')]+[(v,v) for v in cfg.title_options])
+-        self.fields['gender'].widget=forms.Select(choices=[('', 'Select gender'),('Male','Male'),('Female','Female'),('Other','Other'),('Prefer not to say','Prefer not to say')])
+-        for name,values in [('nationality',cfg.nationality_options),('country',cfg.country_options),('marital_status',cfg.marital_status_options),('education',cfg.education_levels),('occupation',cfg.occupation_options),('employer_or_business',cfg.employer_options),('income_range',cfg.income_ranges),('languages',cfg.language_options)]:
+-            self.fields[name].widget=forms.TextInput(attrs={'list':f'person-{name}-options','data-options':'|'.join(values or [])})
+-        self.fields['jamatkhana'].queryset=Jamatkhana.objects.select_related('local_council__regional_council').filter(is_active=True).order_by('name'); self.fields['jamatkhana'].label='Jamatkhana / Council'; self.fields['jamatkhana'].label_from_instance=lambda o:f'{o.name} - {o.local_council.name} - {o.local_council.regional_council.name}'; self.fields['jamatkhana'].widget.attrs['data-searchable']='true'
+-        self.fields['local_council'].queryset=LocalCouncil.objects.select_related('regional_council').filter(is_active=True).order_by('name'); self.fields['local_council'].label_from_instance=lambda o:f'{o.name} - {o.regional_council.name}'; self.fields['local_council'].widget.attrs['data-searchable']='true'
+-        self.fields['region'].queryset=RegionalCouncil.objects.filter(is_active=True).order_by('name'); self.fields['region'].label='Regional Council'; self.fields['region'].widget.attrs['data-searchable']='true'
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        cfg = FamilyHarmonySettings.current()
++        self.fields['title'].widget = forms.Select(choices=[('', 'Select title')] + [(v, v) for v in cfg.title_options])
++        self.fields['gender'].widget = forms.Select(choices=[('', 'Select gender'), ('Male', 'Male'), ('Female', 'Female')])
++        select_lists = [
++            ('nationality', cfg.nationality_options), ('country', cfg.country_options),
++            ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
++            ('occupation', cfg.occupation_options), ('employer_or_business', cfg.employer_options),
++            ('income_range', cfg.income_ranges),
++        ]
++        for name, values in select_lists:
++            self.fields[name].widget = forms.Select(choices=[('', 'Select')] + [(v, v) for v in (values or [])])
++            self.fields[name].choices = [('', 'Select')] + [(v, v) for v in (values or [])]
++        self.fields['languages'].widget = forms.TextInput(attrs={
++            'list': 'person-languages-options', 'data-options': '|'.join(cfg.language_options or [])
++        })
++        self.fields['jamatkhana'].queryset = Jamatkhana.objects.select_related(
++            'local_council__regional_council'
++        ).filter(is_active=True).order_by('name')
++        self.fields['jamatkhana'].label = 'Jamatkhana'
++        self.fields['jamatkhana'].label_from_instance = lambda o: (
++            f'{o.name} — {o.local_council.name} — {o.local_council.regional_council.name}'
++        )
++        self.fields['jamatkhana'].widget.attrs['data-searchable'] = 'true'
++        for field_name in ('photo', 'cnic_front', 'cnic_back'):
++            self.fields[field_name].widget.attrs['accept'] = 'image/*'
++        self.fields['cnic_front'].label = 'CNIC front'
++        self.fields['cnic_back'].label = 'CNIC back'
++
++    def save(self, commit=True):
++        person = super().save(commit=False)
++        if person.jamatkhana_id:
++            person.local_council = person.jamatkhana.local_council
++            person.region = person.local_council.regional_council
++        else:
++            person.local_council = None
++            person.region = None
++        if commit:
++            person.save()
++            self.save_m2m()
++        return person
++
+     class Meta:
+-        model=Person
+-        exclude=('full_name','normalized_identity_number','created_by','updated_by','created_at','updated_at','archived_at','is_demo')
+-        widgets={'date_of_birth':forms.DateInput(attrs={'type':'date'}),'current_address':forms.Textarea(attrs={'rows':2}),'permanent_address':forms.Textarea(attrs={'rows':2}),'interests':forms.Textarea(attrs={'rows':2}),'photo':forms.FileInput(attrs={'accept':'image/*'})}
++        model = Person
++        exclude = (
++            'full_name', 'normalized_identity_number', 'created_by', 'updated_by', 'created_at',
++            'updated_at', 'archived_at', 'is_demo', 'region', 'local_council'
++        )
++        widgets = {
++            'date_of_birth': forms.DateInput(attrs={'type': 'date'}),
++            'current_address': forms.Textarea(attrs={'rows': 2}),
++            'permanent_address': forms.Textarea(attrs={'rows': 2}),
++            'interests': forms.Textarea(attrs={'rows': 2}),
++        }
+diff --git a/people/migrations/0002_person_cnic_images.py b/people/migrations/0002_person_cnic_images.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..75afa395fda67b90b307fefad11ee443666e4fc6
+--- /dev/null
++++ b/people/migrations/0002_person_cnic_images.py
+@@ -0,0 +1,8 @@
++from django.db import migrations, models
++
++class Migration(migrations.Migration):
++    dependencies = [('people', '0001_initial')]
++    operations = [
++        migrations.AddField(model_name='person', name='cnic_front', field=models.ImageField(blank=True, upload_to='people/cnic/%Y/%m/')),
++        migrations.AddField(model_name='person', name='cnic_back', field=models.ImageField(blank=True, upload_to='people/cnic/%Y/%m/')),
++    ]
+diff --git a/people/models.py b/people/models.py
+index 8958f7c00e76a2f3c326626a288b557ec61770cd..fb51d8c5552d2e9ac7fb9e209e449756f6093ef1 100644
+--- a/people/models.py
++++ b/people/models.py
+@@ -3,6 +3,7 @@ from datetime import date
+ 
+ from django.conf import settings
+ from django.db import models
++from django.core.files.base import ContentFile
+ 
+ from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
+ 
+@@ -68,6 +69,8 @@ class Person(models.Model):
+     languages = models.CharField(max_length=255, blank=True)
+     interests = models.TextField(blank=True)
+     photo = models.ImageField(upload_to='people/%Y/%m/', blank=True)
++    cnic_front = models.ImageField(upload_to='people/cnic/%Y/%m/', blank=True)
++    cnic_back = models.ImageField(upload_to='people/cnic/%Y/%m/', blank=True)
+     facebook_url = models.URLField(blank=True)
+     linkedin_url = models.URLField(blank=True)
+     instagram_url = models.URLField(blank=True)
+@@ -94,11 +97,20 @@ class Person(models.Model):
+         self.alternate_mobile = normalize_phone_number(self.alternate_mobile)
+         self.whatsapp_number = normalize_phone_number(self.whatsapp_number)
+         self.normalized_identity_number = ''.join((self.identity_number or '').split()).upper() or None
+-        if self.photo and hasattr(self.photo, 'name') and self.photo.name and self.photo.name not in ('', 'None'):
+-            if not self.photo.name.lower().endswith('.jpg') and not self.photo.name.lower().endswith('.jpeg'):
++        if self.photo and hasattr(self.photo, 'file') and not getattr(self.photo, '_committed', True):
++            try:
++                from io import BytesIO
++                from PIL import Image, ImageOps
++                image = Image.open(self.photo)
++                image = ImageOps.exif_transpose(image).convert('RGB')
++                image.thumbnail((1200, 1200))
++                output = BytesIO()
++                image.save(output, format='JPEG', quality=82, optimize=True)
+                 base_name = self.normalized_identity_number or self.full_name or 'person'
+                 cleaned = re.sub(r'[^a-zA-Z0-9_\-]+', '-', base_name).strip('-') or 'person'
+-                self.photo.name = f'{cleaned}.jpg'
++                self.photo.save(f'{cleaned}.jpg', ContentFile(output.getvalue()), save=False)
++            except Exception:
++                pass
+         super().save(*args, **kwargs)
+ 
+     @property
+diff --git a/settings_app/migrations/0009_health_profile_lists.py b/settings_app/migrations/0009_health_profile_lists.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8932c2a0eea324ce07b62bcecdb763c2ab81de8e
+--- /dev/null
++++ b/settings_app/migrations/0009_health_profile_lists.py
+@@ -0,0 +1,21 @@
++from django.db import migrations, models
++
++def seed(apps, schema_editor):
++    Settings = apps.get_model('settings_app', 'FamilyHarmonySettings')
++    obj, _ = Settings.objects.get_or_create(pk=1)
++    if not obj.physical_status_options:
++        obj.physical_status_options = ['Healthy / Fit', 'Average', 'Underweight', 'Overweight', 'Other']
++    if not obj.disability_options:
++        obj.disability_options = ['None', 'Physical', 'Visual', 'Hearing', 'Speech', 'Intellectual / Developmental', 'Multiple', 'Other']
++    if not obj.known_disease_options:
++        obj.known_disease_options = ['Diabetes', 'High cholesterol', 'Thyroid disorder', 'High blood pressure', 'Heart condition', 'Asthma', 'Other']
++    obj.save(update_fields=['physical_status_options','disability_options','known_disease_options'])
++
++class Migration(migrations.Migration):
++    dependencies = [('settings_app', '0008_profile_entry_lists')]
++    operations = [
++        migrations.AddField(model_name='familyharmonysettings', name='physical_status_options', field=models.JSONField(blank=True, default=list)),
++        migrations.AddField(model_name='familyharmonysettings', name='disability_options', field=models.JSONField(blank=True, default=list)),
++        migrations.AddField(model_name='familyharmonysettings', name='known_disease_options', field=models.JSONField(blank=True, default=list)),
++        migrations.RunPython(seed, migrations.RunPython.noop),
++    ]
+diff --git a/settings_app/models.py b/settings_app/models.py
+index 42be54b37f6b4c98826e5db7648ee631b4e87f87..24ab1f4049c6092995125002601b443bb2ade503 100644
+--- a/settings_app/models.py
++++ b/settings_app/models.py
+@@ -23,6 +23,9 @@ class FamilyHarmonySettings(models.Model):
+     caste_tribe_options = models.JSONField(default=list, blank=True)
+     nationality_options = models.JSONField(default=list, blank=True)
+     country_options = models.JSONField(default=list, blank=True)
++    physical_status_options = models.JSONField(default=list, blank=True)
++    disability_options = models.JSONField(default=list, blank=True)
++    known_disease_options = models.JSONField(default=list, blank=True)
+     updated_at = models.DateTimeField(auto_now=True)
+ 
+     class Meta:
+@@ -62,5 +65,11 @@ class FamilyHarmonySettings(models.Model):
+             settings.nationality_options = ['Pakistani', 'Other']
+         if not settings.country_options:
+             settings.country_options = ['Pakistan', 'United States', 'United Kingdom', 'Canada', 'United Arab Emirates', 'Other']
+-        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options', 'caste_tribe_options', 'nationality_options', 'country_options'])
++        if not settings.physical_status_options:
++            settings.physical_status_options = ['Healthy / Fit', 'Average', 'Underweight', 'Overweight', 'Other']
++        if not settings.disability_options:
++            settings.disability_options = ['None', 'Physical', 'Visual', 'Hearing', 'Speech', 'Intellectual / Developmental', 'Multiple', 'Other']
++        if not settings.known_disease_options:
++            settings.known_disease_options = ['Diabetes', 'High cholesterol', 'Thyroid disorder', 'High blood pressure', 'Heart condition', 'Asthma', 'Other']
++        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options', 'caste_tribe_options', 'nationality_options', 'country_options', 'physical_status_options', 'disability_options', 'known_disease_options'])
+         return settings
+diff --git a/settings_app/views.py b/settings_app/views.py
+index ecbea4acc5cbba7b044bb3f17195902aeee8c996..1ad8a27471ba661a3e6c44f2abd717b281320aca 100644
+--- a/settings_app/views.py
++++ b/settings_app/views.py
+@@ -24,6 +24,9 @@ def settings_page(request):
+         caste_lines = request.POST.get('caste_tribe_options', '').strip()
+         nationality_lines = request.POST.get('nationality_options', '').strip()
+         country_lines = request.POST.get('country_options', '').strip()
++        physical_lines = request.POST.get('physical_status_options', '').strip()
++        disability_lines = request.POST.get('disability_options', '').strip()
++        disease_lines = request.POST.get('known_disease_options', '').strip()
+         settings.title_options = [item.strip() for item in title_lines.splitlines() if item.strip()] or settings.title_options
+         settings.education_levels = [item.strip() for item in education_lines.splitlines() if item.strip()] or settings.education_levels
+         settings.occupation_options = [item.strip() for item in occupation_lines.splitlines() if item.strip()] or settings.occupation_options
+@@ -38,6 +41,9 @@ def settings_page(request):
+         settings.caste_tribe_options = [item.strip() for item in caste_lines.splitlines() if item.strip()] or settings.caste_tribe_options
+         settings.nationality_options = [item.strip() for item in nationality_lines.splitlines() if item.strip()] or settings.nationality_options
+         settings.country_options = [item.strip() for item in country_lines.splitlines() if item.strip()] or settings.country_options
++        settings.physical_status_options = [item.strip() for item in physical_lines.splitlines() if item.strip()] or settings.physical_status_options
++        settings.disability_options = [item.strip() for item in disability_lines.splitlines() if item.strip()] or settings.disability_options
++        settings.known_disease_options = [item.strip() for item in disease_lines.splitlines() if item.strip()] or settings.known_disease_options
+         settings.default_expiry_days = int(request.POST.get('default_expiry_days', settings.default_expiry_days))
+         settings.minimum_expiry_days = int(request.POST.get('minimum_expiry_days', settings.minimum_expiry_days))
+         settings.maximum_expiry_days = int(request.POST.get('maximum_expiry_days', settings.maximum_expiry_days))
+@@ -54,6 +60,7 @@ SETTING_LIST_FIELDS = {
+     'business_type': 'business_type_options', 'income': 'income_ranges', 'family_type': 'family_type_options',
+     'language': 'language_options', 'marital_status': 'marital_status_options', 'relationship': 'relationship_options',
+     'caste_tribe': 'caste_tribe_options', 'nationality': 'nationality_options', 'country': 'country_options',
++    'physical_status': 'physical_status_options', 'disability': 'disability_options', 'known_disease': 'known_disease_options',
+ }
+ 
+ @login_required
+diff --git a/static/app.css b/static/app.css
+index 4b4d7a7182597a4cfa892db9f89c9cacc1b0302b..eeca062e03b277631948c0d7ec30ff537059f0e4 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -10,3 +10,21 @@
+ .social-topbar{height:62px;padding:0 16px;background:#0f1117;color:#fff;border-bottom:1px solid #242832;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}.social-topbar .top-title{color:#dce6e5}.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}.top-btn{border:1px solid transparent;border-radius:5px;padding:7px 11px;font:700 12px Arial,sans-serif;cursor:pointer;white-space:nowrap}.top-btn.warning{background:#ffc107;color:#171717}.top-btn.outline{background:transparent;border-color:#dfe4e6;color:#fff}.top-btn.light{background:#f8f9fa;color:#111}.logout-form{margin:0}.view-toggle{display:inline-flex;align-items:center;gap:5px;font:700 12px Arial,sans-serif;color:#fff}.view-toggle input{accent-color:#0d6efd}.count-badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#dc3545;color:#fff;font-size:10px}.viewport-bar{position:fixed;right:12px;bottom:12px;z-index:50;background:#101318;color:#fff;border:1px solid #3a414b;border-radius:6px;padding:7px 10px;font:12px Arial,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.25)}.viewport-bar strong{margin-left:8px}@media(max-width:760px){.social-topbar{padding:0 10px}.top-title{display:none}.top-actions{gap:4px}.top-btn{padding:6px 7px;font-size:10px}.view-toggle span{display:none}}
+ 
+ .view-toggle{display:grid!important;justify-items:center;line-height:1.05}.view-toggle small{display:block;font-size:9px;font-weight:400;margin-top:2px;color:#d9e2e1}.danger,.delete-button{background:#dc3545!important;color:#fff!important;border-color:#dc3545!important}.social-topbar .top-actions{margin-left:auto}.social-topbar{padding-left:5vw;padding-right:16px}
++
++/* Final Marriage Profile redesign */
++.profile-editor-shell{width:min(1480px,calc(100% - 32px));margin:26px auto 42px}.profile-editor-head{background:linear-gradient(135deg,#152b43,#1d4660);color:#fff;border-radius:16px 16px 0 0;padding:22px 28px;display:flex;justify-content:space-between;gap:18px;align-items:center;box-shadow:0 12px 34px rgba(21,43,67,.16)}.profile-editor-head .eyebrow{color:#b9d8e2}.profile-editor-head h1{font-family:Arial,sans-serif;font-weight:700;font-size:clamp(26px,3vw,40px);margin:5px 0}.profile-editor-head p{margin:0;color:#d8e6eb}.marriage-profile-form{background:#fff;border:1px solid #d7e0e5;border-top:0;border-radius:0 0 16px 16px;box-shadow:0 14px 40px rgba(25,46,61,.08);overflow:hidden}.mp-section{padding:18px 24px 22px;border-top:1px solid #e1e8ec}.mp-section:first-of-type{border-top:0}.mp-section>h2{margin:0 0 16px;background:#e8eef3;color:#17324a;padding:9px 12px;border-radius:6px;font:700 16px/1.2 Arial,sans-serif;display:flex;align-items:center;gap:8px}.mp-section>h2 span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#17324a;color:#fff;font-size:12px}.mp-personal-grid{display:grid;grid-template-columns:170px 1fr;gap:20px}.mp-photo-column{min-width:0}.mp-photo-box{height:205px;border:1px solid #bdcad2;border-radius:10px;background:#f6f8fa;display:grid;place-items:center;overflow:hidden;text-align:center;color:#607581;cursor:pointer;font:600 12px Arial,sans-serif}.mp-photo-box img{width:100%;height:100%;object-fit:cover}.mp-file-field input[type=file]{width:100%;font-size:11px;margin-top:7px;padding:6px}.mp-file-field small,.form-field small{display:block;margin-top:4px;color:#71828b;font:11px Arial,sans-serif}.mp-grid{display:grid;gap:12px}.mp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}.mp-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.mp-grid-2{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:12px}.mp-span-2{grid-column:span 2}.mp-span-3{grid-column:span 3}.mp-upload-row{margin-top:14px}.marriage-profile-form .form-field{display:block;min-width:0}.marriage-profile-form .form-field>label{display:block;margin-bottom:5px;color:#334b5c;font:700 11px/1.2 Arial,sans-serif;text-transform:none;letter-spacing:0}.marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{width:100%;min-width:0;border:1px solid #cdd8de;border-radius:6px;background:#fff;padding:8px 9px;font:13px Arial,sans-serif;color:#172f3f;min-height:36px}.marriage-profile-form textarea{min-height:58px;resize:vertical}.marriage-profile-form input:focus,.marriage-profile-form select:focus,.marriage-profile-form textarea:focus{outline:none;border-color:#346d8b;box-shadow:0 0 0 3px rgba(52,109,139,.12)}.choice-chips ul,.toggle-field ul{list-style:none;padding:0;margin:0;display:flex;gap:6px;flex-wrap:wrap}.choice-chips li,.toggle-field li{margin:0}.choice-chips label,.toggle-field li label{display:inline-flex;align-items:center;gap:5px;background:#f4f7f9;border:1px solid #d5e0e5;border-radius:999px;padding:6px 10px;font:600 11px Arial,sans-serif;cursor:pointer}.choice-chips input,.toggle-field input{width:auto;min-height:0;padding:0}.privacy-note{background:#f4f8f8;border-left:4px solid #236c58;padding:12px 14px;border-radius:6px;font:13px Arial,sans-serif;color:#38545c}.sticky-form-actions{display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:rgba(255,255,255,.96);border-top:1px solid #dfe6ea;padding:12px 24px;z-index:4}.sticky-form-actions .primary{min-width:150px}.profile-errors{margin:14px 24px 0;padding:11px 13px;background:#fff0f0;color:#9f2929;border:1px solid #f0c3c3;border-radius:7px}.file-current{display:inline-block;margin-top:4px;color:#176c8f;font:700 11px Arial,sans-serif}.mp-internal{background:#fbfcfd}.public-profile-page{background:#edf2f5}.public-profile-shell{margin-top:18px}.public-profile-shell .mp-internal{display:none}
++
++/* profile display card used by person/harmony detail and PDF-inspired view */
++.marriage-biodata{width:min(1180px,calc(100% - 32px));margin:22px auto 40px;background:#fff;border:1px solid #d5dfe5;border-radius:15px;overflow:hidden;box-shadow:0 14px 42px rgba(20,44,61,.10)}.marriage-biodata-head{background:#17324a;color:#fff;padding:20px 24px;display:grid;grid-template-columns:150px 1fr auto;gap:20px;align-items:center}.marriage-biodata-photo{width:140px;height:165px;border-radius:10px;object-fit:cover;background:#edf2f5;border:4px solid rgba(255,255,255,.7);cursor:zoom-in}.marriage-biodata-photo.placeholder{display:grid;place-items:center;color:#78909c;font:700 32px Arial,sans-serif}.marriage-biodata-head h1{font:700 clamp(27px,3.4vw,42px) Arial,sans-serif;margin:0 0 7px}.marriage-biodata-head p{margin:4px 0;color:#d6e4ea}.biodata-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.biodata-badges span{background:#fff;color:#17324a;border-radius:999px;padding:5px 9px;font:700 11px Arial,sans-serif}.biodata-actions{display:flex;flex-direction:column;gap:7px;min-width:116px}.biodata-section{padding:16px 22px;border-top:1px solid #e3e9ed}.biodata-section h2{margin:0 0 10px;background:#e9eef2;padding:8px 10px;border-radius:5px;color:#17324a;font:700 15px Arial,sans-serif}.biodata-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 18px}.biodata-item{min-width:0}.biodata-item small{display:block;color:#71818a;font:700 10px Arial,sans-serif;text-transform:uppercase;letter-spacing:.04em}.biodata-item strong{display:block;color:#233c4b;font:600 13px Arial,sans-serif;margin-top:3px;overflow-wrap:anywhere}.biodata-item.wide{grid-column:span 2}.profile-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;display:none;place-items:center;padding:24px}.profile-lightbox.open{display:grid}.profile-lightbox img{max-width:min(900px,96vw);max-height:92vh;border-radius:10px;background:#fff}.profile-lightbox button{position:absolute;right:18px;top:14px;border:0;background:#fff;color:#111;border-radius:50%;width:38px;height:38px;font-size:21px;cursor:pointer}
++
++/* compact responsive list cards */
++.mobile-profile-cards{display:none}.compact-profile-card{background:#fff;border:1px solid #dce4e8;border-radius:10px;padding:10px;display:grid;grid-template-columns:56px 1fr;gap:10px;box-shadow:0 4px 16px rgba(30,54,70,.05)}.compact-profile-card img,.compact-profile-card .initials{width:56px;height:66px;border-radius:7px;object-fit:cover}.compact-profile-card h3{font:700 15px Arial,sans-serif;margin:0 0 4px}.compact-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 8px;color:#61747e;font:11px Arial,sans-serif}.compact-actions{grid-column:1/-1;display:flex;gap:5px;flex-wrap:wrap;padding-top:6px;border-top:1px solid #edf1f3}.compact-actions .action-button{padding:5px 7px;font-size:10px}
++
++@media(max-width:1100px){.mp-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.mp-span-3{grid-column:span 2}.biodata-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.marriage-biodata-head{grid-template-columns:120px 1fr}.marriage-biodata-photo{width:110px;height:135px}.biodata-actions{grid-column:1/-1;flex-direction:row;justify-content:flex-end}}
++@media(max-width:760px){.profile-editor-shell,.marriage-biodata{width:calc(100% - 14px);margin:7px auto 22px}.profile-editor-head{border-radius:10px 10px 0 0;padding:15px}.profile-editor-head h1{font-size:24px}.mp-section{padding:12px 10px 15px}.mp-personal-grid{grid-template-columns:98px 1fr;gap:10px}.mp-photo-box{height:128px}.mp-grid-4,.mp-grid-3,.mp-grid-2{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.mp-span-2,.mp-span-3{grid-column:1/-1}.marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{font-size:16px;padding:7px}.marriage-biodata-head{grid-template-columns:88px 1fr;padding:12px;gap:11px}.marriage-biodata-photo{width:86px;height:105px;border-width:2px}.marriage-biodata-head h1{font-size:23px}.biodata-section{padding:12px}.biodata-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.biodata-actions{justify-content:flex-start}.desktop-profile-table{display:none}.mobile-profile-cards{display:grid;gap:8px;margin:0 8px 20px}.table-wrap.mobile-hidden{display:none}.page-head.inline{padding-bottom:14px}}
++@media(max-width:420px){.mp-personal-grid{grid-template-columns:82px 1fr}.mp-photo-box{height:110px}.mp-grid-4,.mp-grid-3,.mp-grid-2{grid-template-columns:1fr}.mp-span-2,.mp-span-3{grid-column:auto}.mp-section>h2{font-size:14px}.marriage-biodata-head{grid-template-columns:74px 1fr}.marriage-biodata-photo{width:72px;height:90px}.biodata-grid{grid-template-columns:1fr 1fr}.biodata-item.wide{grid-column:1/-1}.biodata-actions .action-button,.biodata-actions .secondary,.biodata-actions .primary{font-size:10px;padding:6px 7px}.compact-meta{grid-template-columns:1fr 1fr}}
++
++/* Responsive application shell/header */
++.sidebar-scrim{display:none;border:0;padding:0}.sidebar{z-index:42}.social-topbar{min-width:0}.top-actions{min-width:0}.main{overflow-x:hidden}
++@media(max-width:760px){body.sidebar-open{overflow:hidden}.sidebar{display:flex!important;transform:translateX(-105%);transition:transform .2s ease;width:min(82vw,280px);box-shadow:12px 0 35px rgba(0,0,0,.25)}body.sidebar-open .sidebar{transform:translateX(0)}.sidebar-scrim{position:fixed;inset:0;z-index:41;background:rgba(8,18,27,.48)}body.sidebar-open .sidebar-scrim{display:block}.social-topbar{height:58px;position:sticky;padding:0 8px}.social-topbar .menu{display:block;color:#fff;margin:0 3px 0 0}.top-actions{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.top-actions::-webkit-scrollbar{display:none}.top-btn{flex:0 0 auto}.view-toggle{flex:0 0 auto}.page-head{padding-top:24px}}
++@media(max-width:420px){.top-btn{padding:6px;font-size:9px}.social-topbar{gap:5px}.top-actions{gap:3px}}
+diff --git a/templates/base.html b/templates/base.html
+index d4c8e341ddbf89d529fb6c91b8f30306c3028e1e..5b99c83c513c33b6d9f3c5ffeda3e3c40ccf56e0 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,6 +1,6 @@
+ {% load static %}
+ <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}">{% block extra_css %}{% endblock %}</head>
+-<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav></aside><main class="main">
+-<header class="social-topbar"><button class="menu" aria-label="Menu">☰</button><span class="eyebrow top-title">SOCIAL WELFARE CENTER</span><div class="top-actions"><label class="view-toggle" title="Show viewport size"><span><input id="viewportToggle" type="checkbox"> View</span><small id="viewportSize">0 × 0</small></label><a class="top-btn warning" href="{% url 'pending_approvals' %}">Pending Approval{% if PENDING_APPROVAL_COUNT %} <b class="count-badge">{{ PENDING_APPROVAL_COUNT }}</b>{% endif %}</a><a class="top-btn warning" href="{% url 'suggestion_list' %}">Suggestions</a><a class="top-btn outline" href="{% url 'my_profile' %}">Profile</a><form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button class="top-btn light" type="submit">Logout</button></form></div></header>
++<body><div class="shell"><aside class="sidebar" id="socialSidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav></aside><button class="sidebar-scrim" id="sidebarScrim" type="button" aria-label="Close menu"></button><main class="main">
++<header class="social-topbar"><button class="menu" id="sidebarMenuToggle" aria-label="Open menu" aria-controls="socialSidebar" aria-expanded="false">☰</button><span class="eyebrow top-title">SOCIAL WELFARE CENTER</span><div class="top-actions"><label class="view-toggle" title="Show viewport size"><span><input id="viewportToggle" type="checkbox"> View</span><small id="viewportSize">0 × 0</small></label><a class="top-btn warning" href="{% url 'pending_approvals' %}">Pending Approval{% if PENDING_APPROVAL_COUNT %} <b class="count-badge">{{ PENDING_APPROVAL_COUNT }}</b>{% endif %}</a><a class="top-btn warning" href="{% url 'suggestion_list' %}">Suggestions</a><a class="top-btn outline" href="{% url 'my_profile' %}">Profile</a><form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button class="top-btn light" type="submit">Logout</button></form></div></header>
+ 
+-{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script><script>(function(){const t=document.getElementById('viewportToggle'),s=document.getElementById('viewportSize');function u(){if(s)s.textContent=window.innerWidth+' × '+window.innerHeight}if(t){function v(){s.hidden=!t.checked;u()}t.addEventListener('change',v);window.addEventListener('resize',u);v()}})();</script>{% block extra_js %}{% endblock %}</body></html>
++{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script><script>(function(){const t=document.getElementById('viewportToggle'),s=document.getElementById('viewportSize'),m=document.getElementById('sidebarMenuToggle'),scrim=document.getElementById('sidebarScrim');function u(){if(s)s.textContent=window.innerWidth+' × '+window.innerHeight}if(t){function v(){s.hidden=!t.checked;u()}t.addEventListener('change',v);window.addEventListener('resize',u);v()}function menu(open){document.body.classList.toggle('sidebar-open',open);if(m)m.setAttribute('aria-expanded',open?'true':'false')}if(m)m.addEventListener('click',()=>menu(!document.body.classList.contains('sidebar-open')));if(scrim)scrim.addEventListener('click',()=>menu(false));document.addEventListener('keydown',e=>{if(e.key==='Escape')menu(false)});window.addEventListener('resize',()=>{if(window.innerWidth>760)menu(false)})})();</script>{% block extra_js %}{% endblock %}</body></html>
+diff --git a/templates/family_harmony/_marriage_form_fields.html b/templates/family_harmony/_marriage_form_fields.html
+new file mode 100644
+index 0000000000000000000000000000000000000000..192557f23519109a8423a7ce3cb6c3fed60d4c00
+--- /dev/null
++++ b/templates/family_harmony/_marriage_form_fields.html
+@@ -0,0 +1,126 @@
++{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>{% endif %}
++
++<section class="mp-section">
++  <h2><span>1</span> Personal Information</h2>
++  <div class="mp-personal-grid">
++    <div class="mp-photo-column">
++      <label class="mp-photo-box" for="id_photo">
++        {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder">Click to upload<br>profile photo</span>{% endif %}
++      </label>
++      <div class="mp-file-field">{{ person_form.photo }}{{ person_form.photo.errors }}<small>Photo is compressed automatically.</small></div>
++    </div>
++    <div class="mp-fields">
++      <div class="mp-grid mp-grid-4">
++        <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
++        <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
++        <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
++        <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
++        <div class="form-field">{{ person_form.gender.label_tag }}{{ person_form.gender }}{{ person_form.gender.errors }}</div>
++        <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
++        <div class="form-field">{{ person_form.marital_status.label_tag }}{{ person_form.marital_status }}{{ person_form.marital_status.errors }}</div>
++        <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
++        <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
++        <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status" class="id-status"></small></div>
++        <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
++        <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
++        <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
++        <div class="form-field">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
++        <div class="form-field">{{ person_form.province.label_tag }}{{ person_form.province }}{{ person_form.province.errors }}</div>
++        <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
++      </div>
++      <div class="mp-grid mp-grid-2">
++        <div class="form-field">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
++        <div class="form-field">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
++      </div>
++    </div>
++  </div>
++  <div class="mp-grid mp-grid-3 mp-upload-row">
++    <div class="form-field">{{ person_form.cnic_front.label_tag }}{{ person_form.cnic_front }}{{ person_form.cnic_front.errors }}{% if person_form.instance.cnic_front %}<a class="file-current" href="{{ person_form.instance.cnic_front.url }}" target="_blank">View current front</a>{% endif %}</div>
++    <div class="form-field">{{ person_form.cnic_back.label_tag }}{{ person_form.cnic_back }}{{ person_form.cnic_back.errors }}{% if person_form.instance.cnic_back %}<a class="file-current" href="{{ person_form.instance.cnic_back.url }}" target="_blank">View current back</a>{% endif %}</div>
++    <div class="form-field">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}<small id="org-derived">LC and RC are assigned automatically from the selected Jamatkhana.</small></div>
++  </div>
++</section>
++
++<section class="mp-section">
++  <h2><span>2</span> Physical & Health</h2>
++  <div class="mp-grid mp-grid-4">
++    <div class="form-field">{{ profile_form.height_feet.label_tag }}{{ profile_form.height_feet }}{{ profile_form.height_feet.errors }}</div>
++    <div class="form-field">{{ profile_form.height_inches.label_tag }}{{ profile_form.height_inches }}{{ profile_form.height_inches.errors }}</div>
++    <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
++    <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
++    <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
++    <div class="form-field mp-span-3">{{ profile_form.known_diseases.label_tag }}<div class="choice-chips">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.disabilities.label_tag }}{{ profile_form.disabilities }}{{ profile_form.disabilities.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.health_information.label_tag }}{{ profile_form.health_information }}{{ profile_form.health_information.errors }}</div>
++  </div>
++</section>
++
++<section class="mp-section">
++  <h2><span>3</span> Family</h2>
++  <div class="mp-grid mp-grid-4">
++    <div class="form-field">{{ profile_form.father_name.label_tag }}{{ profile_form.father_name }}{{ profile_form.father_name.errors }}</div>
++    <div class="form-field">{{ profile_form.father_occupation.label_tag }}{{ profile_form.father_occupation }}{{ profile_form.father_occupation.errors }}</div>
++    <div class="form-field">{{ profile_form.mother_name.label_tag }}{{ profile_form.mother_name }}{{ profile_form.mother_name.errors }}</div>
++    <div class="form-field">{{ profile_form.mother_occupation.label_tag }}{{ profile_form.mother_occupation }}{{ profile_form.mother_occupation.errors }}</div>
++    <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
++    <div class="form-field">{{ profile_form.family_residence.label_tag }}{{ profile_form.family_residence }}{{ profile_form.family_residence.errors }}</div>
++    <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
++    <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
++    <div class="form-field">{{ profile_form.place_of_origin.label_tag }}{{ profile_form.place_of_origin }}{{ profile_form.place_of_origin.errors }}</div>
++    <div class="form-field">{{ profile_form.guardian_contact.label_tag }}{{ profile_form.guardian_contact }}{{ profile_form.guardian_contact.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.family_values.label_tag }}{{ profile_form.family_values }}{{ profile_form.family_values.errors }}</div>
++  </div>
++</section>
++
++<section class="mp-section">
++  <h2><span>4</span> Education & Career</h2>
++  <div class="mp-grid mp-grid-4">
++    <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
++    <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
++    <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
++    <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
++    <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
++    <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
++    <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
++    <div class="form-field">{{ profile_form.financial_status.label_tag }}{{ profile_form.financial_status }}{{ profile_form.financial_status.errors }}</div>
++    <div class="form-field toggle-field"><label>Own house</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
++    <div class="form-field toggle-field"><label>Own car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
++  </div>
++</section>
++
++<section class="mp-section">
++  <h2><span>5</span> Lifestyle & About</h2>
++  <div class="mp-grid mp-grid-4">
++    <div class="form-field">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
++    <div class="form-field toggle-field">{{ profile_form.smoking.label_tag }}{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
++    <div class="form-field">{{ profile_form.children_count.label_tag }}{{ profile_form.children_count }}{{ profile_form.children_count.errors }}</div>
++    <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.personality.label_tag }}{{ profile_form.personality }}{{ profile_form.personality.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.interests.label_tag }}{{ profile_form.interests }}{{ profile_form.interests.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.personal_statement.label_tag }}{{ profile_form.personal_statement }}{{ profile_form.personal_statement.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.other_lifestyle_details.label_tag }}{{ profile_form.other_lifestyle_details }}{{ profile_form.other_lifestyle_details.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.child_details.label_tag }}{{ profile_form.child_details }}{{ profile_form.child_details.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.previous_marriage_notes.label_tag }}{{ profile_form.previous_marriage_notes }}{{ profile_form.previous_marriage_notes.errors }}</div>
++  </div>
++</section>
++
++{% if preference_form %}
++<section class="mp-section">
++  <h2><span>6</span> Preferences for Prospective Match</h2>
++  <div class="mp-grid mp-grid-4">
++    {% for field in preference_form %}<div class="form-field {% if field.name == 'preferred_family_values' or field.name == 'preferred_personality' or field.name == 'other_expectations' or field.name == 'free_text_seeking_description' %}mp-span-2{% endif %} {% if field.name == 'willingness_to_relocate' %}toggle-field{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
++  </div>
++</section>
++{% endif %}
++
++{% if not public_mode %}
++<section class="mp-section mp-internal">
++  <h2><span>7</span> Internal / Workflow</h2>
++  <div class="mp-grid mp-grid-4">
++    <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
++    <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
++    <div class="form-field mp-span-2">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
++  </div>
++</section>
++{% endif %}
+diff --git a/templates/family_harmony/detail.html b/templates/family_harmony/detail.html
+index 01b2c221048f0583ced2ccb0dc729eb12937eb45..fd91171fb7011f9e61586fb4c18d7d52af19aebc 100644
+--- a/templates/family_harmony/detail.html
++++ b/templates/family_harmony/detail.html
+@@ -1 +1,19 @@
+-{% extends 'base.html' %}{% block title %}{{ profile.person.full_name }} | Family Harmony{% endblock %}{% block content %}<section class="page-head inline"><div><p class="eyebrow">FAMILY HARMONY PROFILE</p><h1>{{ profile.person.full_name }}</h1><p class="muted">{{ profile.get_status_display }} · {{ profile.person.age|default:'Age not recorded' }} · {{ profile.person.city|default:'Location not recorded' }}</p></div><div class="actions"><a class="primary" href="{% url 'harmony_edit' profile.id %}">Edit</a><a class="secondary" href="{% url 'harmony_delete' profile.id %}">Archive</a><a class="secondary" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp">Share via WhatsApp</a><a class="secondary" href="{% url 'harmony_export' profile.id 'pdf' %}">Export PDF</a><a class="secondary" href="{% url 'harmony_export' profile.id 'jpg' %}">Export JPG</a></div></section><section class="panel detail-hero">{% if profile.person.photo %}<img src="{{ profile.person.photo.url }}" alt="Synthetic avatar for {{ profile.person.full_name }}">{% endif %}<div><h2>{{ profile.person.full_name }}</h2><p>{{ profile.person.gender|default:'—' }} · {{ profile.person.marital_status|default:'—' }} · {{ profile.person.city|default:'—' }}</p><p class="muted">Current Jamatkhana: {{ profile.owning_jamatkhana|default:'—' }}</p></div></section><section class="panel"><h2>Profile</h2><div class="detail-grid"><div><small>Status</small><strong>{{ profile.get_status_display }}</strong></div><div><small>Assigned officer</small><strong>{{ profile.assigned_officer|default:'—' }}</strong></div><div><small>Height</small><strong>{{ profile.height_cm|default:'—' }} cm</strong></div><div><small>Education</small><strong>{{ profile.education_level|default:'—' }} · {{ profile.qualification|default:'—' }}</strong></div><div><small>Institution</small><strong>{{ profile.institution|default:'—' }}</strong></div><div><small>Profession</small><strong>{{ profile.profession|default:'—' }}</strong></div><div><small>Employer</small><strong>{{ profile.employer_or_business|default:'—' }}</strong></div><div><small>Experience</small><strong>{{ profile.years_experience|default:'—' }}</strong></div><div><small>Income / financial status</small><strong>{{ profile.income_range|default:'—' }} · {{ profile.financial_status|default:'—' }}</strong></div></div></section><section class="panel"><h2>Family, personality, and lifestyle</h2><div class="detail-grid"><div><small>Family background</small><strong>{{ profile.family_background|default:'—' }}</strong></div><div><small>Place of origin</small><strong>{{ profile.place_of_origin|default:'—' }}</strong></div><div><small>Family values</small><strong>{{ profile.family_values|default:'—' }}</strong></div><div><small>Personality</small><strong>{{ profile.personality|default:'—' }}</strong></div><div><small>Interests</small><strong>{{ profile.interests|default:'—' }}</strong></div><div><small>Languages</small><strong>{{ profile.languages|default:'—' }}</strong></div><div><small>Smoking</small><strong>{{ profile.smoking|default:'—' }}</strong></div><div><small>Other lifestyle details</small><strong>{{ profile.other_lifestyle_details|default:'—' }}</strong></div></div></section><section class="panel"><h2>Marriage, sensitive information, and about</h2><div class="detail-grid"><div><small>Marital status</small><strong>{{ profile.marital_status|default:'—' }}</strong></div><div><small>Children</small><strong>{{ profile.children_count|default:'—' }} · {{ profile.child_details|default:'—' }}</strong></div><div><small>Previous marriage notes</small><strong>{{ profile.previous_marriage_notes|default:'—' }}</strong></div><div><small>Disabilities</small><strong>{{ profile.disabilities|default:'Restricted / none recorded' }}</strong></div><div><small>Health information</small><strong>{{ profile.health_information|default:'Restricted / none recorded' }}</strong></div><div><small>Personal statement</small><strong>{{ profile.personal_statement|default:'—' }}</strong></div><div><small>Expectations</small><strong>{{ profile.expectations|default:'—' }}</strong></div><div><small>Internal notes</small><strong>{{ profile.notes|default:'—' }}</strong></div></div></section><section class="panel"><h2>Seeking preferences</h2>{% with preferences=profile.preferences %}<div class="detail-grid"><div><small>Age range</small><strong>{{ preferences.minimum_age|default:'—' }} - {{ preferences.maximum_age|default:'—' }}</strong></div><div><small>Locations</small><strong>{{ preferences.preferred_locations|join:', '|default:'—' }}</strong></div><div><small>Education</small><strong>{{ preferences.preferred_education|default:'—' }}</strong></div><div><small>Professions</small><strong>{{ preferences.preferred_professions|join:', '|default:'—' }}</strong></div><div><small>Income</small><strong>{{ preferences.preferred_income|default:'—' }}</strong></div><div><small>Marital status</small><strong>{{ preferences.preferred_marital_status|default:'—' }}</strong></div><div><small>Relocation</small><strong>{{ preferences.willingness_to_relocate|yesno:'Yes,No' }}</strong></div><div><small>Expectations</small><strong>{{ preferences.free_text_seeking_description|default:'—' }}</strong></div></div>{% endwith %}</section>{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block title %}{{ profile.person.full_name }} | Family Harmony{% endblock %}{% block content %}
++<article class="marriage-biodata">
++  <header class="marriage-biodata-head">
++    {% if profile.person.photo %}<img class="marriage-biodata-photo js-photo-lightbox" src="{{ profile.person.photo.url }}" alt="{{ profile.person.full_name }}">{% else %}<div class="marriage-biodata-photo placeholder">{{ profile.person.first_name|first }}</div>{% endif %}
++    <div><p class="eyebrow" style="color:#b9d8e2">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ profile.person.full_name }}</h1><p>{{ profile.person.city|default:'Location not provided' }}{% if profile.person.country %}, {{ profile.person.country }}{% endif %} · {{ profile.serial_number }}</p><div class="biodata-badges"><span>{{ profile.person.age|default:'—' }} yrs</span><span>{{ profile.person.gender|default:'—' }}</span><span>{{ profile.marital_status|default:profile.person.marital_status|default:'—' }}</span><span>{{ profile.get_status_display }}</span></div></div>
++    <div class="biodata-actions"><a class="primary" href="{% url 'harmony_edit' profile.id %}">Edit</a><a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank">WhatsApp</a><a class="secondary" href="{% url 'harmony_export' profile.id 'pdf' %}">Export PDF</a><a class="secondary" href="{% url 'harmony_export' profile.id 'jpg' %}">Export JPG</a><a class="secondary" href="{% url 'harmony_delete' profile.id %}">Archive</a></div>
++  </header>
++  <section class="biodata-section"><h2>Personal Information</h2><div class="biodata-grid">
++    <div class="biodata-item"><small>Age / DOB</small><strong>{{ profile.person.age|default:'—' }} / {{ profile.person.date_of_birth|date:'j M Y'|default:'—' }}</strong></div><div class="biodata-item"><small>Gender</small><strong>{{ profile.person.gender|default:'—' }}</strong></div><div class="biodata-item"><small>Nationality</small><strong>{{ profile.person.nationality|default:'—' }}</strong></div><div class="biodata-item"><small>Jamatkhana</small><strong>{{ profile.person.jamatkhana|default:'—' }}</strong></div>
++    <div class="biodata-item"><small>Local Council</small><strong>{{ profile.person.local_council|default:'—' }}</strong></div><div class="biodata-item"><small>Regional Council</small><strong>{{ profile.person.region|default:'—' }}</strong></div><div class="biodata-item"><small>Mobile</small><strong>{{ profile.person.mobile|default:'—' }}</strong></div><div class="biodata-item"><small>Email</small><strong>{{ profile.person.email|default:'—' }}</strong></div>
++  </div></section>
++  <section class="biodata-section"><h2>Physical & Health</h2><div class="biodata-grid"><div class="biodata-item"><small>Height</small><strong>{% if profile.height_cm %}{{ profile.height_cm }} cm{% else %}—{% endif %}</strong></div><div class="biodata-item"><small>Weight</small><strong>{% if profile.weight_kg %}{{ profile.weight_kg }} kg{% else %}—{% endif %}</strong></div><div class="biodata-item"><small>Physical Status</small><strong>{{ profile.physical_status|default:'—' }}</strong></div><div class="biodata-item"><small>Disability</small><strong>{{ profile.disability_status|default:'—' }}</strong></div><div class="biodata-item wide"><small>Known Diseases</small><strong>{{ profile.known_diseases|join:', '|default:'—' }}</strong></div><div class="biodata-item wide"><small>Health Notes</small><strong>{{ profile.health_information|default:'—' }}</strong></div></div></section>
++  <section class="biodata-section"><h2>Family</h2><div class="biodata-grid"><div class="biodata-item"><small>Father</small><strong>{{ profile.father_name|default:'—' }}</strong></div><div class="biodata-item"><small>Father Occupation</small><strong>{{ profile.father_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Mother</small><strong>{{ profile.mother_name|default:'—' }}</strong></div><div class="biodata-item"><small>Mother Occupation</small><strong>{{ profile.mother_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Siblings</small><strong>{{ profile.siblings_summary|default:'—' }}</strong></div><div class="biodata-item"><small>Family Residence</small><strong>{{ profile.family_residence|default:'—' }}</strong></div><div class="biodata-item"><small>Family Type</small><strong>{{ profile.family_type|default:'—' }}</strong></div><div class="biodata-item"><small>Caste / Tribe</small><strong>{{ profile.caste_tribe|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Background</small><strong>{{ profile.family_background|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Values</small><strong>{{ profile.family_values|default:'—' }}</strong></div></div></section>
++  <section class="biodata-section"><h2>Education & Career</h2><div class="biodata-grid"><div class="biodata-item"><small>Education</small><strong>{{ profile.qualification|default:profile.education_level|default:profile.person.education|default:'—' }}</strong></div><div class="biodata-item"><small>Institution</small><strong>{{ profile.institution|default:'—' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ profile.profession|default:profile.person.occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Employer / Business</small><strong>{{ profile.employer_or_business|default:profile.person.employer_or_business|default:'—' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ profile.income_range|default:profile.person.income_range|default:'—' }}</strong></div><div class="biodata-item"><small>Experience</small><strong>{{ profile.years_experience|default:'—' }}</strong></div><div class="biodata-item"><small>House</small><strong>{{ profile.owns_house|yesno:'Yes,No,—' }}</strong></div><div class="biodata-item"><small>Car</small><strong>{{ profile.owns_car|yesno:'Yes,No,—' }}</strong></div></div></section>
++  <section class="biodata-section"><h2>Lifestyle & About</h2><div class="biodata-grid"><div class="biodata-item"><small>Languages</small><strong>{{ profile.languages|default:profile.person.languages|default:'—' }}</strong></div><div class="biodata-item"><small>Smoking</small><strong>{{ profile.smoking|default:'—' }}</strong></div><div class="biodata-item wide"><small>Interests</small><strong>{{ profile.interests|default:profile.person.interests|default:'—' }}</strong></div><div class="biodata-item wide"><small>Personal Statement</small><strong>{{ profile.personal_statement|default:'—' }}</strong></div></div></section>
++  {% if profile.preferences %}<section class="biodata-section"><h2>Preferences for Prospective Match</h2>{% with p=profile.preferences %}<div class="biodata-grid"><div class="biodata-item"><small>Age Range</small><strong>{{ p.minimum_age|default:'Any' }} – {{ p.maximum_age|default:'Any' }}</strong></div><div class="biodata-item"><small>Education</small><strong>{{ p.preferred_education_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ p.preferred_professions|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Location</small><strong>{{ p.preferred_cities|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ p.preferred_income_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Marital Status</small><strong>{{ p.preferred_marital_status_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Relocate</small><strong>{{ p.willingness_to_relocate|yesno:'Yes,No' }}</strong></div><div class="biodata-item wide"><small>Other Expectations</small><strong>{{ p.other_expectations|default:p.free_text_seeking_description|default:'—' }}</strong></div></div>{% endwith %}</section>{% endif %}
++</article>
++<div class="profile-lightbox" id="profileLightbox"><button type="button" aria-label="Close">×</button><img alt="Profile photo enlarged"></div>
++{% endblock %}{% block extra_js %}<script>(function(){const src=document.querySelector('.js-photo-lightbox'),box=document.getElementById('profileLightbox');if(!src||!box)return;const img=box.querySelector('img');src.onclick=()=>{img.src=src.src;box.classList.add('open')};box.onclick=e=>{if(e.target===box||e.target.tagName==='BUTTON')box.classList.remove('open')}})();</script>{% endblock %}
+diff --git a/templates/family_harmony/form.html b/templates/family_harmony/form.html
+index cfa8cb17c353453c0d3e540c7f9aa3cc7e463217..db5ccde7dd3d76374979af0f2de959adcfbdb1d1 100644
+--- a/templates/family_harmony/form.html
++++ b/templates/family_harmony/form.html
+@@ -1,156 +1,17 @@
+ {% extends 'base.html' %}
+ {% block title %}{{ title }} | Social Welfare{% endblock %}
+ {% block content %}
+-<section class="page-head">
+-  <p class="eyebrow">FAMILY HARMONY</p>
+-  <h1>{{ title }}</h1>
+-</section>
+-
+-<section class="panel form-panel">
+-  <form method="post" enctype="multipart/form-data">
+-    {% csrf_token %}
+-    <input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
+-
+-    <div class="form-layout">
+-      <div class="form-section">
+-        <h2>Person details</h2>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.title.label_tag }} {{ person_form.title }} {{ person_form.title.errors }}</div>
+-          <div class="form-field">{{ person_form.first_name.label_tag }} {{ person_form.first_name }} {{ person_form.first_name.errors }}</div>
+-          <div class="form-field">{{ person_form.middle_name.label_tag }} {{ person_form.middle_name }} {{ person_form.middle_name.errors }}</div>
+-          <div class="form-field">{{ person_form.last_name.label_tag }} {{ person_form.last_name }} {{ person_form.last_name.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.gender.label_tag }} {{ person_form.gender }} {{ person_form.gender.errors }}</div>
+-          <div class="form-field">{{ person_form.date_of_birth.label_tag }} {{ person_form.date_of_birth }} {{ person_form.date_of_birth.errors }}</div>
+-          <div class="form-field">{{ person_form.nationality.label_tag }} {{ person_form.nationality }} {{ person_form.nationality.errors }}</div>
+-          <div class="form-field">{{ person_form.marital_status.label_tag }} {{ person_form.marital_status }} {{ person_form.marital_status.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.identity_type.label_tag }} {{ person_form.identity_type }} {{ person_form.identity_type.errors }}</div>
+-          <div class="form-field">{{ person_form.identity_number.label_tag }} {{ person_form.identity_number }} {{ person_form.identity_number.errors }}</div>
+-          <div class="form-field">{{ person_form.mobile.label_tag }} {{ person_form.mobile }} {{ person_form.mobile.errors }}</div>
+-          <div class="form-field">{{ person_form.whatsapp_number.label_tag }} {{ person_form.whatsapp_number }} {{ person_form.whatsapp_number.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.email.label_tag }} {{ person_form.email }} {{ person_form.email.errors }}</div>
+-          <div class="form-field">{{ person_form.city.label_tag }} {{ person_form.city }} {{ person_form.city.errors }}</div>
+-          <div class="form-field">{{ person_form.province.label_tag }} {{ person_form.province }} {{ person_form.province.errors }}</div>
+-          <div class="form-field">{{ person_form.country.label_tag }} {{ person_form.country }} {{ person_form.country.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ person_form.current_address.label_tag }} {{ person_form.current_address }} {{ person_form.current_address.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ person_form.permanent_address.label_tag }} {{ person_form.permanent_address }} {{ person_form.permanent_address.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.region.label_tag }} {{ person_form.region }} {{ person_form.region.errors }}</div>
+-          <div class="form-field">{{ person_form.local_council.label_tag }} {{ person_form.local_council }} {{ person_form.local_council.errors }}</div>
+-          <div class="form-field">{{ person_form.jamatkhana.label_tag }} {{ person_form.jamatkhana }} {{ person_form.jamatkhana.errors }}</div>
+-          <div class="form-field">{{ person_form.photo.label_tag }} {{ person_form.photo }} {{ person_form.photo.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.education.label_tag }} {{ person_form.education }} {{ person_form.education.errors }}</div>
+-          <div class="form-field">{{ person_form.occupation.label_tag }} {{ person_form.occupation }} {{ person_form.occupation.errors }}</div>
+-          <div class="form-field">{{ person_form.employer_or_business.label_tag }} {{ person_form.employer_or_business }} {{ person_form.employer_or_business.errors }}</div>
+-          <div class="form-field">{{ person_form.income_range.label_tag }} {{ person_form.income_range }} {{ person_form.income_range.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ person_form.interests.label_tag }} {{ person_form.interests }} {{ person_form.interests.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ person_form.facebook_url.label_tag }} {{ person_form.facebook_url }} {{ person_form.facebook_url.errors }}</div>
+-          <div class="form-field">{{ person_form.instagram_url.label_tag }} {{ person_form.instagram_url }} {{ person_form.instagram_url.errors }}</div>
+-          <div class="form-field">{{ person_form.linkedin_url.label_tag }} {{ person_form.linkedin_url }} {{ person_form.linkedin_url.errors }}</div>
+-          <div class="form-field">{{ person_form.other_social_url.label_tag }} {{ person_form.other_social_url }} {{ person_form.other_social_url.errors }}</div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section">
+-        <h2>Harmony profile</h2>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ profile_form.portfolio.label_tag }} {{ profile_form.portfolio }} {{ profile_form.portfolio.errors }}</div>
+-          <div class="form-field">{{ profile_form.status.label_tag }} {{ profile_form.status }} {{ profile_form.status.errors }}</div>
+-          <div class="form-field">{{ profile_form.height_cm.label_tag }} {{ profile_form.height_cm }} {{ profile_form.height_cm.errors }}</div>
+-          <div class="form-field">{{ profile_form.education_level.label_tag }} {{ profile_form.education_level }} {{ profile_form.education_level.errors }}</div>
+-          <div class="form-field">{{ profile_form.years_experience.label_tag }} {{ profile_form.years_experience }} {{ profile_form.years_experience.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ profile_form.qualification.label_tag }} {{ profile_form.qualification }} {{ profile_form.qualification.errors }}</div>
+-          <div class="form-field">{{ profile_form.institution.label_tag }} {{ profile_form.institution }} {{ profile_form.institution.errors }}</div>
+-          <div class="form-field">{{ profile_form.profession.label_tag }} {{ profile_form.profession }} {{ profile_form.profession.errors }}</div>
+-          <div class="form-field">{{ profile_form.income_range.label_tag }} {{ profile_form.income_range }} {{ profile_form.income_range.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ profile_form.place_of_origin.label_tag }} {{ profile_form.place_of_origin }} {{ profile_form.place_of_origin.errors }}</div>
+-          <div class="form-field">{{ profile_form.languages.label_tag }} {{ profile_form.languages }} {{ profile_form.languages.errors }}</div>
+-          <div class="form-field">{{ profile_form.smoking.label_tag }} {{ profile_form.smoking }} {{ profile_form.smoking.errors }}</div>
+-          <div class="form-field">{{ profile_form.financial_status.label_tag }} {{ profile_form.financial_status }} {{ profile_form.financial_status.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.family_background.label_tag }} {{ profile_form.family_background }} {{ profile_form.family_background.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.family_values.label_tag }} {{ profile_form.family_values }} {{ profile_form.family_values.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.personality.label_tag }} {{ profile_form.personality }} {{ profile_form.personality.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.interests.label_tag }} {{ profile_form.interests }} {{ profile_form.interests.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ profile_form.marital_status.label_tag }} {{ profile_form.marital_status }} {{ profile_form.marital_status.errors }}</div>
+-          <div class="form-field">{{ profile_form.children_count.label_tag }} {{ profile_form.children_count }} {{ profile_form.children_count.errors }}</div>
+-          <div class="form-field">{{ profile_form.owning_region.label_tag }} {{ profile_form.owning_region }} {{ profile_form.owning_region.errors }}</div>
+-          <div class="form-field">{{ profile_form.owning_local_council.label_tag }} {{ profile_form.owning_local_council }} {{ profile_form.owning_local_council.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ profile_form.owning_jamatkhana.label_tag }} {{ profile_form.owning_jamatkhana }} {{ profile_form.owning_jamatkhana.errors }}</div>
+-          <div class="form-field">{{ profile_form.assigned_officer.label_tag }} {{ profile_form.assigned_officer }} {{ profile_form.assigned_officer.errors }}</div>
+-          <div class="form-field">{{ profile_form.facebook_url.label_tag }} {{ profile_form.facebook_url }} {{ profile_form.facebook_url.errors }}</div>
+-          <div class="form-field">{{ profile_form.instagram_url.label_tag }} {{ profile_form.instagram_url }} {{ profile_form.instagram_url.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.personal_statement.label_tag }} {{ profile_form.personal_statement }} {{ profile_form.personal_statement.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.expectations.label_tag }} {{ profile_form.expectations }} {{ profile_form.expectations.errors }}</div>
+-        </div>
+-
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ profile_form.notes.label_tag }} {{ profile_form.notes }} {{ profile_form.notes.errors }}</div>
+-        </div>
+-      </div>
+-    </div>
+-
+-    {% if preference_form %}<div class="form-section"><h2>Preferences for Prospective Match</h2><p class="muted">Use Ctrl/Cmd to select multiple items.</p><div class="form-row">{% for field in preference_form %}<div class="form-field">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endfor %}</div></div>{% endif %}
+-
+-    <div class="form-actions">
+-      <button class="primary">Save profile</button>
+-    </div>
++<section class="profile-editor-shell">
++  <div class="profile-editor-head">
++    <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><p>Marriage Profile · responsive staff entry</p></div>
++    <div class="profile-editor-head-actions"><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div>
++  </div>
++  <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}<input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
++    {% include 'family_harmony/_marriage_form_fields.html' %}
++    <div class="sticky-form-actions"><button class="primary" type="submit">Save profile</button></div>
+   </form>
+ </section>
+-{% endblock %}
+\ No newline at end of file
++{% endblock %}
++{% block extra_js %}<script>
++(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});})();
++</script>{% endblock %}
+diff --git a/templates/family_harmony/list.html b/templates/family_harmony/list.html
+index d10aca36cc98d816bad60cda9f7bf3a15f4e7a7c..91b1643c5907590ed97c392f914fbe40038ae529 100644
+--- a/templates/family_harmony/list.html
++++ b/templates/family_harmony/list.html
+@@ -49,7 +49,7 @@
+ </section>
+ 
+ <div class="list-results">
+-<section class="panel table-wrap">
++<section class="panel table-wrap desktop-profile-table mobile-hidden">
+   <table>
+     <thead>
+       <tr>
+@@ -88,6 +88,7 @@
+         <td class="row-actions">
+           <a class="action-button view" href="{% url 'harmony_detail' profile.id %}" title="View profile"><span aria-hidden="true">◉</span> View</a>
+           <a class="action-button edit" href="{% url 'harmony_edit' profile.id %}" title="Edit profile"><span aria-hidden="true">✎</span> Edit</a>
++          <a class="action-button view" href="{% url 'harmony_export' profile.id 'pdf' %}" title="Download profile PDF"><span aria-hidden="true">⇩</span> PDF</a>
+           <a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a>
+         </td>
+       </tr>
+@@ -97,6 +98,9 @@
+     </tbody>
+   </table>
+ </section>
++<div class="mobile-profile-cards">
++{% for profile in profiles %}<article class="compact-profile-card">{% if profile.person.photo %}<img src="{{ profile.person.photo.url }}" alt="">{% else %}<span class="initials">{{ profile.person.first_name|first }}</span>{% endif %}<div><h3>{{ profile.person.full_name }}</h3><div class="compact-meta"><span>Age: {{ profile.person.age|default:'—' }}</span><span>{{ profile.person.gender|default:'—' }}</span><span>{{ profile.education_level|default:profile.person.education|default:'Education —' }}</span><span>{{ profile.profession|default:profile.person.occupation|default:'Profession —' }}</span><span>House: {{ profile.owns_house|yesno:'Yes,No,—' }}</span><span>Car: {{ profile.owns_car|yesno:'Yes,No,—' }}</span><span>{{ profile.owning_jamatkhana|default:'JK —' }}</span><span>{{ profile.get_status_display }}</span></div></div><div class="compact-actions"><a class="action-button view" href="{% url 'harmony_detail' profile.id %}">View</a><a class="action-button edit" href="{% url 'harmony_edit' profile.id %}">Edit</a><a class="action-button view" href="{% url 'harmony_export' profile.id 'pdf' %}">PDF</a><a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank">WhatsApp</a></div></article>{% empty %}<p class="muted">No profiles found.</p>{% endfor %}
++</div>
+ {% include 'partials/pagination.html' %}
+ </div>
+ {% endblock %}
+diff --git a/templates/family_harmony/public_form.html b/templates/family_harmony/public_form.html
+index e36f429a457126f5259027e00d65c628db70caf0..fb2393c935b26031cae6e5030317476bb833a4eb 100644
+--- a/templates/family_harmony/public_form.html
++++ b/templates/family_harmony/public_form.html
+@@ -1,24 +1,7 @@
+-{% load static %}<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"><style>
+-body{margin:0;background:#f3f7f5;color:#18313b}.public-wrap{max-width:1500px;margin:auto;padding:12px}.public-card{background:#fff;border:1px solid #dce7e2;border-radius:14px;padding:20px;box-shadow:0 8px 28px #18313b12}.public-head{display:grid;grid-template-columns:1fr 150px;gap:18px;align-items:start}.public-head h1{margin:3px 0;font-size:34px}.photo-box{width:140px;height:160px;border:1px dashed #9bb9b1;border-radius:8px;display:grid;place-items:center;overflow:hidden;background:#f7faf8}.photo-box img{width:100%;height:100%;object-fit:cover}.section{margin-top:16px;padding-top:9px;border-top:2px solid #2d6a5f}.section h2{font-size:18px;margin:0 0 9px}.grid6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}.field label{display:block;font:700 11px Arial,sans-serif;margin-bottom:4px;color:#344b52}.field input,.field select,.field textarea{width:100%;box-sizing:border-box;min-height:38px;padding:7px}.field textarea{min-height:58px}.span2{grid-column:span 2}.span3{grid-column:span 3}.span6{grid-column:1/-1}.privacy{font-size:.86rem;background:#f6faf8;padding:10px;border-radius:8px}.submit{min-height:44px;width:100%;margin-top:14px}.id-status{font-size:11px;margin-top:3px}.hint{font-size:11px;color:#6b7d82}.errorbox{padding:10px;background:#fff1f0;color:#9d241e;border-radius:8px}.select2-lite{min-width:0}.select2-lite-input{min-width:0}
+-@media(max-width:1100px){.grid6{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.public-head{grid-template-columns:1fr 105px}.photo-box{width:100px;height:120px}.grid6{grid-template-columns:repeat(2,minmax(0,1fr))}.span3{grid-column:1/-1}}@media(max-width:420px){.public-wrap{padding:5px}.public-card{padding:10px}.public-head h1{font-size:24px}.grid6{grid-template-columns:1fr}.span2,.span3,.span6{grid-column:auto}.field input,.field select{font-size:16px}}
+-</style></head><body><main class="public-wrap"><section class="public-card"><div class="public-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>Marriage Profile Submission Form</h1><p class="muted">Secure public form · no username or password required.</p></div><div><div class="photo-box"><img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder">Profile photo</span></div><div style="margin-top:6px">{{ person_form.photo }}</div></div></div>{% if error %}<div class="errorbox">{{ error }}</div>{% endif %}<form method="post" enctype="multipart/form-data" id="marriage-profile-form">{% csrf_token %}
+-<div class="section"><h2>1. Personal Information</h2><div class="grid6">
+-{% for field in person_form %}{% if field.name != 'photo' and field.name != 'region' and field.name != 'local_council' and field.name != 'jamatkhana' and field.name != 'current_address' and field.name != 'permanent_address' and field.name != 'interests' and field.name != 'facebook_url' and field.name != 'linkedin_url' and field.name != 'instagram_url' and field.name != 'other_social_url' %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.name == 'identity_number' %}<div id="id-status" class="id-status"></div>{% endif %}</div>{% endif %}{% endfor %}
+-<div class="field span3">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}</div><div class="field span3">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}</div></div></div>
+-<div class="section"><h2>2. Organization</h2><p class="hint">Search Jamatkhana / Council by any part of “JK - Local Council - Regional Council”. Selecting a JK automatically fills LC and RC; either can then be changed.</p><div class="grid6"><div class="field span2">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}</div><div class="field span2">{{ person_form.local_council.label_tag }}{{ person_form.local_council }}</div><div class="field span2">{{ person_form.region.label_tag }}{{ person_form.region }}</div></div></div>
+-<div class="section"><h2>3. Family, Education & Career</h2><div class="grid6">{% for field in profile_form %}{% if field.name != 'status' and field.name != 'portfolio' and field.name != 'owning_region' and field.name != 'owning_local_council' and field.name != 'owning_jamatkhana' and field.name != 'health_information' and field.name != 'disabilities' and field.name != 'notes' and field.name != 'facebook_url' and field.name != 'instagram_url' and field.name != 'linkedin_url' %}<div class="field {% if field.field.widget.input_type == 'textarea' %}span3{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div></div>
+-<div class="section"><h2>4. Preferences for Prospective Match</h2><p class="hint">Choose “Any” where you have no restriction. Multiple selections are allowed.</p><div class="grid6">{% for field in preference_form %}<div class="field {% if field.field.widget.input_type == 'textarea' %}span3{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}</div></div>
+-<div class="section"><h2>5. Confidentiality & Consent</h2><div class="privacy">Information is used only for Family Harmony matchmaking and authorized review. By submitting, you confirm the information is accurate and consent to its use for this purpose.</div></div><button class="primary submit" id="submit-button">Submit for review</button></form>
+-{% for v in settings.education_levels %}{% if forloop.first %}<datalist id="person-education-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.occupation_options %}{% if forloop.first %}<datalist id="person-occupation-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.income_ranges %}{% if forloop.first %}<datalist id="person-income_range-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.marital_status_options %}{% if forloop.first %}<datalist id="person-marital_status-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.language_options %}{% if forloop.first %}<datalist id="person-languages-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.nationality_options %}{% if forloop.first %}<datalist id="person-nationality-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.country_options %}{% if forloop.first %}<datalist id="person-country-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-{% for v in settings.caste_tribe_options %}{% if forloop.first %}<datalist id="caste_tribe-options">{% endif %}<option value="{{ v }}">{% if forloop.last %}</datalist>{% endif %}{% endfor %}
+-</section></main><script src="{% static 'app.js' %}"></script><script>
+-const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{let f=photo.files[0];if(f){preview.src=URL.createObjectURL(f);preview.hidden=false;ph.hidden=true}});
+-const id=document.getElementById('id_identity_number'),status=document.getElementById('id-status'),submit=document.getElementById('submit-button');let timer;if(id)id.addEventListener('input',()=>{clearTimeout(timer);status.textContent='';submit.disabled=false;if(id.value.trim().length<5)return;timer=setTimeout(async()=>{try{let r=await fetch('{% url "identity_duplicate_check" %}?identity_number='+encodeURIComponent(id.value.trim()));let d=await r.json();status.textContent=d.exists?'Record already exists. Please contact the Family Harmony team.':'ID number is available for a new record.';status.style.color=d.exists?'#9d241e':'#2d6a5f';submit.disabled=d.exists}catch(e){}},350)});
+-const jk=document.getElementById('id_jamatkhana'),lc=document.getElementById('id_local_council'),rc=document.getElementById('id_region');if(jk)jk.addEventListener('change',()=>{let opt=jk.options[jk.selectedIndex];if(!opt||!opt.text)return;let parts=opt.text.split(' - ');if(parts.length>=3){[...lc.options].some(o=>{if(o.text.startsWith(parts[1]+' - ')){lc.value=o.value;lc.dispatchEvent(new Event('change',{bubbles:true}));return true}});[...rc.options].some(o=>{if(o.text===parts[2]){rc.value=o.value;rc.dispatchEvent(new Event('change',{bubbles:true}));return true}})}});
++{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Marriage Profile Submission Form</title><link rel="stylesheet" href="{% static 'app.css' %}"></head><body class="public-profile-page"><main class="profile-editor-shell public-profile-shell">
++<div class="profile-editor-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>Marriage Profile Submission Form</h1><p>Secure public form · no username or password required.</p></div></div>
++{% if error %}<div class="profile-errors">{{ error }}</div>{% endif %}
++<form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}{% include 'family_harmony/_marriage_form_fields.html' %}<section class="mp-section"><h2><span>7</span> Confidentiality & Consent</h2><div class="privacy-note">Information is used only for Family Harmony matchmaking and authorized review. By submitting, you confirm the information is accurate and consent to its use for this purpose.</div></section><div class="sticky-form-actions"><button class="primary" type="submit" id="submit-button">Submit for review</button></div></form>
++</main><script src="{% static 'app.js' %}"></script><script>
++(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});const id=document.getElementById('id_identity_number'),status=document.getElementById('id-status'),submit=document.getElementById('submit-button');let timer;if(id)id.addEventListener('input',()=>{clearTimeout(timer);if(status)status.textContent='';if(submit)submit.disabled=false;if(id.value.trim().length<5)return;timer=setTimeout(async()=>{try{const r=await fetch('{% url "identity_duplicate_check" %}?identity_number='+encodeURIComponent(id.value.trim()));const d=await r.json();if(status){status.textContent=d.exists?'Record already exists. Please contact the Family Harmony team.':'ID number is available for a new record.';status.style.color=d.exists?'#a52828':'#236c58'}if(submit)submit.disabled=d.exists}catch(e){}},350)});})();
+ </script></body></html>
+diff --git a/templates/people/detail.html b/templates/people/detail.html
+index 471750144d53311d7ed14fad7f5bfd646996b57a..2e29c47156a4be8b57358c001e8929e31122fe4e 100644
+--- a/templates/people/detail.html
++++ b/templates/people/detail.html
+@@ -1 +1,8 @@
+-{% extends 'base.html' %}{% block title %}{{ person.full_name }} | Social Welfare{% endblock %}{% block content %}<section class="page-head inline"><div><p class="eyebrow">PERSON RECORD</p><h1>{{ person.full_name }}</h1><p class="muted">{{ person.city|default:'Location not recorded' }} · {{ person.age|default:'Age not recorded' }}</p></div><div class="actions"><a class="primary" href="{% url 'person_edit' person.id %}">Edit</a><a class="secondary" href="{% url 'person_delete' person.id %}">Archive</a><a class="secondary" href="{% url 'person_export' person.id 'pdf' %}">Export PDF</a><a class="secondary" href="{% url 'person_export' person.id 'jpg' %}">Export JPG</a></div></section><section class="panel detail-hero">{% if person.photo %}<img src="{{ person.photo.url }}" alt="Synthetic avatar for {{ person.full_name }}">{% endif %}<div><h2>{{ person.full_name }}</h2><p>{{ person.title|default:'Person' }} · {{ person.nationality|default:'—' }} · {{ person.marital_status|default:'—' }}</p><p class="muted">Created {{ person.created_at|date:'j M Y' }} · {% if person.is_demo %}Fictional demo record{% else %}Staff record{% endif %}</p></div></section><section class="panel"><h2>Identity and contact</h2><div class="detail-grid"><div><small>Identity type</small><strong>{{ person.get_identity_type_display|default:'—' }}</strong></div><div><small>Identity number</small><strong>{{ person.masked_identity_number|default:'—' }}</strong></div><div><small>Date of birth / age</small><strong>{{ person.date_of_birth|date:'j M Y'|default:'—' }} / {{ person.age|default:'—' }}</strong></div><div><small>Gender</small><strong>{{ person.gender|default:'—' }}</strong></div><div><small>Mobile</small><strong>{{ person.mobile|default:'—' }}</strong></div><div><small>Alternate mobile</small><strong>{{ person.alternate_mobile|default:'—' }}</strong></div><div><small>WhatsApp</small><strong>{{ person.whatsapp_number|default:'—' }}</strong></div><div><small>Email</small><strong>{{ person.email|default:'—' }}</strong></div></div></section><section class="panel"><h2>Address and organization</h2><div class="detail-grid"><div><small>Current address</small><strong>{{ person.current_address|default:'—' }}</strong></div><div><small>Permanent address</small><strong>{{ person.permanent_address|default:'—' }}</strong></div><div><small>City / province / country</small><strong>{{ person.city|default:'—' }} / {{ person.province|default:'—' }} / {{ person.country|default:'—' }}</strong></div><div><small>Region</small><strong>{{ person.region|default:'—' }}</strong></div><div><small>Local Council</small><strong>{{ person.local_council|default:'—' }}</strong></div><div><small>Jamatkhana</small><strong>{{ person.jamatkhana|default:'—' }}</strong></div></div></section><section class="panel"><h2>Personal and social</h2><div class="detail-grid"><div><small>Education</small><strong>{{ person.education|default:'—' }}</strong></div><div><small>Education details</small><strong>{{ person.education_details|default:'—' }}</strong></div><div><small>Occupation</small><strong>{{ person.occupation|default:'—' }}</strong></div><div><small>Employer or business</small><strong>{{ person.employer_or_business|default:'—' }}</strong></div><div><small>Income</small><strong>{{ person.income_range|default:'—' }}</strong></div><div><small>Languages</small><strong>{{ person.languages|default:'—' }}</strong></div><div><small>Interests</small><strong>{{ person.interests|default:'—' }}</strong></div><div><small>Social links</small><strong>{{ person.facebook_url|default:'—' }}<br>{{ person.linkedin_url|default:'—' }}<br>{{ person.instagram_url|default:'—' }}</strong></div></div></section>{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block title %}{{ person.full_name }} | Social Welfare{% endblock %}{% block content %}
++<article class="marriage-biodata">
++<header class="marriage-biodata-head">{% if person.photo %}<img class="marriage-biodata-photo js-photo-lightbox" src="{{ person.photo.url }}" alt="{{ person.full_name }}">{% else %}<div class="marriage-biodata-photo placeholder">{{ person.first_name|first }}</div>{% endif %}<div><p class="eyebrow" style="color:#b9d8e2">CENTRAL REGISTRY</p><h1>{{ person.full_name }}</h1><p>{{ person.serial_number }} · {{ person.city|default:'Location not recorded' }}</p><div class="biodata-badges"><span>{{ person.age|default:'—' }} yrs</span><span>{{ person.gender|default:'—' }}</span><span>{{ person.marital_status|default:'—' }}</span>{% if person.harmony_profile %}<span>Family Harmony</span>{% endif %}</div></div><div class="biodata-actions"><a class="primary" href="{% url 'person_edit' person.id %}">Edit</a><a class="secondary" href="{% url 'person_export' person.id 'pdf' %}">Export PDF</a><a class="secondary" href="{% url 'person_export' person.id 'jpg' %}">Export JPG</a>{% if person.harmony_profile %}<a class="action-button unit" href="{% url 'harmony_detail' person.harmony_profile.id %}">Harmony</a>{% else %}<a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}">+ Harmony</a>{% endif %}<a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank">WhatsApp</a><a class="secondary" href="{% url 'person_delete' person.id %}">Archive</a></div></header>
++<section class="biodata-section"><h2>Personal Information</h2><div class="biodata-grid"><div class="biodata-item"><small>Gender</small><strong>{{ person.gender|default:'—' }}</strong></div><div class="biodata-item"><small>Date of Birth / Age</small><strong>{{ person.date_of_birth|date:'j M Y'|default:'—' }} / {{ person.age|default:'—' }}</strong></div><div class="biodata-item"><small>Nationality</small><strong>{{ person.nationality|default:'—' }}</strong></div><div class="biodata-item"><small>Identity</small><strong>{{ person.get_identity_type_display|default:'—' }} · {{ person.masked_identity_number|default:'—' }}</strong></div><div class="biodata-item"><small>Mobile</small><strong>{{ person.mobile|default:'—' }}</strong></div><div class="biodata-item"><small>WhatsApp</small><strong>{{ person.whatsapp_number|default:'—' }}</strong></div><div class="biodata-item"><small>Email</small><strong>{{ person.email|default:'—' }}</strong></div><div class="biodata-item"><small>Jamatkhana</small><strong>{{ person.jamatkhana|default:'—' }}</strong></div><div class="biodata-item"><small>Local Council</small><strong>{{ person.local_council|default:'—' }}</strong></div><div class="biodata-item"><small>Regional Council</small><strong>{{ person.region|default:'—' }}</strong></div><div class="biodata-item wide"><small>Current Address</small><strong>{{ person.current_address|default:'—' }}</strong></div><div class="biodata-item wide"><small>Permanent Address</small><strong>{{ person.permanent_address|default:'—' }}</strong></div></div></section>
++<section class="biodata-section"><h2>Education & Career</h2><div class="biodata-grid"><div class="biodata-item"><small>Education</small><strong>{{ person.education|default:'—' }}</strong></div><div class="biodata-item"><small>Occupation</small><strong>{{ person.occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Employer / Business</small><strong>{{ person.employer_or_business|default:'—' }}</strong></div><div class="biodata-item"><small>Income Range</small><strong>{{ person.income_range|default:'—' }}</strong></div><div class="biodata-item wide"><small>Languages</small><strong>{{ person.languages|default:'—' }}</strong></div><div class="biodata-item wide"><small>Interests</small><strong>{{ person.interests|default:'—' }}</strong></div></div></section>
++<section class="biodata-section"><h2>Documents</h2><div class="biodata-grid"><div class="biodata-item"><small>CNIC Front</small><strong>{% if person.cnic_front %}<a href="{{ person.cnic_front.url }}" target="_blank">View image</a>{% else %}—{% endif %}</strong></div><div class="biodata-item"><small>CNIC Back</small><strong>{% if person.cnic_back %}<a href="{{ person.cnic_back.url }}" target="_blank">View image</a>{% else %}—{% endif %}</strong></div></div></section>
++</article><div class="profile-lightbox" id="profileLightbox"><button type="button">×</button><img alt="Profile photo enlarged"></div>
++{% endblock %}{% block extra_js %}<script>(function(){const src=document.querySelector('.js-photo-lightbox'),box=document.getElementById('profileLightbox');if(!src||!box)return;const img=box.querySelector('img');src.onclick=()=>{img.src=src.src;box.classList.add('open')};box.onclick=e=>{if(e.target===box||e.target.tagName==='BUTTON')box.classList.remove('open')}})();</script>{% endblock %}
+diff --git a/templates/people/form.html b/templates/people/form.html
+index 6fce0c28d1224eb003d799c6e0caaad4b29eff57..9e7da69291b4423f13d60d38ee73f93d29c8f86d 100644
+--- a/templates/people/form.html
++++ b/templates/people/form.html
+@@ -1,77 +1,16 @@
+ {% extends 'base.html' %}
+ {% block title %}{{ title }} | Social Welfare{% endblock %}
+ {% block content %}
+-<section class="page-head">
+-  <p class="eyebrow">CENTRAL REGISTRY</p>
+-  <h1>{{ title }}</h1>
+-</section>
+-
+-<section class="panel form-panel">
+-  <form method="post" enctype="multipart/form-data">
+-    {% csrf_token %}
+-    <div class="form-layout">
+-      <div class="form-section">
+-        <h2>Person details</h2>
+-        {% if form.non_field_errors %}<div class="form-panel-errors">{{ form.non_field_errors }}</div>{% endif %}
+-
+-        <div class="form-row">
+-          <div class="form-field">{{ form.title.label_tag }} {{ form.title }} {{ form.title.errors }}</div>
+-          <div class="form-field">{{ form.first_name.label_tag }} {{ form.first_name }} {{ form.first_name.errors }}</div>
+-          <div class="form-field">{{ form.middle_name.label_tag }} {{ form.middle_name }} {{ form.middle_name.errors }}</div>
+-          <div class="form-field">{{ form.last_name.label_tag }} {{ form.last_name }} {{ form.last_name.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.gender.label_tag }} {{ form.gender }} {{ form.gender.errors }}</div>
+-          <div class="form-field">{{ form.date_of_birth.label_tag }} {{ form.date_of_birth }} {{ form.date_of_birth.errors }}</div>
+-          <div class="form-field">{{ form.nationality.label_tag }} {{ form.nationality }} {{ form.nationality.errors }}</div>
+-          <div class="form-field">{{ form.marital_status.label_tag }} {{ form.marital_status }} {{ form.marital_status.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.identity_type.label_tag }} {{ form.identity_type }} {{ form.identity_type.errors }}</div>
+-          <div class="form-field">{{ form.identity_number.label_tag }} {{ form.identity_number }} {{ form.identity_number.errors }}</div>
+-          <div class="form-field">{{ form.mobile.label_tag }} {{ form.mobile }} {{ form.mobile.errors }}</div>
+-          <div class="form-field">{{ form.alternate_mobile.label_tag }} {{ form.alternate_mobile }} {{ form.alternate_mobile.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.whatsapp_number.label_tag }} {{ form.whatsapp_number }} {{ form.whatsapp_number.errors }}</div>
+-          <div class="form-field">{{ form.email.label_tag }} {{ form.email }} {{ form.email.errors }}</div>
+-          <div class="form-field">{{ form.city.label_tag }} {{ form.city }} {{ form.city.errors }}</div>
+-          <div class="form-field">{{ form.province.label_tag }} {{ form.province }} {{ form.province.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.country.label_tag }} {{ form.country }} {{ form.country.errors }}</div>
+-          <div class="form-field">{{ form.region.label_tag }} {{ form.region }} {{ form.region.errors }}</div>
+-          <div class="form-field">{{ form.local_council.label_tag }} {{ form.local_council }} {{ form.local_council.errors }}</div>
+-          <div class="form-field">{{ form.jamatkhana.label_tag }} {{ form.jamatkhana }} {{ form.jamatkhana.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ form.current_address.label_tag }} {{ form.current_address }} {{ form.current_address.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ form.permanent_address.label_tag }} {{ form.permanent_address }} {{ form.permanent_address.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.education.label_tag }} {{ form.education }} {{ form.education.errors }}</div>
+-          <div class="form-field">{{ form.occupation.label_tag }} {{ form.occupation }} {{ form.occupation.errors }}</div>
+-          <div class="form-field">{{ form.employer_or_business.label_tag }} {{ form.employer_or_business }} {{ form.employer_or_business.errors }}</div>
+-          <div class="form-field">{{ form.income_range.label_tag }} {{ form.income_range }} {{ form.income_range.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.languages.label_tag }} {{ form.languages }} {{ form.languages.errors }}</div>
+-          <div class="form-field field-full">{{ form.interests.label_tag }} {{ form.interests }} {{ form.interests.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field">{{ form.photo.label_tag }} {{ form.photo }} {{ form.photo.errors }}</div>
+-          <div class="form-field">{{ form.facebook_url.label_tag }} {{ form.facebook_url }} {{ form.facebook_url.errors }}</div>
+-          <div class="form-field">{{ form.instagram_url.label_tag }} {{ form.instagram_url }} {{ form.instagram_url.errors }}</div>
+-          <div class="form-field">{{ form.linkedin_url.label_tag }} {{ form.linkedin_url }} {{ form.linkedin_url.errors }}</div>
+-        </div>
+-        <div class="form-row">
+-          <div class="form-field field-full">{{ form.other_social_url.label_tag }} {{ form.other_social_url }} {{ form.other_social_url.errors }}</div>
+-        </div>
+-      </div>
+-    </div>
+-    <div class="form-actions"><button class="primary" type="submit">Save person</button></div>
++<section class="profile-editor-shell">
++  <div class="profile-editor-head"><div><p class="eyebrow">CENTRAL REGISTRY</p><h1>{{ title }}</h1><p>Person details · responsive person record</p></div></div>
++  <form method="post" enctype="multipart/form-data" class="marriage-profile-form"><div class="form-row" hidden></div>{% csrf_token %}
++    {% if form.non_field_errors %}<div class="profile-errors">{{ form.non_field_errors }}</div>{% endif %}
++    <section class="mp-section"><h2><span>1</span> Personal Information</h2><div class="mp-personal-grid"><div class="mp-photo-column"><label class="mp-photo-box" for="id_photo">{% if form.instance.photo %}<img id="photoPreview" src="{{ form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder">Click to upload<br>profile photo</span>{% endif %}</label><div class="mp-file-field">{{ form.photo }}{{ form.photo.errors }}<small>Photo is compressed automatically.</small></div></div><div class="mp-fields"><div class="mp-grid mp-grid-4 form-row">
++      <div class="form-field">{{ form.title.label_tag }}{{ form.title }}{{ form.title.errors }}</div><div class="form-field">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div><div class="form-field">{{ form.middle_name.label_tag }}{{ form.middle_name }}{{ form.middle_name.errors }}</div><div class="form-field">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div><div class="form-field">{{ form.gender.label_tag }}{{ form.gender }}{{ form.gender.errors }}</div><div class="form-field">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}{{ form.date_of_birth.errors }}</div><div class="form-field">{{ form.marital_status.label_tag }}{{ form.marital_status }}{{ form.marital_status.errors }}</div><div class="form-field">{{ form.nationality.label_tag }}{{ form.nationality }}{{ form.nationality.errors }}</div><div class="form-field">{{ form.identity_type.label_tag }}{{ form.identity_type }}{{ form.identity_type.errors }}</div><div class="form-field">{{ form.identity_number.label_tag }}{{ form.identity_number }}{{ form.identity_number.errors }}</div><div class="form-field">{{ form.mobile.label_tag }}{{ form.mobile }}{{ form.mobile.errors }}</div><div class="form-field">{{ form.alternate_mobile.label_tag }}{{ form.alternate_mobile }}{{ form.alternate_mobile.errors }}</div><div class="form-field">{{ form.whatsapp_number.label_tag }}{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div><div class="form-field">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div><div class="form-field">{{ form.city.label_tag }}{{ form.city }}{{ form.city.errors }}</div><div class="form-field">{{ form.province.label_tag }}{{ form.province }}{{ form.province.errors }}</div><div class="form-field">{{ form.country.label_tag }}{{ form.country }}{{ form.country.errors }}</div><div class="form-field">{{ form.jamatkhana.label_tag }}{{ form.jamatkhana }}{{ form.jamatkhana.errors }}<small>LC and RC are assigned automatically.</small></div></div><div class="mp-grid mp-grid-2"><div class="form-field">{{ form.current_address.label_tag }}{{ form.current_address }}{{ form.current_address.errors }}</div><div class="form-field">{{ form.permanent_address.label_tag }}{{ form.permanent_address }}{{ form.permanent_address.errors }}</div></div></div></div></section>
++    <section class="mp-section"><h2><span>2</span> CNIC Images</h2><div class="mp-grid mp-grid-2"><div class="form-field">{{ form.cnic_front.label_tag }}{{ form.cnic_front }}{{ form.cnic_front.errors }}{% if form.instance.cnic_front %}<a class="file-current" href="{{ form.instance.cnic_front.url }}" target="_blank">View current front</a>{% endif %}</div><div class="form-field">{{ form.cnic_back.label_tag }}{{ form.cnic_back }}{{ form.cnic_back.errors }}{% if form.instance.cnic_back %}<a class="file-current" href="{{ form.instance.cnic_back.url }}" target="_blank">View current back</a>{% endif %}</div></div></section>
++    <section class="mp-section"><h2><span>3</span> Education & Career</h2><div class="mp-grid mp-grid-4"><div class="form-field">{{ form.education.label_tag }}{{ form.education }}{{ form.education.errors }}</div><div class="form-field">{{ form.occupation.label_tag }}{{ form.occupation }}{{ form.occupation.errors }}</div><div class="form-field">{{ form.employer_or_business.label_tag }}{{ form.employer_or_business }}{{ form.employer_or_business.errors }}</div><div class="form-field">{{ form.income_range.label_tag }}{{ form.income_range }}{{ form.income_range.errors }}</div><div class="form-field mp-span-2">{{ form.languages.label_tag }}{{ form.languages }}{{ form.languages.errors }}</div><div class="form-field mp-span-2">{{ form.interests.label_tag }}{{ form.interests }}{{ form.interests.errors }}</div></div></section>
++    <section class="mp-section"><h2><span>4</span> Social Links</h2><div class="mp-grid mp-grid-4"><div class="form-field">{{ form.facebook_url.label_tag }}{{ form.facebook_url }}{{ form.facebook_url.errors }}</div><div class="form-field">{{ form.instagram_url.label_tag }}{{ form.instagram_url }}{{ form.instagram_url.errors }}</div><div class="form-field">{{ form.linkedin_url.label_tag }}{{ form.linkedin_url }}{{ form.linkedin_url.errors }}</div><div class="form-field">{{ form.other_social_url.label_tag }}{{ form.other_social_url }}{{ form.other_social_url.errors }}</div></div></section>
++    <div class="sticky-form-actions"><button class="primary" type="submit">Save person</button></div>
+   </form>
+ </section>
+-{% endblock %}
++{% endblock %}{% block extra_js %}<script>(function(){const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview'),ph=document.getElementById('photoPlaceholder');if(photo)photo.addEventListener('change',()=>{const f=photo.files&&photo.files[0];if(!f)return;preview.src=URL.createObjectURL(f);preview.hidden=false;if(ph)ph.hidden=true});})();</script>{% endblock %}
+diff --git a/templates/people/list.html b/templates/people/list.html
+index c89480c79adeff226cf83455b4c0b6538bad8cf7..049aa7441205e86cb02278ff0bc2e05791332611 100644
+--- a/templates/people/list.html
++++ b/templates/people/list.html
+@@ -38,7 +38,7 @@
+ </section>
+ 
+ <div class="list-results">
+-<section class="panel table-wrap">
++<section class="panel table-wrap desktop-profile-table mobile-hidden">
+   <table>
+     <thead>
+       <tr>
+@@ -72,7 +72,7 @@
+         <td>{{ person.jamatkhana|default:'—' }}</td>
+         <td><input class="inline-edit" data-inline-url="{% url 'inline_update_person' %}" data-record-id="{{ person.id }}" data-inline-field="occupation" value="{{ person.occupation }}" aria-label="Occupation for {{ person.full_name }}"></td>
+         <td>{{ person.masked_identity_number|default:'—' }}</td>
+-        <td class="row-actions"><a class="action-button view" href="{% url 'person_detail' person.id %}" title="View person"><span aria-hidden="true">◉</span> View</a> <a class="action-button edit" href="{% url 'person_edit' person.id %}" title="Edit person"><span aria-hidden="true">✎</span> Edit</a> {% if person.harmony_profile %}<a class="action-button unit" href="{% url 'harmony_detail' person.harmony_profile.id %}" title="Open Family Harmony"><span aria-hidden="true">♡</span> Harmony</a>{% else %}<a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}" title="Add Family Harmony"><span aria-hidden="true">＋</span> Harmony</a>{% endif %}<a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a></td>
++        <td class="row-actions"><a class="action-button view" href="{% url 'person_detail' person.id %}" title="View person"><span aria-hidden="true">◉</span> View</a> <a class="action-button edit" href="{% url 'person_edit' person.id %}" title="Edit person"><span aria-hidden="true">✎</span> Edit</a> <a class="action-button view" href="{% url 'person_export' person.id 'pdf' %}" title="Download profile PDF"><span aria-hidden="true">⇩</span> PDF</a> {% if person.harmony_profile %}<a class="action-button unit" href="{% url 'harmony_detail' person.harmony_profile.id %}" title="Open Family Harmony"><span aria-hidden="true">♡</span> Harmony</a>{% else %}<a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}" title="Add Family Harmony"><span aria-hidden="true">＋</span> Harmony</a>{% endif %}<a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a></td>
+       </tr>
+       {% empty %}
+       <tr><td colspan="13" class="muted">No people found.</td></tr>
+@@ -80,6 +80,9 @@
+     </tbody>
+   </table>
+ </section>
++<div class="mobile-profile-cards">
++{% for person in people %}<article class="compact-profile-card">{% if person.photo %}<img src="{{ person.photo.url }}" alt="">{% else %}<span class="initials">{{ person.first_name|first }}</span>{% endif %}<div><h3>{{ person.full_name }}</h3><div class="compact-meta"><span>Age: {{ person.age|default:'—' }}</span><span>{{ person.gender|default:'—' }}</span><span>{{ person.education|default:'Education —' }}</span><span>{{ person.occupation|default:'Occupation —' }}</span><span>{{ person.jamatkhana|default:'JK —' }}</span><span>{{ person.city|default:'City —' }}</span></div></div><div class="compact-actions"><a class="action-button view" href="{% url 'person_detail' person.id %}">View</a><a class="action-button edit" href="{% url 'person_edit' person.id %}">Edit</a><a class="action-button view" href="{% url 'person_export' person.id 'pdf' %}">PDF</a>{% if person.harmony_profile %}<a class="action-button unit" href="{% url 'harmony_detail' person.harmony_profile.id %}">Harmony</a>{% else %}<a class="action-button unit" href="{% url 'harmony_create' %}?person_id={{ person.id }}">+ Harmony</a>{% endif %}</div></article>{% empty %}<p class="muted">No people found.</p>{% endfor %}
++</div>
+ {% include 'partials/pagination.html' %}
+ </div>
+ {% endblock %}
+diff --git a/templates/settings_app/settings.html b/templates/settings_app/settings.html
+index 942f97dc8532b82453eb174ed70acdbba077f496..9dc775edd653081b5ed59d87f399bf034813fd20 100644
+--- a/templates/settings_app/settings.html
++++ b/templates/settings_app/settings.html
+@@ -1,9 +1,9 @@
+ {% extends 'base.html' %}{% block title %}Settings | Social Welfare{% endblock %}{% block content %}
+ <section class="page-head inline"><div><p class="eyebrow">SYSTEM SETTINGS</p><h1>Settings</h1><p class="muted">Organization, Family Harmony lists and public sharing defaults.</p></div><a class="secondary" href="{% url 'backup_center' %}">Backup & Restore</a></section>
+-<section class="panel form-panel"><h2>Public sharing defaults</h2><form method="post">{% csrf_token %}{% for name,values in hidden_lists.items %}{% endfor %}<input type="hidden" name="title_options" value="{% for x in settings.title_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="education_levels" value="{% for x in settings.education_levels %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="occupation_options" value="{% for x in settings.occupation_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="employer_options" value="{% for x in settings.employer_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="business_type_options" value="{% for x in settings.business_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="income_ranges" value="{% for x in settings.income_ranges %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="portfolio_options" value="{% for x in settings.portfolio_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="family_type_options" value="{% for x in settings.family_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="language_options" value="{% for x in settings.language_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="marital_status_options" value="{% for x in settings.marital_status_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="relationship_options" value="{% for x in settings.relationship_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="caste_tribe_options" value="{% for x in settings.caste_tribe_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="nationality_options" value="{% for x in settings.nationality_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="country_options" value="{% for x in settings.country_options %}{{ x }}&#10;{% endfor %}"><div class="form-row"><div class="form-field"><label>Default link expiry days</label><input name="default_expiry_days" type="number" value="{{ settings.default_expiry_days }}"></div><div class="form-field"><label>Minimum expiry days</label><input name="minimum_expiry_days" type="number" value="{{ settings.minimum_expiry_days }}"></div><div class="form-field"><label>Maximum expiry days</label><input name="maximum_expiry_days" type="number" value="{{ settings.maximum_expiry_days }}"></div><div class="form-field"><label>Default max views</label><input name="default_max_views" type="number" value="{{ settings.default_max_views }}"></div></div><div class="form-actions"><button class="primary">Save sharing defaults</button></div></form></section>
++<section class="panel form-panel"><h2>Public sharing defaults</h2><form method="post">{% csrf_token %}{% for name,values in hidden_lists.items %}{% endfor %}<input type="hidden" name="title_options" value="{% for x in settings.title_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="education_levels" value="{% for x in settings.education_levels %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="occupation_options" value="{% for x in settings.occupation_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="employer_options" value="{% for x in settings.employer_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="business_type_options" value="{% for x in settings.business_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="income_ranges" value="{% for x in settings.income_ranges %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="portfolio_options" value="{% for x in settings.portfolio_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="family_type_options" value="{% for x in settings.family_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="language_options" value="{% for x in settings.language_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="marital_status_options" value="{% for x in settings.marital_status_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="relationship_options" value="{% for x in settings.relationship_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="caste_tribe_options" value="{% for x in settings.caste_tribe_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="nationality_options" value="{% for x in settings.nationality_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="country_options" value="{% for x in settings.country_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="physical_status_options" value="{% for x in settings.physical_status_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="disability_options" value="{% for x in settings.disability_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="known_disease_options" value="{% for x in settings.known_disease_options %}{{ x }}&#10;{% endfor %}"><div class="form-row"><div class="form-field"><label>Default link expiry days</label><input name="default_expiry_days" type="number" value="{{ settings.default_expiry_days }}"></div><div class="form-field"><label>Minimum expiry days</label><input name="minimum_expiry_days" type="number" value="{{ settings.minimum_expiry_days }}"></div><div class="form-field"><label>Maximum expiry days</label><input name="maximum_expiry_days" type="number" value="{{ settings.maximum_expiry_days }}"></div><div class="form-field"><label>Default max views</label><input name="default_max_views" type="number" value="{{ settings.default_max_views }}"></div></div><div class="form-actions"><button class="primary">Save sharing defaults</button></div></form></section>
+ <section class="panel"><h2>Organization</h2><div class="settings-links"><a class="secondary" href="{% url 'settings_regional_councils' %}">Regional Councils</a><a class="secondary" href="{% url 'settings_local_councils' %}">Local Councils</a><a class="secondary" href="{% url 'settings_jamatkhanas' %}">Jamatkhanas</a></div></section>
+ <section class="panel"><h2>Editable reference lists</h2><p class="muted">Choose a list. Values display as plain text. Double-click a value or click Edit; leaving the field saves by AJAX.</p><div class="reference-tabs">
+-<button data-tab="education" class="active">Education Levels</button><button data-tab="title">Title Options</button><button data-tab="occupation">Occupations</button><button data-tab="business_type">Business Types</button><button data-tab="income">Income Range</button><button data-tab="family_type">Family Types</button><button data-tab="language">Languages</button><button data-tab="marital_status">Marital Status</button><button data-tab="relationship">Relationships</button><button data-tab="caste_tribe">Cast / Tribe</button><button data-tab="nationality">Nationality</button><button data-tab="country">Countries</button></div><div class="reference-area">
+-{% include 'settings_app/_list_crud.html' with title='Education Levels' category='education' values=settings.education_levels %}{% include 'settings_app/_list_crud.html' with title='Title Options' category='title' values=settings.title_options %}{% include 'settings_app/_list_crud.html' with title='Occupations' category='occupation' values=settings.occupation_options %}{% include 'settings_app/_list_crud.html' with title='Business Types' category='business_type' values=settings.business_type_options %}{% include 'settings_app/_list_crud.html' with title='Income Ranges' category='income' values=settings.income_ranges %}{% include 'settings_app/_list_crud.html' with title='Family Types' category='family_type' values=settings.family_type_options %}{% include 'settings_app/_list_crud.html' with title='Languages' category='language' values=settings.language_options %}{% include 'settings_app/_list_crud.html' with title='Marital Status' category='marital_status' values=settings.marital_status_options %}{% include 'settings_app/_list_crud.html' with title='Relationships' category='relationship' values=settings.relationship_options %}{% include 'settings_app/_list_crud.html' with title='Cast / Tribe' category='caste_tribe' values=settings.caste_tribe_options %}{% include 'settings_app/_list_crud.html' with title='Nationality' category='nationality' values=settings.nationality_options %}{% include 'settings_app/_list_crud.html' with title='Countries' category='country' values=settings.country_options %}</div></section>
++<button data-tab="education" class="active">Education levels</button><button data-tab="title">Title Options</button><button data-tab="occupation">Occupations</button><button data-tab="business_type">Business Types</button><button data-tab="income">Income Range</button><button data-tab="family_type">Family Types</button><button data-tab="language">Languages</button><button data-tab="marital_status">Marital Status</button><button data-tab="relationship">Relationships</button><button data-tab="caste_tribe">Cast / Tribe</button><button data-tab="nationality">Nationality</button><button data-tab="country">Countries</button><button data-tab="physical_status">Physical Status</button><button data-tab="disability">Disability</button><button data-tab="known_disease">Known Diseases</button></div><div class="reference-area">
++{% include 'settings_app/_list_crud.html' with title='Education Levels' category='education' values=settings.education_levels %}{% include 'settings_app/_list_crud.html' with title='Title Options' category='title' values=settings.title_options %}{% include 'settings_app/_list_crud.html' with title='Occupations' category='occupation' values=settings.occupation_options %}{% include 'settings_app/_list_crud.html' with title='Business Types' category='business_type' values=settings.business_type_options %}{% include 'settings_app/_list_crud.html' with title='Income Ranges' category='income' values=settings.income_ranges %}{% include 'settings_app/_list_crud.html' with title='Family Types' category='family_type' values=settings.family_type_options %}{% include 'settings_app/_list_crud.html' with title='Languages' category='language' values=settings.language_options %}{% include 'settings_app/_list_crud.html' with title='Marital Status' category='marital_status' values=settings.marital_status_options %}{% include 'settings_app/_list_crud.html' with title='Relationships' category='relationship' values=settings.relationship_options %}{% include 'settings_app/_list_crud.html' with title='Cast / Tribe' category='caste_tribe' values=settings.caste_tribe_options %}{% include 'settings_app/_list_crud.html' with title='Nationality' category='nationality' values=settings.nationality_options %}{% include 'settings_app/_list_crud.html' with title='Countries' category='country' values=settings.country_options %}{% include 'settings_app/_list_crud.html' with title='Physical Status' category='physical_status' values=settings.physical_status_options %}{% include 'settings_app/_list_crud.html' with title='Disability' category='disability' values=settings.disability_options %}{% include 'settings_app/_list_crud.html' with title='Known Diseases' category='known_disease' values=settings.known_disease_options %}</div></section>
+ <style>.settings-links,.reference-tabs{display:flex;gap:7px;flex-wrap:wrap}.reference-tabs button{border:1px solid var(--line);background:#fff;color:var(--teal);padding:9px 12px;border-radius:6px;font-weight:bold;cursor:pointer}.reference-tabs button.active{background:var(--teal);color:#fff}.reference-area{margin-top:16px}.reference-head{display:flex;justify-content:space-between;align-items:center}.reference-table{margin-top:10px}.reference-value{cursor:text}.reference-value:hover{background:#f0f6f4}.reference-editor{width:100%}.danger{border:1px solid #dc3545;background:#dc3545;color:#fff;padding:8px 10px;border-radius:5px;cursor:pointer}.add-row{display:flex;gap:7px;margin:10px 0}.setting-save-state{min-height:18px;color:var(--teal)}</style>
+ <script>(function(){function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('csrftoken='))?.split('=')[1]||''}document.querySelectorAll('.reference-tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.reference-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.reference-pane').forEach(p=>p.hidden=p.dataset.category!==b.dataset.tab)});document.querySelectorAll('.reference-pane').forEach(pane=>{let url='/settings/list/'+pane.dataset.category+'/',state=pane.querySelector('.setting-save-state');async function send(action,index,value){let fd=new FormData();fd.append('action',action);if(index!==null)fd.append('index',index);if(value!==null)fd.append('value',value);state.textContent='Saving…';let r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf()},body:fd});let j=await r.json();if(!r.ok||!j.ok){state.textContent=j.error||'Save failed';return false}state.textContent='Saved';setTimeout(()=>state.textContent='',900);return true}function edit(cell){if(cell.querySelector('input'))return;let old=cell.dataset.value,input=document.createElement('input');input.className='reference-editor';input.value=old;cell.textContent='';cell.appendChild(input);input.focus();async function save(){let v=input.value.trim();if(v&&v!==old){if(!await send('update',cell.dataset.index,v)){cell.textContent=old;return}cell.dataset.value=v;cell.textContent=v}else cell.textContent=old}input.addEventListener('blur',save,{once:true});input.onkeydown=e=>{if(e.key==='Enter')input.blur();if(e.key==='Escape')cell.textContent=old}}pane.querySelectorAll('.reference-value').forEach(c=>c.ondblclick=()=>edit(c));pane.querySelectorAll('.setting-edit').forEach(b=>b.onclick=()=>edit(pane.querySelector('.reference-value[data-index="'+b.dataset.index+'"]')));pane.querySelectorAll('.setting-delete').forEach(b=>b.onclick=async()=>{if(confirm('Delete this option?')&&await send('delete',b.dataset.index,''))location.reload()});pane.querySelector('.show-add').onclick=()=>pane.querySelector('.add-row').hidden=false;pane.querySelector('.setting-add-btn').onclick=async()=>{let i=pane.querySelector('.setting-new');if(i.value.trim()&&await send('add',null,i.value.trim()))location.reload()}})})();</script>{% endblock %}

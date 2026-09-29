@@ -1,58 +1,86 @@
 from django import forms
 
-from organization.models import Jamatkhana, LocalCouncil, RegionalCouncil
 from settings_app.models import FamilyHarmonySettings
+
 from .models import FamilyHarmonyPreference, FamilyHarmonyProfile
 
 
+def _datalist(field, list_id, values):
+    field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
+
+
+YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
+
+
 class FamilyHarmonyProfileForm(forms.ModelForm):
-    education_level = forms.ChoiceField(required=False)
-    education_level_other = forms.CharField(required=False, label='Custom education level')
+    height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)')
+    height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)')
+    known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        settings = FamilyHarmonySettings.current()
-        portfolio_choices = [(value, value) for value in settings.portfolio_options or ['Family Harmony', 'Seniors', 'Portfolio 3', 'Portfolio 4', 'Portfolio 5', 'Portfolio 6']]
-        self.fields['portfolio'].choices = portfolio_choices
-        choices = [(value, value) for value in settings.education_levels or ['Metric', 'O Level', 'Bachelor', 'Master', 'PhD', 'Other']]
-        self.fields['education_level'].choices = [('', 'Select education level')] + choices
-        for field_name, values, label in ((
-            'profession', settings.occupation_options, 'Select occupation'),
-            ('income_range', settings.income_ranges, 'Select income bracket'),
-            ('family_type', settings.family_type_options, 'Select family type'),
-            ('marital_status', settings.marital_status_options, 'Select marital status'),
-        ):
-            current = getattr(self.instance, field_name, '') if self.instance else ''
-            options = list(values or [])
-            if current and current not in options: options.append(current)
-            self.fields[field_name].widget = forms.Select(choices=[('', label)] + [(v, v) for v in options])
-        self.fields['languages'].help_text = 'Select/edit languages from Settings; use comma-separated values here for existing profiles.'
-        self.fields['owning_jamatkhana'].label = 'Current Jamatkhana'
-        self.fields['owning_jamatkhana'].queryset = Jamatkhana.objects.select_related('local_council__regional_council').order_by('local_council__regional_council__name', 'local_council__name', 'name')
-        self.fields['owning_local_council'].queryset = LocalCouncil.objects.select_related('regional_council').order_by('regional_council__name', 'name')
-        self.fields['owning_region'].queryset = RegionalCouncil.objects.order_by('name')
-        self.fields['owning_jamatkhana'].label_from_instance = lambda obj: f'{obj.name} ({obj.local_council.name} / {obj.local_council.regional_council.name})'
-        if self.instance and self.instance.education_level and self.instance.education_level not in {value for value, _ in choices}:
-            self.initial['education_level'] = 'Other'
-            self.initial['education_level_other'] = self.instance.education_level
+        cfg = FamilyHarmonySettings.current()
+        self.fields['status'].required = False
+        self.fields['status'].initial = self.instance.status if self.instance and self.instance.pk else FamilyHarmonyProfile.Status.DRAFT
+        for name, values in [
+            ('education_level', cfg.education_levels), ('profession', cfg.occupation_options),
+            ('income_range', cfg.income_ranges), ('family_type', cfg.family_type_options),
+            ('marital_status', cfg.marital_status_options), ('caste_tribe', cfg.caste_tribe_options),
+            ('languages', cfg.language_options),
+        ]:
+            _datalist(self.fields[name], f'{name}-options', values)
+        self.fields['physical_status'].widget = forms.Select(
+            choices=[('', 'Select physical status')] + [(v, v) for v in cfg.physical_status_options]
+        )
+        self.fields['disability_status'].widget = forms.Select(
+            choices=[('', 'Select disability status')] + [(v, v) for v in cfg.disability_options]
+        )
+        disease_choices = [(v, v) for v in cfg.known_disease_options]
+        self.fields['known_diseases'].choices = disease_choices
+        self.fields['known_diseases'].widget = forms.CheckboxSelectMultiple(choices=disease_choices)
+        self.fields['smoking'].widget = forms.RadioSelect(choices=[('No', 'No'), ('Yes', 'Yes')])
+        self.fields['owns_house'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+        self.fields['owns_car'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
+        self.fields['weight_kg'].widget.attrs.update({'min': '20', 'max': '300', 'step': '0.1'})
+        if self.instance and self.instance.pk:
+            self.initial['known_diseases'] = self.instance.known_diseases or []
+        if self.instance and self.instance.height_cm:
+            total = round(self.instance.height_cm / 2.54)
+            self.initial['height_feet'] = total // 12
+            self.initial['height_inches'] = total % 12
 
-    def clean(self):
-        cleaned = super().clean()
-        selected_level = cleaned.get('education_level')
-        custom_level = (cleaned.get('education_level_other') or '').strip()
-        if selected_level == 'Other':
-            cleaned['education_level'] = custom_level or selected_level
-        return cleaned
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        ft = self.cleaned_data.get('height_feet')
+        inch = self.cleaned_data.get('height_inches')
+        if ft is not None:
+            obj.height_cm = round((ft * 12 + (inch or 0)) * 2.54)
+        elif not self.cleaned_data.get('height_inches'):
+            obj.height_cm = None
+        obj.known_diseases = self.cleaned_data.get('known_diseases') or []
+        if commit:
+            obj.save()
+            self.save_m2m()
+        return obj
 
     class Meta:
         model = FamilyHarmonyProfile
-        exclude = ('person', 'assigned_officer', 'created_at', 'updated_at', 'is_demo', 'consent_reviewed')
-        widgets = {'family_background': forms.Textarea(attrs={'rows': 2}), 'family_values': forms.Textarea(attrs={'rows': 2}), 'personality': forms.Textarea(attrs={'rows': 2}), 'health_information': forms.Textarea(attrs={'rows': 2}), 'personal_statement': forms.Textarea(attrs={'rows': 2}), 'expectations': forms.Textarea(attrs={'rows': 2}), 'notes': forms.Textarea(attrs={'rows': 2})}
+        exclude = (
+            'person', 'assigned_officer', 'created_at', 'updated_at', 'is_demo', 'consent_reviewed',
+            'height_cm', 'owning_region', 'owning_local_council', 'owning_jamatkhana'
+        )
+        widgets = {
+            x: forms.Textarea(attrs={'rows': 2}) for x in (
+                'family_background', 'family_values', 'personality', 'health_information',
+                'personal_statement', 'expectations', 'notes', 'other_lifestyle_details',
+                'child_details', 'previous_marriage_notes', 'disabilities'
+            )
+        }
 
 
 class FamilyHarmonyPreferenceForm(forms.ModelForm):
-    preferred_locations = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows':2, 'placeholder':'One location per line'}))
-    preferred_cities = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows':2, 'placeholder':'One city per line'}))
+    preferred_locations = forms.CharField(required=False)
+    preferred_cities = forms.CharField(required=False)
     preferred_education_options = forms.MultipleChoiceField(required=False)
     preferred_professions = forms.MultipleChoiceField(required=False)
     preferred_income_options = forms.MultipleChoiceField(required=False)
@@ -61,31 +89,41 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        settings = FamilyHarmonySettings.current()
-        multiple = {
-            'preferred_education_options': settings.education_levels,
-            'preferred_professions': settings.occupation_options,
-            'preferred_income_options': settings.income_ranges,
-            'preferred_marital_status_options': settings.marital_status_options,
-            'preferred_languages': settings.language_options,
+        cfg = FamilyHarmonySettings.current()
+        mapping = {
+            'preferred_education_options': cfg.education_levels,
+            'preferred_professions': cfg.occupation_options,
+            'preferred_income_options': cfg.income_ranges,
+            'preferred_marital_status_options': cfg.marital_status_options,
+            'preferred_languages': cfg.language_options,
         }
-        for name, values in multiple.items():
-            choices=[(v, v) for v in (values or [])]
+        for name, values in mapping.items():
+            choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
             self.fields[name].choices = choices
-            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '5'})
-        self.fields['preferred_locations'].widget = forms.Textarea(attrs={'rows':2, 'placeholder':'One location per line'})
-        self.fields['preferred_cities'].widget = forms.Textarea(attrs={'rows':2, 'placeholder':'One city per line'})
+            self.fields[name].widget = forms.SelectMultiple(choices=choices, attrs={'size': '4'})
+        for name in ('minimum_age', 'maximum_age'):
+            self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
+        self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
 
     def clean(self):
         cleaned = super().clean()
-        for name in ('preferred_locations','preferred_cities'):
-            value = self.data.get(name, '')
-            if isinstance(value, str): cleaned[name] = [x.strip() for x in value.splitlines() if x.strip()]
-        for name in ('preferred_education_options','preferred_professions','preferred_income_options','preferred_marital_status_options','preferred_languages'):
-            cleaned[name] = self.data.getlist(name)
+        for name in ('preferred_locations', 'preferred_cities'):
+            value = (self.data.get(name) or '').strip()
+            cleaned[name] = [x.strip() for x in value.replace('\n', ',').split(',') if x.strip()]
+        for name in (
+            'preferred_education_options', 'preferred_professions', 'preferred_income_options',
+            'preferred_marital_status_options', 'preferred_languages'
+        ):
+            values = self.data.getlist(name)
+            cleaned[name] = ['Any'] if 'Any' in values else values
         return cleaned
 
     class Meta:
         model = FamilyHarmonyPreference
         exclude = ('profile', 'preferred_education', 'preferred_income', 'preferred_marital_status', 'preferred_regions')
-        widgets = {'preferred_family_values': forms.Textarea(attrs={'rows': 2}), 'preferred_personality': forms.Textarea(attrs={'rows': 2}), 'other_expectations': forms.Textarea(attrs={'rows': 2}), 'free_text_seeking_description': forms.Textarea(attrs={'rows': 2})}
+        widgets = {
+            'preferred_family_values': forms.Textarea(attrs={'rows': 2}),
+            'preferred_personality': forms.Textarea(attrs={'rows': 2}),
+            'other_expectations': forms.Textarea(attrs={'rows': 2}),
+            'free_text_seeking_description': forms.Textarea(attrs={'rows': 2}),
+        }

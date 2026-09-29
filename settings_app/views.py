@@ -21,6 +21,12 @@ def settings_page(request):
         language_lines = request.POST.get('language_options', '').strip()
         marital_lines = request.POST.get('marital_status_options', '').strip()
         relationship_lines = request.POST.get('relationship_options', '').strip()
+        caste_lines = request.POST.get('caste_tribe_options', '').strip()
+        nationality_lines = request.POST.get('nationality_options', '').strip()
+        country_lines = request.POST.get('country_options', '').strip()
+        physical_lines = request.POST.get('physical_status_options', '').strip()
+        disability_lines = request.POST.get('disability_options', '').strip()
+        disease_lines = request.POST.get('known_disease_options', '').strip()
         settings.title_options = [item.strip() for item in title_lines.splitlines() if item.strip()] or settings.title_options
         settings.education_levels = [item.strip() for item in education_lines.splitlines() if item.strip()] or settings.education_levels
         settings.occupation_options = [item.strip() for item in occupation_lines.splitlines() if item.strip()] or settings.occupation_options
@@ -32,6 +38,12 @@ def settings_page(request):
         settings.language_options = [item.strip() for item in language_lines.splitlines() if item.strip()] or settings.language_options
         settings.marital_status_options = [item.strip() for item in marital_lines.splitlines() if item.strip()] or settings.marital_status_options
         settings.relationship_options = [item.strip() for item in relationship_lines.splitlines() if item.strip()] or settings.relationship_options
+        settings.caste_tribe_options = [item.strip() for item in caste_lines.splitlines() if item.strip()] or settings.caste_tribe_options
+        settings.nationality_options = [item.strip() for item in nationality_lines.splitlines() if item.strip()] or settings.nationality_options
+        settings.country_options = [item.strip() for item in country_lines.splitlines() if item.strip()] or settings.country_options
+        settings.physical_status_options = [item.strip() for item in physical_lines.splitlines() if item.strip()] or settings.physical_status_options
+        settings.disability_options = [item.strip() for item in disability_lines.splitlines() if item.strip()] or settings.disability_options
+        settings.known_disease_options = [item.strip() for item in disease_lines.splitlines() if item.strip()] or settings.known_disease_options
         settings.default_expiry_days = int(request.POST.get('default_expiry_days', settings.default_expiry_days))
         settings.minimum_expiry_days = int(request.POST.get('minimum_expiry_days', settings.minimum_expiry_days))
         settings.maximum_expiry_days = int(request.POST.get('maximum_expiry_days', settings.maximum_expiry_days))
@@ -47,6 +59,8 @@ SETTING_LIST_FIELDS = {
     'education': 'education_levels', 'title': 'title_options', 'occupation': 'occupation_options',
     'business_type': 'business_type_options', 'income': 'income_ranges', 'family_type': 'family_type_options',
     'language': 'language_options', 'marital_status': 'marital_status_options', 'relationship': 'relationship_options',
+    'caste_tribe': 'caste_tribe_options', 'nationality': 'nationality_options', 'country': 'country_options',
+    'physical_status': 'physical_status_options', 'disability': 'disability_options', 'known_disease': 'known_disease_options',
 }
 
 @login_required

@@ -20,6 +20,12 @@ class FamilyHarmonySettings(models.Model):
     language_options = models.JSONField(default=list, blank=True)
     marital_status_options = models.JSONField(default=list, blank=True)
     relationship_options = models.JSONField(default=list, blank=True)
+    caste_tribe_options = models.JSONField(default=list, blank=True)
+    nationality_options = models.JSONField(default=list, blank=True)
+    country_options = models.JSONField(default=list, blank=True)
+    physical_status_options = models.JSONField(default=list, blank=True)
+    disability_options = models.JSONField(default=list, blank=True)
+    known_disease_options = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -53,5 +59,17 @@ class FamilyHarmonySettings(models.Model):
             settings.marital_status_options = ['Never married', 'Divorced', 'Widowed', 'Separated', 'Other']
         if not settings.relationship_options:
             settings.relationship_options = ['Father', 'Mother', 'Brother', 'Sister', 'Son', 'Daughter', 'Guardian', 'Other']
-        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options'])
+        if not settings.caste_tribe_options:
+            settings.caste_tribe_options = ['Other']
+        if not settings.nationality_options:
+            settings.nationality_options = ['Pakistani', 'Other']
+        if not settings.country_options:
+            settings.country_options = ['Pakistan', 'United States', 'United Kingdom', 'Canada', 'United Arab Emirates', 'Other']
+        if not settings.physical_status_options:
+            settings.physical_status_options = ['Healthy / Fit', 'Average', 'Underweight', 'Overweight', 'Other']
+        if not settings.disability_options:
+            settings.disability_options = ['None', 'Physical', 'Visual', 'Hearing', 'Speech', 'Intellectual / Developmental', 'Multiple', 'Other']
+        if not settings.known_disease_options:
+            settings.known_disease_options = ['Diabetes', 'High cholesterol', 'Thyroid disorder', 'High blood pressure', 'Heart condition', 'Asthma', 'Other']
+        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options', 'caste_tribe_options', 'nationality_options', 'country_options', 'physical_status_options', 'disability_options', 'known_disease_options'])
         return settings

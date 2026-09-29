@@ -1,0 +1,287 @@
+--- a/templates/family_harmony/_marriage_form_fields.html
++++ b/templates/family_harmony/_marriage_form_fields.html
+@@ -1,126 +1,129 @@
+-{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>{% endif %}
++{% if person_form.non_field_errors or profile_form.non_field_errors or preference_form.non_field_errors %}
++<div class="profile-errors">{{ person_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ preference_form.non_field_errors }}</div>
++{% endif %}
+ 
+-<section class="mp-section">
+-  <h2><span>1</span> Personal Information</h2>
+-  <div class="mp-personal-grid">
+-    <div class="mp-photo-column">
+-      <label class="mp-photo-box" for="id_photo">
+-        {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview"><span id="photoPlaceholder">Click to upload<br>profile photo</span>{% endif %}
+-      </label>
+-      <div class="mp-file-field">{{ person_form.photo }}{{ person_form.photo.errors }}<small>Photo is compressed automatically.</small></div>
++<div class="mp-upload-strip">
++  <label class="mp-upload-card mp-profile-upload" for="id_photo">
++    <span class="mp-camera">●</span>
++    <strong>Click to upload<br>Profile photo</strong>
++    <small>(JPG, PNG, max 5 MB)</small>
++    {% if person_form.instance.photo %}<img id="photoPreview" src="{{ person_form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" hidden alt="Profile preview">{% endif %}
++  </label>
++  <label class="mp-upload-card" for="id_cnic_front"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Front</strong><small>(max 5 MB)</small></label>
++  <label class="mp-upload-card" for="id_cnic_back"><span class="mp-camera">●</span><strong>Click to upload<br>CNIC Back</strong><small>(max 5 MB)</small></label>
++  <div class="mp-hidden-file">{{ person_form.photo }}{{ person_form.cnic_front }}{{ person_form.cnic_back }}</div>
++</div>
++
++<section class="mp-section mp-approved-section is-open">
++  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♟</span><b>1. Personal Information</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-approved-grid personal-top">
++      <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
++      <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
++      <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
++      <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
++      <div class="form-field mp-gender-field"><label>Gender{% if person_form.gender.field.required %} <span class="required">*</span>{% endif %}</label><div class="mp-segmented">{{ person_form.gender }}</div>{{ person_form.gender.errors }}</div>
++      <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
++
++      <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
++      <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
++      <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status"></small></div>
++      <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
++      <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
++      <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
++
++      <div class="form-field mp-jk">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}</div>
++      <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
++      <div class="form-field mp-city">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
++
++      <div class="form-field mp-address">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
++      <div class="form-field mp-address">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
+     </div>
+-    <div class="mp-fields">
+-      <div class="mp-grid mp-grid-4">
+-        <div class="form-field">{{ person_form.title.label_tag }}{{ person_form.title }}{{ person_form.title.errors }}</div>
+-        <div class="form-field">{{ person_form.first_name.label_tag }}{{ person_form.first_name }}{{ person_form.first_name.errors }}</div>
+-        <div class="form-field">{{ person_form.middle_name.label_tag }}{{ person_form.middle_name }}{{ person_form.middle_name.errors }}</div>
+-        <div class="form-field">{{ person_form.last_name.label_tag }}{{ person_form.last_name }}{{ person_form.last_name.errors }}</div>
+-        <div class="form-field">{{ person_form.gender.label_tag }}{{ person_form.gender }}{{ person_form.gender.errors }}</div>
+-        <div class="form-field">{{ person_form.date_of_birth.label_tag }}{{ person_form.date_of_birth }}{{ person_form.date_of_birth.errors }}</div>
+-        <div class="form-field">{{ person_form.marital_status.label_tag }}{{ person_form.marital_status }}{{ person_form.marital_status.errors }}</div>
+-        <div class="form-field">{{ person_form.nationality.label_tag }}{{ person_form.nationality }}{{ person_form.nationality.errors }}</div>
+-        <div class="form-field">{{ person_form.identity_type.label_tag }}{{ person_form.identity_type }}{{ person_form.identity_type.errors }}</div>
+-        <div class="form-field">{{ person_form.identity_number.label_tag }}{{ person_form.identity_number }}{{ person_form.identity_number.errors }}<small id="id-status" class="id-status"></small></div>
+-        <div class="form-field">{{ person_form.mobile.label_tag }}{{ person_form.mobile }}{{ person_form.mobile.errors }}</div>
+-        <div class="form-field">{{ person_form.whatsapp_number.label_tag }}{{ person_form.whatsapp_number }}{{ person_form.whatsapp_number.errors }}</div>
+-        <div class="form-field">{{ person_form.email.label_tag }}{{ person_form.email }}{{ person_form.email.errors }}</div>
+-        <div class="form-field">{{ person_form.city.label_tag }}{{ person_form.city }}{{ person_form.city.errors }}</div>
+-        <div class="form-field">{{ person_form.province.label_tag }}{{ person_form.province }}{{ person_form.province.errors }}</div>
+-        <div class="form-field">{{ person_form.country.label_tag }}{{ person_form.country }}{{ person_form.country.errors }}</div>
+-      </div>
+-      <div class="mp-grid mp-grid-2">
+-        <div class="form-field">{{ person_form.current_address.label_tag }}{{ person_form.current_address }}{{ person_form.current_address.errors }}</div>
+-        <div class="form-field">{{ person_form.permanent_address.label_tag }}{{ person_form.permanent_address }}{{ person_form.permanent_address.errors }}</div>
+-      </div>
++
++    <div class="mp-compact-row">
++      <div class="form-field mp-height"><label>Height</label><div class="mp-height-pair">{{ profile_form.height_feet }}{{ profile_form.height_inches }}</div></div>
++      <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
++      <div class="form-field mp-toggle"><label>Smoking</label>{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
++      <div class="form-field mp-toggle"><label>Own a car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
++      <div class="form-field mp-toggle"><label>House</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
++      <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
++      <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
++      <div class="form-field mp-disease">{{ profile_form.known_diseases.label_tag }}<div class="mp-disease-select">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
+     </div>
+-  </div>
+-  <div class="mp-grid mp-grid-3 mp-upload-row">
+-    <div class="form-field">{{ person_form.cnic_front.label_tag }}{{ person_form.cnic_front }}{{ person_form.cnic_front.errors }}{% if person_form.instance.cnic_front %}<a class="file-current" href="{{ person_form.instance.cnic_front.url }}" target="_blank">View current front</a>{% endif %}</div>
+-    <div class="form-field">{{ person_form.cnic_back.label_tag }}{{ person_form.cnic_back }}{{ person_form.cnic_back.errors }}{% if person_form.instance.cnic_back %}<a class="file-current" href="{{ person_form.instance.cnic_back.url }}" target="_blank">View current back</a>{% endif %}</div>
+-    <div class="form-field">{{ person_form.jamatkhana.label_tag }}{{ person_form.jamatkhana }}{{ person_form.jamatkhana.errors }}<small id="org-derived">LC and RC are assigned automatically from the selected Jamatkhana.</small></div>
+   </div>
+ </section>
+ 
+-<section class="mp-section">
+-  <h2><span>2</span> Physical & Health</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.height_feet.label_tag }}{{ profile_form.height_feet }}{{ profile_form.height_feet.errors }}</div>
+-    <div class="form-field">{{ profile_form.height_inches.label_tag }}{{ profile_form.height_inches }}{{ profile_form.height_inches.errors }}</div>
+-    <div class="form-field">{{ profile_form.weight_kg.label_tag }}{{ profile_form.weight_kg }}{{ profile_form.weight_kg.errors }}</div>
+-    <div class="form-field">{{ profile_form.physical_status.label_tag }}{{ profile_form.physical_status }}{{ profile_form.physical_status.errors }}</div>
+-    <div class="form-field">{{ profile_form.disability_status.label_tag }}{{ profile_form.disability_status }}{{ profile_form.disability_status.errors }}</div>
+-    <div class="form-field mp-span-3">{{ profile_form.known_diseases.label_tag }}<div class="choice-chips">{{ profile_form.known_diseases }}</div>{{ profile_form.known_diseases.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.disabilities.label_tag }}{{ profile_form.disabilities }}{{ profile_form.disabilities.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.health_information.label_tag }}{{ profile_form.health_information }}{{ profile_form.health_information.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>3</span> Family</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.father_name.label_tag }}{{ profile_form.father_name }}{{ profile_form.father_name.errors }}</div>
+-    <div class="form-field">{{ profile_form.father_occupation.label_tag }}{{ profile_form.father_occupation }}{{ profile_form.father_occupation.errors }}</div>
+-    <div class="form-field">{{ profile_form.mother_name.label_tag }}{{ profile_form.mother_name }}{{ profile_form.mother_name.errors }}</div>
+-    <div class="form-field">{{ profile_form.mother_occupation.label_tag }}{{ profile_form.mother_occupation }}{{ profile_form.mother_occupation.errors }}</div>
+-    <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
+-    <div class="form-field">{{ profile_form.family_residence.label_tag }}{{ profile_form.family_residence }}{{ profile_form.family_residence.errors }}</div>
+-    <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
+-    <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
+-    <div class="form-field">{{ profile_form.place_of_origin.label_tag }}{{ profile_form.place_of_origin }}{{ profile_form.place_of_origin.errors }}</div>
+-    <div class="form-field">{{ profile_form.guardian_contact.label_tag }}{{ profile_form.guardian_contact }}{{ profile_form.guardian_contact.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.family_values.label_tag }}{{ profile_form.family_values }}{{ profile_form.family_values.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>4</span> Education & Career</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
+-    <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
+-    <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
+-    <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
+-    <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
+-    <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
+-    <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
+-    <div class="form-field">{{ profile_form.financial_status.label_tag }}{{ profile_form.financial_status }}{{ profile_form.financial_status.errors }}</div>
+-    <div class="form-field toggle-field"><label>Own house</label>{{ profile_form.owns_house }}{{ profile_form.owns_house.errors }}</div>
+-    <div class="form-field toggle-field"><label>Own car</label>{{ profile_form.owns_car }}{{ profile_form.owns_car.errors }}</div>
+-  </div>
+-</section>
+-
+-<section class="mp-section">
+-  <h2><span>5</span> Lifestyle & About</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
+-    <div class="form-field toggle-field">{{ profile_form.smoking.label_tag }}{{ profile_form.smoking }}{{ profile_form.smoking.errors }}</div>
+-    <div class="form-field">{{ profile_form.children_count.label_tag }}{{ profile_form.children_count }}{{ profile_form.children_count.errors }}</div>
+-    <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.personality.label_tag }}{{ profile_form.personality }}{{ profile_form.personality.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.interests.label_tag }}{{ profile_form.interests }}{{ profile_form.interests.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.personal_statement.label_tag }}{{ profile_form.personal_statement }}{{ profile_form.personal_statement.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.other_lifestyle_details.label_tag }}{{ profile_form.other_lifestyle_details }}{{ profile_form.other_lifestyle_details.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.child_details.label_tag }}{{ profile_form.child_details }}{{ profile_form.child_details.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.previous_marriage_notes.label_tag }}{{ profile_form.previous_marriage_notes }}{{ profile_form.previous_marriage_notes.errors }}</div>
++<section class="mp-section mp-approved-section">
++  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">▣</span><b>2. Family, Education &amp; Career</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-family-career-grid">
++      <div class="form-field">{{ profile_form.marital_status.label_tag }}{{ profile_form.marital_status }}{{ profile_form.marital_status.errors }}</div>
++      <div class="form-field">{{ profile_form.family_type.label_tag }}{{ profile_form.family_type }}{{ profile_form.family_type.errors }}</div>
++      <div class="form-field">{{ profile_form.siblings_summary.label_tag }}{{ profile_form.siblings_summary }}{{ profile_form.siblings_summary.errors }}</div>
++      <div class="form-field">{{ profile_form.education_level.label_tag }}{{ profile_form.education_level }}{{ profile_form.education_level.errors }}</div>
++      <div class="form-field">{{ profile_form.qualification.label_tag }}{{ profile_form.qualification }}{{ profile_form.qualification.errors }}</div>
++      <div class="form-field">{{ profile_form.institution.label_tag }}{{ profile_form.institution }}{{ profile_form.institution.errors }}</div>
++      <div class="form-field">{{ profile_form.profession.label_tag }}{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
++      <div class="form-field">{{ profile_form.employer_or_business.label_tag }}{{ profile_form.employer_or_business }}{{ profile_form.employer_or_business.errors }}</div>
++      <div class="form-field">{{ profile_form.income_range.label_tag }}{{ profile_form.income_range }}{{ profile_form.income_range.errors }}</div>
++      <div class="form-field">{{ profile_form.years_experience.label_tag }}{{ profile_form.years_experience }}{{ profile_form.years_experience.errors }}</div>
++      <div class="form-field mp-languages">{{ profile_form.languages.label_tag }}{{ profile_form.languages }}{{ profile_form.languages.errors }}</div>
++      <div class="form-field">{{ profile_form.caste_tribe.label_tag }}{{ profile_form.caste_tribe }}{{ profile_form.caste_tribe.errors }}</div>
++      <div class="form-field mp-about-family">{{ profile_form.family_background.label_tag }}{{ profile_form.family_background }}{{ profile_form.family_background.errors }}</div>
++    </div>
+   </div>
+ </section>
+ 
+ {% if preference_form %}
+-<section class="mp-section">
+-  <h2><span>6</span> Preferences for Prospective Match-22</h2>
+-  <div class="mp-grid mp-grid-4">
+-    {% for field in preference_form %}<div class="form-field {% if field.name == 'preferred_family_values' or field.name == 'preferred_personality' or field.name == 'other_expectations' or field.name == 'free_text_seeking_description' %}mp-span-2{% endif %} {% if field.name == 'willingness_to_relocate' %}toggle-field{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
++<section class="mp-section mp-approved-section">
++  <button class="mp-section-title" type="button" aria-expanded="true"><span class="mp-section-icon">♥</span><b>3. Preferences for Prospective Match</b><span class="mp-chevron">⌃</span></button>
++  <div class="mp-section-body">
++    <div class="mp-preference-grid">
++      {% for field in preference_form %}
++        <div class="form-field {% if field.name == 'free_text_seeking_description' or field.name == 'other_expectations' %}mp-pref-wide{% endif %} {% if field.name == 'willingness_to_relocate' %}mp-toggle{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>
++      {% endfor %}
++    </div>
+   </div>
+ </section>
+ {% endif %}
+ 
+ {% if not public_mode %}
+-<section class="mp-section mp-internal">
+-  <h2><span>7</span> Internal / Workflow</h2>
+-  <div class="mp-grid mp-grid-4">
+-    <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
+-    <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
+-    <div class="form-field mp-span-2">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
++<section class="mp-section mp-approved-section mp-internal">
++  <button class="mp-section-title" type="button" aria-expanded="false"><span class="mp-section-icon">⚙</span><b>Internal / Workflow</b><span class="mp-chevron">⌄</span></button>
++  <div class="mp-section-body">
++    <div class="mp-approved-grid">
++      <div class="form-field">{{ profile_form.portfolio.label_tag }}{{ profile_form.portfolio }}{{ profile_form.portfolio.errors }}</div>
++      <div class="form-field">{{ profile_form.status.label_tag }}{{ profile_form.status }}{{ profile_form.status.errors }}</div>
++      <div class="form-field mp-address">{{ profile_form.notes.label_tag }}{{ profile_form.notes }}{{ profile_form.notes.errors }}</div>
++    </div>
+   </div>
+ </section>
+ {% endif %}
++
++<div class="mp-preserved-fields">
++  {{ person_form.province }}
++  {{ profile_form.father_name }}{{ profile_form.father_occupation }}{{ profile_form.mother_name }}{{ profile_form.mother_occupation }}
++  {{ profile_form.family_residence }}{{ profile_form.place_of_origin }}{{ profile_form.guardian_contact }}{{ profile_form.family_values }}
++  {{ profile_form.financial_status }}{{ profile_form.children_count }}{{ profile_form.personality }}{{ profile_form.interests }}
++  {{ profile_form.personal_statement }}{{ profile_form.other_lifestyle_details }}{{ profile_form.child_details }}
++  {{ profile_form.previous_marriage_notes }}{{ profile_form.disabilities }}{{ profile_form.health_information }}
++</div>
++
++<script>
++(function(){
++  document.querySelectorAll('.mp-section-title').forEach(function(btn){
++    btn.addEventListener('click', function(){
++      var section = btn.closest('.mp-approved-section');
++      section.classList.toggle('mp-collapsed');
++      var collapsed = section.classList.contains('mp-collapsed');
++      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
++      var c = btn.querySelector('.mp-chevron'); if(c) c.textContent = collapsed ? '⌄' : '⌃';
++    });
++  });
++  var photo = document.getElementById('id_photo'), preview = document.getElementById('photoPreview');
++  if(photo && preview) photo.addEventListener('change', function(){
++    var f=this.files&&this.files[0]; if(!f) return;
++    preview.src=URL.createObjectURL(f); preview.hidden=false;
++  });
++})();
++</script>
+--- a/static/app.css
++++ b/static/app.css
+@@ -28,3 +28,44 @@
+ .sidebar-scrim{display:none;border:0;padding:0}.sidebar{z-index:42}.social-topbar{min-width:0}.top-actions{min-width:0}.main{overflow-x:hidden}
+ @media(max-width:760px){body.sidebar-open{overflow:hidden}.sidebar{display:flex!important;transform:translateX(-105%);transition:transform .2s ease;width:min(82vw,280px);box-shadow:12px 0 35px rgba(0,0,0,.25)}body.sidebar-open .sidebar{transform:translateX(0)}.sidebar-scrim{position:fixed;inset:0;z-index:41;background:rgba(8,18,27,.48)}body.sidebar-open .sidebar-scrim{display:block}.social-topbar{height:58px;position:sticky;padding:0 8px}.social-topbar .menu{display:block;color:#fff;margin:0 3px 0 0}.top-actions{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.top-actions::-webkit-scrollbar{display:none}.top-btn{flex:0 0 auto}.view-toggle{flex:0 0 auto}.page-head{padding-top:24px}}
+ @media(max-width:420px){.top-btn{padding:6px;font-size:9px}.social-topbar{gap:5px}.top-actions{gap:3px}}
++
++/* Approved Marriage Profile mockup parity - 2026-09-29 */
++.profile-editor-shell{width:min(1540px,calc(100% - 24px));margin:18px auto 28px}
++.profile-editor-head{padding:14px 20px;border-radius:0;background:#fff;color:#11345a;box-shadow:none;border:0}
++.profile-editor-head .eyebrow{display:none}.profile-editor-head h1{font-family:Georgia,serif;font-size:32px;font-weight:700;margin:0 0 5px;color:#11345a}
++.profile-editor-head p{color:#486681;font:12px Arial,sans-serif}
++.marriage-profile-form{border:0;border-radius:0;box-shadow:0 5px 24px rgba(21,52,78,.06);padding:0 12px 10px;background:#fbfdfd}
++.mp-upload-strip{display:flex;justify-content:flex-end;gap:9px;align-items:stretch;margin:-70px 8px 8px auto;position:relative;z-index:2;width:max-content}
++.mp-upload-card{width:118px;height:84px;border:1px dashed #8fc2c9;border-radius:5px;background:#f8fcfc;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;color:#11345a;font:11px/1.2 Arial,sans-serif;position:relative;overflow:hidden}
++.mp-upload-card strong{font-weight:500}.mp-upload-card small{font-size:9px;margin-top:2px}.mp-camera{font-size:20px;color:#347e89;line-height:1;margin-bottom:5px}
++.mp-profile-upload img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.mp-profile-upload img:not([hidden])~*{display:none}
++.mp-hidden-file{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
++.mp-approved-section{padding:0;margin:7px 0;border:1px solid #e5edef!important;border-radius:6px;background:#fff;overflow:hidden}
++.mp-section-title{width:100%;height:38px;border:0;background:#fff;color:#11345a;display:flex;align-items:center;gap:9px;padding:0 14px;font:16px Georgia,serif;cursor:pointer;text-align:left}
++.mp-section-icon{font:18px Arial,sans-serif;color:#0b4c7d}.mp-chevron{margin-left:auto;font:15px Arial,sans-serif}.mp-section-body{padding:9px 14px 12px}.mp-collapsed .mp-section-body{display:none}
++.mp-approved-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:9px 11px}.personal-top>.form-field{grid-column:span 2}.personal-top .mp-jk{grid-column:span 3}.personal-top .mp-city{grid-column:span 5}.personal-top .mp-address{grid-column:span 6}
++.marriage-profile-form .form-field>label{font-size:10px;color:#173c61;margin-bottom:4px}.marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{min-height:31px;height:31px;padding:5px 8px;border-color:#cbd9e2;border-radius:4px;font-size:11px}.marriage-profile-form textarea{height:42px;min-height:42px}
++.required{color:#e3283f}.mp-segmented ul,.mp-toggle ul{display:flex!important;list-style:none!important;margin:0!important;padding:0!important;gap:0!important}.mp-segmented li,.mp-toggle li{flex:1;margin:0!important}.mp-segmented label,.mp-toggle li label{height:31px;border:1px solid #cbd9e2;background:#fff;display:flex;align-items:center;justify-content:center;padding:0 9px!important;border-radius:0!important;font:11px Arial,sans-serif!important;color:#11345a!important;cursor:pointer;white-space:nowrap}.mp-segmented li:first-child label,.mp-toggle li:first-child label{border-radius:4px 0 0 4px}.mp-segmented li:last-child label,.mp-toggle li:last-child label{border-radius:0 4px 4px 0}.mp-segmented input,.mp-toggle input{width:auto!important;height:auto!important;min-height:0!important;margin-right:4px}.mp-segmented input:checked+span,.mp-toggle input:checked+span{font-weight:700}
++.mp-compact-row{display:grid;grid-template-columns:1.35fr .9fr 1fr 1fr 1fr 1.25fr 1.25fr 1.45fr;gap:10px;margin-top:10px;align-items:end}.mp-height-pair{display:grid;grid-template-columns:1fr 1fr;gap:4px}.mp-disease-select ul{max-height:31px;overflow:auto;border:1px solid #cbd9e2;border-radius:4px;padding:4px 6px!important;margin:0!important;list-style:none!important;background:#fff;font:9px Arial,sans-serif}.mp-disease-select input{width:auto!important;height:auto!important;min-height:0!important}
++.mp-family-career-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:9px 11px}.mp-family-career-grid>.form-field{grid-column:span 2}.mp-family-career-grid .mp-languages{grid-column:span 3}.mp-family-career-grid .mp-about-family{grid-column:span 5}
++.mp-preference-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:9px 11px}.mp-preference-grid>.form-field{grid-column:span 2}.mp-preference-grid>.mp-pref-wide{grid-column:span 4}
++.mp-preserved-fields{display:none}.profile-errors{margin:8px 14px}.sticky-form-actions{padding:8px 14px;background:#fff;position:static}.sticky-form-actions .primary{background:#078c83;border-radius:4px;padding:9px 18px}
++@media(max-width:1023px){
++ .profile-editor-shell{width:calc(100% - 18px);margin:8px auto 18px}.profile-editor-head h1{font-size:25px}
++ .mp-upload-strip{margin:0 8px 8px;width:auto;justify-content:flex-start}.mp-upload-card{flex:1;max-width:150px;height:72px}
++ .mp-approved-grid,.mp-family-career-grid,.mp-preference-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
++ .personal-top>.form-field,.mp-family-career-grid>.form-field,.mp-preference-grid>.form-field{grid-column:span 2}
++ .personal-top .mp-jk,.personal-top .mp-city,.personal-top .mp-address,.mp-family-career-grid .mp-languages,.mp-family-career-grid .mp-about-family{grid-column:span 3}
++ .mp-preference-grid>.mp-pref-wide{grid-column:span 3}.mp-compact-row{grid-template-columns:repeat(4,minmax(0,1fr))}
++}
++@media(max-width:767px){
++ .profile-editor-shell{width:100%;margin:0}.profile-editor-head{padding:14px 12px 8px}.profile-editor-head h1{font-size:22px;line-height:1.12}.profile-editor-head p{font-size:10px}
++ .marriage-profile-form{padding:0 8px 8px}.mp-upload-strip{display:grid;grid-template-columns:1.25fr .75fr;margin:2px 4px 8px;gap:5px}.mp-upload-card{max-width:none;width:100%;height:68px}.mp-profile-upload{grid-row:span 2;height:141px}.mp-upload-card:nth-of-type(2),.mp-upload-card:nth-of-type(3){height:68px}
++ .mp-section-title{height:37px;padding:0 9px;font-size:15px}.mp-section-body{padding:8px}
++ .mp-approved-grid,.mp-family-career-grid,.mp-preference-grid,.mp-compact-row{grid-template-columns:1fr}
++ .personal-top>.form-field,.personal-top .mp-jk,.personal-top .mp-city,.personal-top .mp-address,.mp-family-career-grid>.form-field,.mp-family-career-grid .mp-languages,.mp-family-career-grid .mp-about-family,.mp-preference-grid>.form-field,.mp-preference-grid>.mp-pref-wide{grid-column:auto}
++ .marriage-profile-form input,.marriage-profile-form select,.marriage-profile-form textarea{font-size:16px;height:38px;min-height:38px}.marriage-profile-form textarea{height:48px}
++ .mp-segmented label,.mp-toggle li label{height:38px;font-size:13px!important}.mp-height-pair{grid-template-columns:1fr 1fr}
++ .mp-approved-section:not(:first-of-type){ }.sticky-form-actions{position:sticky;bottom:0}.sticky-form-actions .primary{width:100%}
++}
++

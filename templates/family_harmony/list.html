@@ -49,7 +49,7 @@
 </section>
 
 <div class="list-results">
-<section class="panel table-wrap">
+<section class="panel table-wrap desktop-profile-table mobile-hidden">
   <table>
     <thead>
       <tr>
@@ -88,6 +88,7 @@
         <td class="row-actions">
           <a class="action-button view" href="{% url 'harmony_detail' profile.id %}" title="View profile"><span aria-hidden="true">◉</span> View</a>
           <a class="action-button edit" href="{% url 'harmony_edit' profile.id %}" title="Edit profile"><span aria-hidden="true">✎</span> Edit</a>
+          <a class="action-button view" href="{% url 'harmony_export' profile.id 'pdf' %}" title="Download profile PDF"><span aria-hidden="true">⇩</span> PDF</a>
           <a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank" rel="noopener" title="Share on WhatsApp"><span aria-hidden="true">☏</span> WhatsApp</a>
         </td>
       </tr>
@@ -97,6 +98,9 @@
     </tbody>
   </table>
 </section>
+<div class="mobile-profile-cards">
+{% for profile in profiles %}<article class="compact-profile-card">{% if profile.person.photo %}<img src="{{ profile.person.photo.url }}" alt="">{% else %}<span class="initials">{{ profile.person.first_name|first }}</span>{% endif %}<div><h3>{{ profile.person.full_name }}</h3><div class="compact-meta"><span>Age: {{ profile.person.age|default:'—' }}</span><span>{{ profile.person.gender|default:'—' }}</span><span>{{ profile.education_level|default:profile.person.education|default:'Education —' }}</span><span>{{ profile.profession|default:profile.person.occupation|default:'Profession —' }}</span><span>House: {{ profile.owns_house|yesno:'Yes,No,—' }}</span><span>Car: {{ profile.owns_car|yesno:'Yes,No,—' }}</span><span>{{ profile.owning_jamatkhana|default:'JK —' }}</span><span>{{ profile.get_status_display }}</span></div></div><div class="compact-actions"><a class="action-button view" href="{% url 'harmony_detail' profile.id %}">View</a><a class="action-button edit" href="{% url 'harmony_edit' profile.id %}">Edit</a><a class="action-button view" href="{% url 'harmony_export' profile.id 'pdf' %}">PDF</a><a class="action-button whatsapp" href="{% url 'create_profile_share' profile.id %}?redirect=whatsapp" target="_blank">WhatsApp</a></div></article>{% empty %}<p class="muted">No profiles found.</p>{% endfor %}
+</div>
 {% include 'partials/pagination.html' %}
 </div>
 {% endblock %}
