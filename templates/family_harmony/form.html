@@ -146,6 +146,8 @@
       </div>
     </div>
 
+    {% if preference_form %}<div class="form-section"><h2>Preferences for Prospective Match</h2><p class="muted">Use Ctrl/Cmd to select multiple items.</p><div class="form-row">{% for field in preference_form %}<div class="form-field">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endfor %}</div></div>{% endif %}
+
     <div class="form-actions">
       <button class="primary">Save profile</button>
     </div>

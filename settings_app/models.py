@@ -13,8 +13,13 @@ class FamilyHarmonySettings(models.Model):
     education_levels = models.JSONField(default=list, blank=True)
     occupation_options = models.JSONField(default=list, blank=True)
     employer_options = models.JSONField(default=list, blank=True)
+    business_type_options = models.JSONField(default=list, blank=True)
     income_ranges = models.JSONField(default=list, blank=True)
     portfolio_options = models.JSONField(default=list, blank=True)
+    family_type_options = models.JSONField(default=list, blank=True)
+    language_options = models.JSONField(default=list, blank=True)
+    marital_status_options = models.JSONField(default=list, blank=True)
+    relationship_options = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -34,9 +39,19 @@ class FamilyHarmonySettings(models.Model):
             settings.occupation_options = ['Government employee', 'Private employee', 'Business owner', 'Self-employed', 'Teacher', 'Doctor', 'Engineer', 'Student', 'Homemaker', 'Retired', 'Unemployed', 'Other']
         if not settings.employer_options:
             settings.employer_options = ['Government', 'Private company', 'Own business', 'NGO', 'Self-employed', 'Not applicable', 'Other']
+        if not settings.business_type_options:
+            settings.business_type_options = ['Salaried / Employment', 'Self-employed', 'Sole Proprietorship', 'Partnership', 'Private Limited Company', 'Family Business', 'Professional Practice', 'Freelance / Consultancy', 'Not applicable', 'Other']
         if not settings.income_ranges:
             settings.income_ranges = ['No income', 'Below 50,000', '50,000 - 100,000', '100,000 - 200,000', '200,000 - 500,000', 'Above 500,000', 'Other']
         if not settings.portfolio_options:
             settings.portfolio_options = ['Family Harmony', 'Seniors', 'Portfolio 3', 'Portfolio 4', 'Portfolio 5', 'Portfolio 6']
-        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'income_ranges', 'portfolio_options'])
+        if not settings.family_type_options:
+            settings.family_type_options = ['Nuclear', 'Joint', 'Extended']
+        if not settings.language_options:
+            settings.language_options = ['English', 'Urdu', 'Gujarati', 'Sindhi', 'Punjabi', 'Pashto', 'Burushaski', 'Shina', 'Khowar', 'Other']
+        if not settings.marital_status_options:
+            settings.marital_status_options = ['Never married', 'Divorced', 'Widowed', 'Separated', 'Other']
+        if not settings.relationship_options:
+            settings.relationship_options = ['Father', 'Mother', 'Brother', 'Sister', 'Son', 'Daughter', 'Guardian', 'Other']
+        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options'])
         return settings

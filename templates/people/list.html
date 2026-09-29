@@ -7,6 +7,8 @@
     <h1>People</h1>
   </div>
   <div class="actions">
+    <a class="primary" href="{% url 'create_form_invitation' %}">Public Marriage Form</a>
+    <a class="action-button whatsapp" href="{% url 'create_form_invitation' %}?redirect=whatsapp" target="_blank" rel="noopener">Send Form via WhatsApp</a>
     <a class="primary" href="{% url 'person_create' %}">Add person</a>
     <a class="secondary export-link" data-export-format="xlsx" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
     <a class="secondary export-link" data-export-format="pdf" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>

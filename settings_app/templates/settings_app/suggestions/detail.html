@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ ticket.get_ticket_type_display }} #{{ ticket.id }}{% endblock %}
+{% block content %}<style>.container{max-width:1180px;margin:24px auto;padding:0 18px}.card{background:#fff;border:1px solid #dce5df;border-radius:8px;margin-bottom:16px}.card-body{padding:18px}.btn{display:inline-block;border:1px solid #d0d8d5;border-radius:5px;padding:7px 11px;background:#fff;cursor:pointer}.btn-warning{background:#ffc107}.btn-primary{background:#126b68;color:#fff}.btn-danger{background:#dc3545;color:#fff}.form-control,.form-select{width:100%;padding:9px;border:1px solid #dce5df;border-radius:5px}.row{display:flex;flex-wrap:wrap;gap:12px}.col,.col-md-4,.col-md-6,.col-md-8{flex:1 1 260px}.badge{padding:5px 8px;border-radius:10px}.table{width:100%}.d-flex{display:flex}.gap-2{gap:8px}.justify-content-between{justify-content:space-between}.align-items-center{align-items:center}.mb-0{margin-bottom:0}.mb-3{margin-bottom:16px}.mt-3{margin-top:16px}.text-muted{color:#6b7d82}</style>
+<style>
+  .suggestion-photo-grid img { width:100%; aspect-ratio:1; object-fit:cover; }
+  .suggestion-reply-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,110px)); gap:.5rem; margin-top:.5rem; }
+  .suggestion-reply-photo-preview figure { margin:0; min-width:0; }
+  .suggestion-reply-photo-preview img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
+  .suggestion-reply-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @media (max-width:575.98px) {
+    .suggestion-detail-head { align-items:flex-start !important; }
+    .suggestion-detail-card .card-header { align-items:flex-start !important; flex-wrap:wrap; }
+    .suggestion-detail-card .js-ticket-status { width:100% !important; }
+    .suggestion-photo-grid > div { width:50%; }
+  }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-2 suggestion-detail-head">
+  <h5 class="mb-0">{{ ticket.get_ticket_type_display }} #{{ ticket.id }}</h5>
+  <a href="{% url 'suggestion_list' %}" class="btn btn-sm btn-outline-secondary">Back</a>
+</div>
+
+<div class="card shadow-sm mb-3 suggestion-detail-card">
+  <div class="card-header d-flex justify-content-between align-items-center gap-2">
+    <strong>{{ ticket.title }}</strong>
+    {% if request.user.is_staff or request.user.is_superuser %}
+      <select class="form-select form-select-sm js-ticket-status"
+              data-url="{% url 'suggestion_status_update' ticket.id %}"
+              style="width:190px">
+        {% for value,label in status_choices %}
+          <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    {% else %}
+      <span class="badge bg-secondary">{{ ticket.get_status_display }}</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row small mb-3">
+      <div class="col-md-3"><strong>User:</strong> {{ ticket.user_name_snapshot }}</div>
+      <div class="col-md-3"><strong>Phone:</strong> {{ ticket.phone_snapshot|default:"-" }}</div>
+      <div class="col-md-3"><strong>Screen:</strong> {{ ticket.screen_name|default:"-" }}</div>
+      <div class="col-md-3"><strong>Priority:</strong> {{ ticket.get_priority_display }}</div>
+      <div class="col-md-3"><strong>Created:</strong> {{ ticket.created_at }}</div>
+    </div>
+    <div class="border rounded p-2 bg-light">{{ ticket.description|linebreaksbr }}</div>
+    {% if ticket.photos %}
+      <hr>
+      <h6>Photos / Screenshots</h6>
+      <div class="row g-2 suggestion-photo-grid">
+        {% for p in ticket.photos %}
+          <div class="col-6 col-md-3 col-lg-2">
+            <a href="{{ p.url }}" target="_blank">
+              <img src="{{ p.url }}" alt="{{ p.name }}" class="img-fluid rounded border">
+            </a>
+            <a href="{{ p.url }}" download class="btn btn-sm btn-outline-primary w-100 mt-1">
+              <i class="bi bi-download"></i> Download
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header"><strong>Replies</strong></div>
+  <div class="card-body">
+    {% for r in ticket.replies %}
+      <div class="mb-2 p-2 rounded {% if r.is_staff_reply %}bg-warning-subtle{% else %}bg-light{% endif %}">
+        <div class="small text-muted d-flex justify-content-between gap-2">
+          <span>{% if r.is_staff_reply %}<strong>Admin</strong>{% else %}<strong>{{ r.created_by }}</strong>{% endif %}</span>
+          <span>{{ r.created_at }}</span>
+        </div>
+        {% if r.message %}<div>{{ r.message|linebreaksbr }}</div>{% endif %}
+        {% if r.photos %}
+          <div class="row g-2 mt-1 suggestion-photo-grid">
+            {% for p in r.photos %}
+              <div class="col-6 col-md-3 col-lg-2">
+                <a href="{{ p.url }}" target="_blank"><img src="{{ p.url }}" alt="{{ p.name }}" class="img-fluid rounded border"></a>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="text-muted small">No replies yet.</div>
+    {% endfor %}
+    <hr>
+    <form method="post" enctype="multipart/form-data" id="suggestionReplyForm">
+      {% csrf_token %}
+      <label class="form-label">Reply</label>
+      {{ form.message }}
+      <label class="form-label mt-2">Images / Screenshots</label>
+      <div id="replyPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
+      <input type="file" name="photos" class="form-control form-control-sm" multiple accept="image/*">
+      <div class="suggestion-reply-photo-preview" id="suggestionReplyPhotoPreview" aria-live="polite"></div>
+      <div class="form-text">Choose images, or copy an image and paste it anywhere in this reply form.</div>
+      {% if request.user.is_staff or request.user.is_superuser %}
+        <label class="form-label mt-2">Change Status</label>
+        <select name="status" class="form-select form-select-sm" style="max-width:250px">
+          {% for value,label in status_choices %}
+            <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
+      <button class="btn btn-primary btn-sm mt-3"><i class="bi bi-send"></i> Send Reply</button>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.getElementById("suggestionReplyForm");
+  const photos = form ? form.querySelector('input[type="file"][name="photos"]') : null;
+  const preview = document.getElementById("suggestionReplyPhotoPreview");
+  const alertEl = document.getElementById("replyPhotoAlert");
+  if (!form || !photos || !preview) return;
+
+  function renderPreview() {
+    preview.replaceChildren();
+    Array.from(photos.files || []).forEach(function (file) {
+      const figure = document.createElement("figure");
+      const img = document.createElement("img");
+      const caption = document.createElement("figcaption");
+      img.alt = file.name;
+      img.src = URL.createObjectURL(file);
+      img.onload = function () { URL.revokeObjectURL(img.src); };
+      caption.textContent = file.name;
+      figure.append(img, caption);
+      preview.appendChild(figure);
+    });
+  }
+
+  photos.addEventListener("change", renderPreview);
+  form.addEventListener("paste", function (event) {
+    const pastedImages = Array.from((event.clipboardData && event.clipboardData.items) || [])
+      .filter(function (item) { return item.kind === "file" && item.type.startsWith("image/"); })
+      .map(function (item) { return item.getAsFile(); })
+      .filter(Boolean);
+    if (!pastedImages.length) return;
+
+    event.preventDefault();
+    try {
+      const transfer = new DataTransfer();
+      Array.from(photos.files || []).forEach(function (file) { transfer.items.add(file); });
+      pastedImages.forEach(function (file, index) {
+        const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+        transfer.items.add(new File([file], "pasted-image-" + Date.now() + "-" + (index + 1) + "." + extension, { type: file.type }));
+      });
+      photos.files = transfer.files;
+      if (alertEl) alertEl.classList.add("d-none");
+      renderPreview();
+    } catch (error) {
+      if (alertEl) {
+        alertEl.textContent = "This browser could not attach the pasted image. Please use the file picker.";
+        alertEl.classList.remove("d-none");
+      }
+    }
+  });
+});
+
+document.addEventListener("change", function(e){
+  const el = e.target.closest(".js-ticket-status");
+  if(!el) return;
+
+  const formData = new FormData();
+  formData.append("status", el.value);
+  formData.append("csrfmiddlewaretoken", "{{ csrf_token }}");
+
+  fetch(el.dataset.url, {
+    method: "POST",
+    body: formData,
+    headers: {"X-Requested-With": "XMLHttpRequest"}
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(!data.ok){
+      alert(data.error || "Could not update status.");
+    }
+  })
+  .catch(() => alert("Status update failed."));
+});
+</script>
+{% endblock %}

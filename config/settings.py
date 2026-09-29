@@ -76,6 +76,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.social_nav',
             ],
         },
     },
@@ -126,7 +127,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Karachi'
 
 USE_I18N = True
 
@@ -158,3 +159,9 @@ APP_TITLE = os.getenv('APP_TITLE', 'Social Welfare Center Database')
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
+
+# Deployment under a URL prefix (production uses /social). Leave blank for local development.
+FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', '').rstrip('/') or None
+if FORCE_SCRIPT_NAME:
+    STATIC_URL = f'{FORCE_SCRIPT_NAME}/static/'
+    MEDIA_URL = f'{FORCE_SCRIPT_NAME}/media/'

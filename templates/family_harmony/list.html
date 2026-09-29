@@ -7,6 +7,8 @@
     <h1>Family Harmony profiles</h1>
   </div>
   <div class="actions">
+    <a class="primary" href="{% url 'create_form_invitation' %}">Public Marriage Form</a>
+    <a class="action-button whatsapp" href="{% url 'create_form_invitation' %}?redirect=whatsapp" target="_blank" rel="noopener">Send Form via WhatsApp</a>
     <a class="primary" href="{% url 'harmony_create' %}">Add profile</a>
     <a class="secondary export-link" data-export-format="xlsx" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
     <a class="secondary export-link" data-export-format="pdf" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>

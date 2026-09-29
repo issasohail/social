@@ -6,19 +6,23 @@ from urllib.parse import quote
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.contrib import messages
+from django.db import IntegrityError
+from django.db.models.deletion import ProtectedError
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.core.paginator import Paginator
 
-from family_harmony.models import FamilyHarmonyProfile
+from family_harmony.models import FamilyHarmonyProfile, FamilyHarmonyPreference
 from family_harmony.models import PublicFormInvitation
 from family_harmony.forms import FamilyHarmonyPreferenceForm, FamilyHarmonyProfileForm
 from organization.models import Jamatkhana, LocalCouncil, NationalCouncil, RegionalCouncil
 from people.forms import PersonForm
-from people.models import Person, normalize_phone_number
+from people.models import Person, normalize_phone_number, normalize_cnic
 from sharing.services import open_share
 from sharing.models import PersonShare, ProfileShare
 from settings_app.models import FamilyHarmonySettings
@@ -47,78 +51,82 @@ def organization_overview(request):
 
 @login_required
 def regional_councils(request):
-    query = (request.GET.get('q') or '').strip()
-    regional_councils_qs = RegionalCouncil.objects.filter(is_active=True).select_related('national_council')
-    if query:
-        regional_councils_qs = regional_councils_qs.filter(Q(name__icontains=query) | Q(code__icontains=query))
-    page = Paginator(regional_councils_qs.order_by('name'), 25).get_page(request.GET.get('page'))
-    context = {
-        'page_obj': page,
-        'items': page,
-        'query': query,
-        'title': 'Regional Council',
-        'subtitle': 'Manage RCs and their local coverage.',
-        'stats': {
-            'total': RegionalCouncil.objects.filter(is_active=True).count(),
-            'active': RegionalCouncil.objects.filter(is_active=True).count(),
-            'linked': LocalCouncil.objects.filter(is_active=True).count(),
-        },
-    }
-    return render(request, 'organization/regional_councils.html', context)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'create':
+                RegionalCouncil.objects.create(
+                    national_council_id=request.POST.get('national_council'),
+                    name=request.POST.get('name', '').strip(), code=request.POST.get('code', '').strip(),
+                    is_active=request.POST.get('is_active') == 'on')
+                messages.success(request, 'Regional Council created.')
+            elif action == 'update':
+                item = get_object_or_404(RegionalCouncil, pk=request.POST.get('id'))
+                item.national_council_id=request.POST.get('national_council'); item.name=request.POST.get('name','').strip(); item.code=request.POST.get('code','').strip(); item.is_active=request.POST.get('is_active') == 'on'; item.save()
+                messages.success(request, 'Regional Council updated.')
+            elif action == 'delete':
+                item = get_object_or_404(RegionalCouncil, pk=request.POST.get('id'))
+                try: item.delete(); messages.success(request, 'Regional Council deleted.')
+                except ProtectedError: item.is_active=False; item.save(update_fields=['is_active']); messages.warning(request, 'Regional Council is in use, so it was made inactive instead of being deleted.')
+        except (IntegrityError, ValueError) as exc:
+            messages.error(request, f'Could not save Regional Council. Check that the code is unique and required fields are filled. ({exc})')
+        return redirect('regional_councils')
+    query=(request.GET.get('q') or '').strip(); national_filter=request.GET.get('national',''); status_filter=request.GET.get('status','')
+    qs=RegionalCouncil.objects.select_related('national_council').all()
+    if query: qs=qs.filter(Q(name__icontains=query)|Q(code__icontains=query))
+    if national_filter: qs=qs.filter(national_council_id=national_filter)
+    if status_filter in ('active','inactive'): qs=qs.filter(is_active=status_filter=='active')
+    page=Paginator(qs.order_by('name'),25).get_page(request.GET.get('page'))
+    return render(request,'organization/regional_councils.html',{'page_obj':page,'items':page,'query':query,'national':national_filter,'status':status_filter,'nationals':NationalCouncil.objects.all().order_by('name'),'title':'Regional Council','subtitle':'Create, filter and edit Regional Councils inline.','stats':{'total':RegionalCouncil.objects.count(),'active':RegionalCouncil.objects.filter(is_active=True).count(),'linked':LocalCouncil.objects.filter(is_active=True).count()}})
 
 
 @login_required
 def local_councils(request):
-    query = (request.GET.get('q') or '').strip()
-    region_filter = request.GET.get('region', '')
-    local_councils_qs = LocalCouncil.objects.filter(is_active=True).select_related('regional_council', 'regional_council__national_council')
-    if query:
-        local_councils_qs = local_councils_qs.filter(Q(name__icontains=query) | Q(code__icontains=query))
-    if region_filter:
-        local_councils_qs = local_councils_qs.filter(regional_council_id=region_filter)
-    page = Paginator(local_councils_qs.order_by('name'), 25).get_page(request.GET.get('page'))
-    context = {
-        'page_obj': page,
-        'items': page,
-        'query': query,
-        'region': region_filter,
-        'regions': RegionalCouncil.objects.filter(is_active=True).order_by('name'),
-        'title': 'Local Council',
-        'subtitle': 'Manage LC structures and their JK memberships.',
-        'stats': {
-            'total': LocalCouncil.objects.filter(is_active=True).count(),
-            'active': LocalCouncil.objects.filter(is_active=True).count(),
-            'linked': Jamatkhana.objects.filter(is_active=True).count(),
-        },
-    }
-    return render(request, 'organization/local_councils.html', context)
+    if request.method == 'POST':
+        action=request.POST.get('action')
+        try:
+            if action == 'create':
+                LocalCouncil.objects.create(regional_council_id=request.POST.get('regional_council'),name=request.POST.get('name','').strip(),code=request.POST.get('code','').strip(),is_active=request.POST.get('is_active')=='on'); messages.success(request,'Local Council created.')
+            elif action == 'update':
+                item=get_object_or_404(LocalCouncil,pk=request.POST.get('id')); item.regional_council_id=request.POST.get('regional_council'); item.name=request.POST.get('name','').strip(); item.code=request.POST.get('code','').strip(); item.is_active=request.POST.get('is_active')=='on'; item.save(); messages.success(request,'Local Council updated.')
+            elif action == 'delete':
+                item=get_object_or_404(LocalCouncil,pk=request.POST.get('id'))
+                try: item.delete(); messages.success(request,'Local Council deleted.')
+                except ProtectedError: item.is_active=False; item.save(update_fields=['is_active']); messages.warning(request,'Local Council is in use, so it was made inactive instead of being deleted.')
+        except (IntegrityError,ValueError) as exc: messages.error(request,f'Could not save Local Council. Check that the code is unique and required fields are filled. ({exc})')
+        return redirect('local_councils')
+    query=(request.GET.get('q') or '').strip(); region_filter=request.GET.get('region',''); status_filter=request.GET.get('status','')
+    qs=LocalCouncil.objects.select_related('regional_council','regional_council__national_council').all()
+    if query: qs=qs.filter(Q(name__icontains=query)|Q(code__icontains=query))
+    if region_filter: qs=qs.filter(regional_council_id=region_filter)
+    if status_filter in ('active','inactive'): qs=qs.filter(is_active=status_filter=='active')
+    page=Paginator(qs.order_by('regional_council__name','name'),25).get_page(request.GET.get('page'))
+    return render(request,'organization/local_councils.html',{'page_obj':page,'items':page,'query':query,'region':region_filter,'status':status_filter,'regions':RegionalCouncil.objects.all().order_by('name'),'title':'Local Council','subtitle':'Create, filter and edit Local Councils inline.','stats':{'total':LocalCouncil.objects.count(),'active':LocalCouncil.objects.filter(is_active=True).count(),'linked':Jamatkhana.objects.filter(is_active=True).count()}})
 
 
 @login_required
 def jamatkhanas(request):
-    query = (request.GET.get('q') or '').strip()
-    local_filter = request.GET.get('local_council', '')
-    jamatkhanas_qs = Jamatkhana.objects.filter(is_active=True).select_related('local_council', 'local_council__regional_council', 'local_council__regional_council__national_council')
-    if query:
-        jamatkhanas_qs = jamatkhanas_qs.filter(Q(name__icontains=query) | Q(code__icontains=query) | Q(short_name__icontains=query))
-    if local_filter:
-        jamatkhanas_qs = jamatkhanas_qs.filter(local_council_id=local_filter)
-    page = Paginator(jamatkhanas_qs.order_by('name'), 25).get_page(request.GET.get('page'))
-    context = {
-        'page_obj': page,
-        'items': page,
-        'query': query,
-        'local_council': local_filter,
-        'local_councils': LocalCouncil.objects.filter(is_active=True).select_related('regional_council').order_by('name'),
-        'title': 'Jamatkhana',
-        'subtitle': 'Manage JK assignments, coverage, and membership details.',
-        'stats': {
-            'total': Jamatkhana.objects.filter(is_active=True).count(),
-            'active': Jamatkhana.objects.filter(is_active=True).count(),
-            'linked': Person.objects.filter(is_active=True).count(),
-        },
-    }
-    return render(request, 'organization/jamatkhanas.html', context)
+    if request.method == 'POST':
+        action=request.POST.get('action')
+        try:
+            if action == 'create':
+                Jamatkhana.objects.create(local_council_id=request.POST.get('local_council'),name=request.POST.get('name','').strip(),short_name=request.POST.get('short_name','').strip(),code=request.POST.get('code','').strip(),is_active=request.POST.get('is_active')=='on'); messages.success(request,'Jamatkhana created.')
+            elif action == 'update':
+                item=get_object_or_404(Jamatkhana,pk=request.POST.get('id')); item.local_council_id=request.POST.get('local_council'); item.name=request.POST.get('name','').strip(); item.short_name=request.POST.get('short_name','').strip(); item.code=request.POST.get('code','').strip(); item.is_active=request.POST.get('is_active')=='on'; item.save(); messages.success(request,'Jamatkhana updated.')
+            elif action == 'delete':
+                item=get_object_or_404(Jamatkhana,pk=request.POST.get('id'))
+                try: item.delete(); messages.success(request,'Jamatkhana deleted.')
+                except ProtectedError: item.is_active=False; item.save(update_fields=['is_active']); messages.warning(request,'Jamatkhana is in use, so it was made inactive instead of being deleted.')
+        except (IntegrityError,ValueError) as exc: messages.error(request,f'Could not save Jamatkhana. Check that the code is unique and required fields are filled. ({exc})')
+        return redirect('jamatkhanas')
+    query=(request.GET.get('q') or '').strip(); region_filter=request.GET.get('region',''); local_filter=request.GET.get('local_council',''); status_filter=request.GET.get('status','')
+    qs=Jamatkhana.objects.select_related('local_council','local_council__regional_council','local_council__regional_council__national_council').all()
+    if query: qs=qs.filter(Q(name__icontains=query)|Q(code__icontains=query)|Q(short_name__icontains=query))
+    if region_filter: qs=qs.filter(local_council__regional_council_id=region_filter)
+    if local_filter: qs=qs.filter(local_council_id=local_filter)
+    if status_filter in ('active','inactive'): qs=qs.filter(is_active=status_filter=='active')
+    page=Paginator(qs.order_by('local_council__name','name'),25).get_page(request.GET.get('page'))
+    return render(request,'organization/jamatkhanas.html',{'page_obj':page,'items':page,'query':query,'region':region_filter,'local_council':local_filter,'status':status_filter,'regions':RegionalCouncil.objects.all().order_by('name'),'local_councils':LocalCouncil.objects.select_related('regional_council').all().order_by('regional_council__name','name'),'title':'Jamatkhana','subtitle':'Create, filter and edit Jamatkhanas inline.','stats':{'total':Jamatkhana.objects.count(),'active':Jamatkhana.objects.filter(is_active=True).count(),'linked':Person.objects.filter(is_active=True).count()}})
 
 
 @login_required
@@ -326,14 +334,30 @@ def person_detail(request, person_id):
 
 @login_required
 def person_export(request, person_id, export_format):
-    person = get_object_or_404(Person, pk=person_id)
-    rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.mobile or '—', person.occupation or '—', person.masked_identity_number() or '—')]
-    headers = ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Occupation', 'CNIC']
-    export = _export_response(request, rows, headers, f'Person: {person.full_name}', 'Person detail', export_format=export_format)
-    if export is not None:
-        return export
+    person=get_object_or_404(Person,pk=person_id)
+    if export_format=='pdf':
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import ImageReader
+        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Person - {person.full_name}')
+        green=(.07,.42,.41); c.setFillColorRGB(*green); c.rect(0,H-78,W,78,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',18); c.drawString(34,H-36,'Social Welfare Center'); c.setFont('Helvetica',10); c.drawString(34,H-56,f'Person Detail · {person.serial_number}')
+        y=H-112
+        if person.photo:
+            try: c.drawImage(ImageReader(person.photo.path),W-128,H-188,88,88,preserveAspectRatio=True,mask='auto')
+            except Exception: pass
+        c.setFillColorRGB(.1,.18,.2); c.setFont('Helvetica-Bold',17); c.drawString(34,y,person.full_name); y-=28
+        sections=[('Personal Information',[('Title',person.title),('Gender',person.gender),('Date of Birth',person.date_of_birth),('Age',person.age),('Marital Status',person.marital_status),('Nationality',person.nationality)]),('Contact & Residence',[('Mobile',person.mobile),('WhatsApp',person.whatsapp_number),('Email',person.email),('City / Province',f'{person.city} / {person.province}'),('Country',person.country),('Current Address',person.current_address)]),('Organization',[('Regional Council',person.region),('Local Council',person.local_council),('Jamatkhana',person.jamatkhana)]),('Education & Career',[('Education',person.education),('Education Details',person.education_details),('Occupation',person.occupation),('Employer / Business',person.employer_or_business),('Income Range',person.income_range),('Languages',person.languages)])]
+        for heading,items in sections:
+            c.setFillColorRGB(.88,.94,.91); c.rect(30,y-4,W-60,18,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',9); c.drawString(35,y+1,heading); y-=20
+            for label,value in items:
+                text=str(value or '—').replace('\n',' ')[:115]; c.setFillColorRGB(.2,.25,.25); c.setFont('Helvetica-Bold',7.5); c.drawString(35,y,label+':'); c.setFont('Helvetica',7.5); c.drawString(135,y,text); y-=13
+            y-=5
+        c.setStrokeColorRGB(.75,.8,.78); c.line(30,34,W-30,34); c.setFont('Helvetica',6.5); c.setFillColorRGB(.35,.4,.4); c.drawString(32,22,'Confidential Social Welfare record'); c.drawRightString(W-32,22,'US Letter · Page 1 of 1'); c.save()
+        r=HttpResponse(output.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{person.serial_number.lower()}-person.pdf"'; return r
+    rows=[(person.serial_number,person.full_name,person.age or '',person.gender or '—',person.city or '—',person.mobile or '—',person.occupation or '—',person.masked_identity_number() or '—')]
+    export=_export_response(request,rows,['Serial','Name','Age','Gender','City','Phone','Occupation','CNIC'],f'Person: {person.full_name}','Person detail',export_format=export_format)
+    if export is not None:return export
     raise Http404()
-
 
 @login_required
 def person_edit(request, person_id):
@@ -393,15 +417,17 @@ def harmony_create(request):
         return redirect('harmony_edit', profile_id=person.harmony_profile.pk)
     person_form = PersonForm(request.POST or None, request.FILES or None, instance=person)
     profile_form = FamilyHarmonyProfileForm(request.POST or None)
-    if person_form.is_valid() and profile_form.is_valid():
+    preference_form = FamilyHarmonyPreferenceForm(request.POST or None)
+    if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
         person = person_form.save(commit=False)
         person.updated_by = request.user
         person.save()
         profile = profile_form.save(commit=False)
         profile.person = person
         profile.save()
+        pref = preference_form.save(commit=False); pref.profile = profile; pref.save()
         return redirect('harmony_detail', profile_id=profile.pk)
-    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'person_id': person.pk, 'title': 'Add Family Harmony profile'})
+    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'person_id': person.pk, 'title': 'Add Family Harmony profile'})
 
 
 @login_required
@@ -412,98 +438,51 @@ def harmony_detail(request, profile_id):
 
 @login_required
 def harmony_export(request, profile_id, export_format):
-    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'owning_region', 'owning_local_council', 'owning_jamatkhana'), pk=profile_id)
-    person = profile.person
-    serial = f'FH-{profile.pk:05d}'
-    stamp = timezone.localtime().strftime('%d %b %Y %H:%M')
-    location = f'Region: {profile.owning_region or "—"} | Local: {profile.owning_local_council or "—"} | JK: {profile.owning_jamatkhana or "—"}'
-    sections = [
-        ('Profile', [f'Serial number: {serial}', f'Name: {person.full_name}', f'Age: {person.age or "—"}', f'Gender: {person.gender or "—"}', f'Phone: {person.mobile or "—"}', f'Status: {profile.get_status_display()}', location]),
-        ('Education and work', [f'Education: {profile.qualification or profile.education_level or "—"}', f'Institution: {profile.institution or "—"}', f'Profession: {profile.profession or "—"}', f'Employer: {profile.employer_or_business or "—"}', f'Experience: {profile.years_experience or "—"}', f'Financial status: {profile.financial_status or "—"}']),
-        ('Family and personality', [f'Family background: {profile.family_background or "—"}', f'Family values: {profile.family_values or "—"}', f'Personality: {profile.personality or "—"}', f'Interests: {profile.interests or "—"}', f'Languages: {profile.languages or "—"}']),
-        ('Seeking', [f'Age range: {profile.preferences.minimum_age if hasattr(profile, "preferences") else "—"} - {profile.preferences.maximum_age if hasattr(profile, "preferences") else "—"}', f'Locations: {", ".join(profile.preferences.preferred_locations) if hasattr(profile, "preferences") else "—"}', f'Education: {profile.preferences.preferred_education if hasattr(profile, "preferences") else "—"}', f'Expectations: {profile.preferences.free_text_seeking_description if hasattr(profile, "preferences") else "—"}']),
-        ('About', [f'Personal statement: {profile.personal_statement or "—"}', f'Expectations: {profile.expectations or "—"}', f'Contact release: withheld from external profile']),
-    ]
+    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person','owning_region','owning_local_council','owning_jamatkhana'), pk=profile_id)
+    person=profile.person; pref=getattr(profile,'preferences',None); serial=profile.serial_number
     if export_format == 'pdf':
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import letter
         from reportlab.lib.utils import ImageReader
         from reportlab.pdfgen import canvas
-        output = BytesIO()
-        page_width, page_height = A4
-        lines = [(heading, line) for heading, values in sections for line in values]
-        per_page = 23
-        page_count = max(1, (len(lines) + per_page - 1) // per_page)
-        pdf = canvas.Canvas(output, pagesize=A4)
-        pdf.setTitle(f'Family Harmony Profile - {person.full_name}')
-        pdf.setAuthor('Social Welfare Center')
-        for page_number in range(page_count):
-            pdf.setFillColorRGB(0.07, 0.42, 0.41)
-            pdf.rect(0, page_height - 92, page_width, 92, fill=1, stroke=0)
-            pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont('Helvetica-Bold', 20)
-            pdf.drawString(42, page_height - 45, 'Family Harmony Profile')
-            pdf.setFont('Helvetica', 9)
-            pdf.drawString(42, page_height - 64, location)
-            if page_number == 0 and person.photo:
-                try:
-                    pdf.drawImage(ImageReader(person.photo.path), page_width - 125, page_height - 82, 70, 70, preserveAspectRatio=True, mask='auto')
-                except (OSError, ValueError):
-                    pass
-            y = page_height - 125
-            previous_heading = None
-            for heading, line in lines[page_number * per_page:(page_number + 1) * per_page]:
-                if heading != previous_heading:
-                    pdf.setFillColorRGB(0.85, 0.93, 0.90)
-                    pdf.rect(36, y - 4, page_width - 72, 18, fill=1, stroke=0)
-                    pdf.setFillColorRGB(0.07, 0.42, 0.41)
-                    pdf.setFont('Helvetica-Bold', 10)
-                    pdf.drawString(44, y, heading)
-                    y -= 22
-                    previous_heading = heading
-                pdf.setFillColorRGB(0.10, 0.15, 0.18)
-                pdf.setFont('Helvetica', 9)
-                text = pdf.beginText(46, y)
-                text.textLine(line[:145])
-                pdf.drawText(text)
-                y -= 17
-            pdf.setFillColorRGB(0.40, 0.45, 0.46)
-            pdf.setFont('Helvetica', 8)
-            pdf.drawString(36, 22, stamp)
-            pdf.drawRightString(page_width - 36, 22, f'Profile {serial} | Page {page_number + 1} of {page_count}')
-            pdf.showPage()
-        pdf.save()
-        response = HttpResponse(output.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{serial.lower()}-family-harmony.pdf"'
-        return response
-    if export_format == 'jpg':
-        from PIL import Image, ImageDraw, ImageFont
-        image = Image.new('RGB', (1400, 1900), '#f5f7f2')
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, 1400, 190), fill='#126b68')
-        draw.text((60, 55), 'Family Harmony Profile', fill='white')
-        draw.text((60, 112), f'{serial}  |  {location}', fill='#dff2ea')
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Marriage Profile - {person.full_name}')
+        green=(0.12,0.36,0.31); c.setFillColorRGB(*green); c.rect(0,H-72,W,72,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',16); c.drawString(28,H-32,'Marriage Profile'); c.setFont('Helvetica',8); c.drawString(28,H-49,f'Aga Khan Social Welfare Board - Central Region   |   {serial}')
         if person.photo:
-            try:
-                photo = Image.open(person.photo.path).convert('RGB').resize((210, 210))
-                image.paste(photo, (1120, 30))
-            except (OSError, ValueError):
-                pass
-        y = 240
-        for heading, values in sections:
-            draw.rectangle((50, y, 1350, y + 38), fill='#d9ebe4')
-            draw.text((70, y + 10), heading, fill='#126b68')
-            y += 60
-            for value in values:
-                draw.text((75, y), value[:115], fill='#18313b')
-                y += 34
-            y += 18
-        draw.text((60, 1850), stamp, fill='#6b7d82')
-        draw.text((1080, 1850), 'Page 1 of 1', fill='#6b7d82')
-        output = BytesIO()
-        image.save(output, format='JPEG', quality=92)
-        response = HttpResponse(output.getvalue(), content_type='image/jpeg')
-        response['Content-Disposition'] = f'attachment; filename="{serial.lower()}-family-harmony.jpg"'
-        return response
+            try: c.drawImage(ImageReader(person.photo.path),W-92,H-68,54,54,preserveAspectRatio=True,mask='auto')
+            except (OSError,ValueError): pass
+        def clean(v):
+            if v is None or v=='' or v==[]: return '—'
+            if isinstance(v,list): return ', '.join(map(str,v)) or '—'
+            return str(v)
+        rows=[
+          ('Personal Information',[('Name',person.full_name),('Gender',person.gender),('Age',person.age),('Marital Status',profile.marital_status or person.marital_status),('Height',f'{profile.height_cm} cm' if profile.height_cm else ''),('Current City/Country',f'{person.city}, {person.country}'.strip(', '))]),
+          ('Family Background',[('Father',f'{profile.father_name} / {profile.father_occupation}'.strip(' /')),('Mother',f'{profile.mother_name} / {profile.mother_occupation}'.strip(' /')),('Siblings',profile.siblings_summary),('Family Residence',profile.family_residence),('Family Type',profile.family_type),('Caste / Tribe',profile.caste_tribe)]),
+          ('Education & Career',[('Highest Education',profile.qualification or profile.education_level or person.education),('Institution',profile.institution),('Occupation',profile.profession or person.occupation),('Employer / Business',profile.employer_or_business or person.employer_or_business),('Monthly Income',profile.income_range or person.income_range),('Languages',profile.languages or person.languages)]),
+          ('Preferences for Prospective Match',[('Age Range',f'{pref.minimum_age or "—"} - {pref.maximum_age or "—"}' if pref else '—'),('Education',clean(pref.preferred_education_options) if pref else '—'),('Profession',clean(pref.preferred_professions) if pref else '—'),('City / Location',clean(pref.preferred_cities or pref.preferred_locations) if pref else '—'),('Income',clean(pref.preferred_income_options) if pref else '—'),('Marital Status',clean(pref.preferred_marital_status_options) if pref else '—'),('Languages',clean(pref.preferred_languages) if pref else '—')]),
+          ('About',[('Interests',profile.interests or person.interests),('Personal Description',profile.personal_statement),('Other Expectations',pref.other_expectations if pref else profile.expectations),('Guardian / Contact',profile.guardian_contact)]),
+        ]
+        y=H-91; labelw=106; right=W-28
+        for heading,items in rows:
+            c.setFillColorRGB(.88,.94,.91); c.rect(26,y-3,W-52,14,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',8.5); c.drawString(31,y+1,heading); y-=15
+            for label,value in items:
+                text=clean(value).replace('\n',' ')
+                c.setFont('Helvetica-Bold',6.9); c.setFillColorRGB(.18,.25,.25); c.drawString(31,y,label+':')
+                c.setFont('Helvetica',6.9); maxw=right-(31+labelw); words=text.split(); lines=[]; line=''
+                for word in words:
+                    test=(line+' '+word).strip()
+                    if stringWidth(test,'Helvetica',6.9)<=maxw: line=test
+                    else:
+                        if line: lines.append(line)
+                        line=word
+                if line: lines.append(line)
+                lines=lines[:2] or ['—']
+                for i,line in enumerate(lines): c.drawString(31+labelw,y-(i*8),line[:120])
+                y-=8*max(1,len(lines))+2
+        c.setStrokeColorRGB(.75,.8,.78); c.line(26,34,W-26,34); c.setFillColorRGB(.35,.4,.4); c.setFont('Helvetica',6.5); c.drawString(28,23,'Confidential: for Family Harmony matchmaking only. Contact details are withheld from this profile copy.')
+        c.drawRightString(W-28,23,'Page 1 of 1'); c.save(); response=HttpResponse(output.getvalue(),content_type='application/pdf'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.pdf"'; return response
+    if export_format == 'jpg':
+        from PIL import Image, ImageDraw
+        image=Image.new('RGB',(1275,1650),'white'); draw=ImageDraw.Draw(image); draw.text((50,40),f'Marriage Profile - {person.full_name}',fill='black'); draw.text((50,90),'Use the PDF export for the designed one-page Letter profile.',fill='black'); output=BytesIO(); image.save(output,format='JPEG',quality=92); response=HttpResponse(output.getvalue(),content_type='image/jpeg'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.jpg"'; return response
     raise Http404()
 
 
@@ -514,7 +493,7 @@ def create_profile_share(request, profile_id):
     raw_token = secrets.token_urlsafe(32)
     expiry_days = max(settings.minimum_expiry_days, min(settings.default_expiry_days, settings.maximum_expiry_days))
     share = ProfileShare.objects.create(profile=profile, created_by=request.user, token_hash=hashlib.sha256(raw_token.encode()).hexdigest(), expires_at=timezone.now() + timedelta(days=expiry_days), max_views=settings.default_max_views, require_last_four=settings.require_last_four_cnic)
-    share_url = request.build_absolute_uri(f'/family-harmony/share/{raw_token}/')
+    share_url = request.build_absolute_uri(reverse('shared_profile', kwargs={'token': raw_token}))
     whatsapp_text = quote(f'Family Harmony profile: {profile.person.full_name}\nPlease review this confidential profile: {share_url}\nLink expires in {expiry_days} days.')
     if request.GET.get('redirect') == 'whatsapp':
         return redirect(f'https://wa.me/?text={whatsapp_text}')
@@ -534,7 +513,7 @@ def create_person_share(request, person_id):
         expires_at=timezone.now() + timedelta(days=expiry_days),
         max_views=settings.default_max_views,
     )
-    share_url = request.build_absolute_uri(f'/people/share/{raw_token}/')
+    share_url = request.build_absolute_uri(reverse('shared_person', kwargs={'token': raw_token}))
     phone = normalize_phone_number(getattr(getattr(request.user, 'profile', None), 'phone_number', ''))
     recipient = ''.join(character for character in phone if character.isdigit())
     whatsapp_text = quote(f'Person detail: {person.full_name}\nPlease review this confidential detail: {share_url}\nLink expires in {expiry_days} days.')
@@ -547,11 +526,12 @@ def harmony_edit(request, profile_id):
     profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person'), pk=profile_id)
     person_form = PersonForm(request.POST or None, request.FILES or None, instance=profile.person)
     profile_form = FamilyHarmonyProfileForm(request.POST or None, instance=profile)
-    if person_form.is_valid() and profile_form.is_valid():
-        person_form.save()
-        profile_form.save()
+    preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
+    preference_form = FamilyHarmonyPreferenceForm(request.POST or None, instance=preference)
+    if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
+        person_form.save(); profile_form.save(); preference_form.save()
         return redirect('harmony_detail', profile_id=profile.pk)
-    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'title': 'Edit Family Harmony profile'})
+    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'title': 'Edit Family Harmony profile'})
 
 
 @login_required
@@ -597,26 +577,35 @@ def harmony_inline_update(request):
 @never_cache
 def public_form(request, token):
     invitation = get_object_or_404(PublicFormInvitation, token_hash=hashlib.sha256(token.encode()).hexdigest())
-    if not invitation.is_available():
-        raise Http404('This form link has expired or has already been submitted.')
+    if not invitation.is_available(): raise Http404('This form link has expired or has already been submitted.')
+    settings = FamilyHarmonySettings.current()
     if request.method == 'POST':
-        first_name = request.POST.get('first_name', '').strip()
-        last_name = request.POST.get('last_name', '').strip()
-        if not first_name:
-            return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'error': 'First name is required.'})
-        person = Person.objects.create(
-            first_name=first_name, last_name=last_name, mobile=request.POST.get('mobile', '').strip(),
-            email=request.POST.get('email', '').strip(), city=request.POST.get('city', '').strip(),
-            gender=request.POST.get('gender', '').strip(), date_of_birth=request.POST.get('date_of_birth') or None,
-            region=invitation.preselected_region, local_council=invitation.preselected_local_council,
-            jamatkhana=invitation.preselected_jamatkhana,
-        )
-        profile = FamilyHarmonyProfile.objects.create(person=person, status=FamilyHarmonyProfile.Status.AWAITING_CONSENT, owning_region=invitation.preselected_region, owning_local_council=invitation.preselected_local_council, owning_jamatkhana=invitation.preselected_jamatkhana)
-        invitation.profile = profile
-        invitation.submitted_at = timezone.now()
-        invitation.save(update_fields=['profile', 'submitted_at'])
-        return render(request, 'family_harmony/public_submitted.html')
-    return render(request, 'family_harmony/public_form.html', {'invitation': invitation})
+        identity = (request.POST.get('identity_number') or '').strip()
+        normalized = ''.join(normalize_cnic(identity).split()).upper() or None
+        if normalized and Person.objects.filter(normalized_identity_number=normalized).exists():
+            return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'error': 'A record with this ID number already exists. Please contact the Family Harmony team instead of submitting again.'})
+        person_form = PersonForm(request.POST, request.FILES)
+        profile_form = FamilyHarmonyProfileForm(request.POST)
+        preference_form = FamilyHarmonyPreferenceForm(request.POST)
+        if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
+            person = person_form.save(commit=False)
+            person.region=invitation.preselected_region; person.local_council=invitation.preselected_local_council; person.jamatkhana=invitation.preselected_jamatkhana
+            person.save()
+            profile=profile_form.save(commit=False); profile.person=person; profile.status=FamilyHarmonyProfile.Status.AWAITING_CONSENT
+            profile.owning_region=invitation.preselected_region; profile.owning_local_council=invitation.preselected_local_council; profile.owning_jamatkhana=invitation.preselected_jamatkhana; profile.save()
+            pref=preference_form.save(commit=False); pref.profile=profile; pref.save()
+            invitation.profile=profile; invitation.submitted_at=timezone.now(); invitation.save(update_fields=['profile','submitted_at'])
+            return render(request, 'family_harmony/public_submitted.html')
+    else:
+        person_form=PersonForm(); profile_form=FamilyHarmonyProfileForm(); preference_form=FamilyHarmonyPreferenceForm()
+    return render(request, 'family_harmony/public_form.html', {'invitation': invitation, 'settings': settings, 'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form})
+
+@never_cache
+def identity_duplicate_check(request):
+    value=(request.GET.get('identity_number') or '').strip()
+    normalized=''.join(normalize_cnic(value).split()).upper()
+    exists=bool(normalized and Person.objects.filter(normalized_identity_number=normalized).exists())
+    return JsonResponse({'exists': exists, 'message': 'Record already exists.' if exists else ''})
 
 
 @never_cache
@@ -640,8 +629,57 @@ def shared_person(request, token):
 
 @login_required
 def create_form_invitation(request):
-    if not request.user.has_perm('family_harmony.add_familyharmonyprofile'):
-        raise Http404()
-    raw_token = secrets.token_urlsafe(32)
-    invitation = PublicFormInvitation.objects.create(token_hash=hashlib.sha256(raw_token.encode()).hexdigest(), created_by=request.user, expires_at=timezone.now() + timedelta(days=4))
-    return render(request, 'family_harmony/invitation_created.html', {'token': raw_token, 'invitation': invitation})
+    if not request.user.has_perm('family_harmony.add_familyharmonyprofile') and not request.user.is_superuser: raise Http404()
+    raw_token=secrets.token_urlsafe(32); cfg=FamilyHarmonySettings.current(); days=max(cfg.minimum_expiry_days,min(cfg.default_expiry_days,cfg.maximum_expiry_days))
+    invitation=PublicFormInvitation.objects.create(token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),created_by=request.user,expires_at=timezone.now()+timedelta(days=days))
+    public_url=request.build_absolute_uri(reverse('public_form',kwargs={'token':raw_token}))
+    whatsapp_url='https://wa.me/?text='+quote(f'Marriage Profile Submission Form\nPlease complete this secure form: {public_url}\nNo username or password is required. Link expires in {days} days.')
+    if request.GET.get('redirect')=='whatsapp': return redirect(whatsapp_url)
+    return render(request,'family_harmony/invitation_created.html',{'token':raw_token,'invitation':invitation,'public_url':public_url,'whatsapp_url':whatsapp_url,'expiry_days':days})
+@login_required
+def organization_inline_update(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required.'}, status=405)
+    model_name = (request.POST.get('model') or '').lower()
+    field = request.POST.get('field') or ''
+    record_id = request.POST.get('id')
+    value = (request.POST.get('value') or '').strip()
+    model_map = {'regional': RegionalCouncil, 'local': LocalCouncil, 'jamatkhana': Jamatkhana}
+    allowed = {
+        'regional': {'name','code','national_council_id','is_active'},
+        'local': {'name','code','regional_council_id','is_active'},
+        'jamatkhana': {'name','short_name','code','local_council_id','is_active'},
+    }
+    Model = model_map.get(model_name)
+    if not Model or field not in allowed.get(model_name, set()):
+        return JsonResponse({'ok': False, 'error': 'Field is not editable.'}, status=400)
+    item = get_object_or_404(Model, pk=record_id)
+    try:
+        if field == 'is_active': value = value.lower() in {'1','true','yes','on'}
+        elif field.endswith('_id'): value = int(value)
+        elif not value and field in {'name','code'}: raise ValueError('This field cannot be blank.')
+        setattr(item, field, value); item.save()
+        display = str(getattr(item, field[:-3])) if field.endswith('_id') else ('Yes' if value is True else 'No' if value is False else value)
+        return JsonResponse({'ok': True, 'value': value, 'display': display})
+    except (IntegrityError, ValueError) as exc:
+        return JsonResponse({'ok': False, 'error': f'Could not save: {exc}'}, status=400)
+
+@login_required
+def pending_approvals(request):
+    invitations = PublicFormInvitation.objects.filter(submitted_at__isnull=False, profile__isnull=False, profile__status__in=['DRAFT','AWAITING_CONSENT']).select_related('profile__person','created_by').order_by('-submitted_at')
+    return render(request, 'pending_approvals.html', {'invitations': invitations})
+
+@login_required
+def pending_approval_action(request, invitation_id):
+    if request.method != 'POST': raise Http404()
+    invitation = get_object_or_404(PublicFormInvitation.objects.select_related('profile'), pk=invitation_id, profile__isnull=False)
+    action = request.POST.get('action')
+    if action == 'approve':
+        invitation.profile.status = FamilyHarmonyProfile.Status.ACTIVE
+        invitation.profile.save(update_fields=['status','updated_at'])
+        messages.success(request, 'Marriage profile approved and activated.')
+    elif action == 'reject':
+        invitation.profile.status = FamilyHarmonyProfile.Status.ARCHIVED
+        invitation.profile.save(update_fields=['status','updated_at'])
+        messages.success(request, 'Marriage profile rejected and archived.')
+    return redirect('pending_approvals')

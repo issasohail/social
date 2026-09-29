@@ -1,0 +1,415 @@
+diff --git a/settings_app/suggestion_store.py b/settings_app/suggestion_store.py
+new file mode 100644
+index 0000000..ca35759
+--- /dev/null
++++ b/settings_app/suggestion_store.py
+@@ -0,0 +1,278 @@
++import json
++from dataclasses import dataclass, field
++from pathlib import Path
++from uuid import uuid4
++
++from django.conf import settings
++from django.utils import timezone
++
++
++STATUS_CHOICES = [
++    ("PENDING", "Pending"),
++    ("IN_PROGRESS", "In Progress"),
++    ("COMPLETED", "Completed"),
++    ("REJECTED", "Rejected"),
++]
++
++TYPE_CHOICES = [
++    ("SUGGESTION", "Suggestion"),
++    ("ERROR", "Report Error"),
++]
++
++PRIORITY_CHOICES = [
++    ("LOW", "Low"),
++    ("NORMAL", "Normal"),
++    ("HIGH", "High"),
++    ("URGENT", "Urgent"),
++]
++
++
++def _data_dir():
++    path = Path(settings.MEDIA_ROOT) / "suggestions"
++    path.mkdir(parents=True, exist_ok=True)
++    return path
++
++
++def _data_file():
++    return _data_dir() / "tickets.json"
++
++
++def _photo_dir(ticket_id):
++    path = _data_dir() / "photos" / str(ticket_id)
++    path.mkdir(parents=True, exist_ok=True)
++    return path
++
++
++def _now():
++    return timezone.localtime(timezone.now()).isoformat()
++
++
++def _read_payload():
++    path = _data_file()
++    if not path.exists():
++        return {"last_id": 0, "tickets": []}
++    try:
++        data = json.loads(path.read_text(encoding="utf-8"))
++    except (OSError, json.JSONDecodeError):
++        return {"last_id": 0, "tickets": []}
++    data.setdefault("last_id", 0)
++    data.setdefault("tickets", [])
++    return data
++
++
++def _write_payload(data):
++    _data_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
++
++
++def _display(choices, value):
++    return dict(choices).get(value, value)
++
++
++@dataclass
++class SuggestionTicket:
++    id: int
++    ticket_type: str
++    title: str
++    description: str
++    status: str
++    priority: str
++    screen_name: str
++    user_name_snapshot: str
++    phone_snapshot: str
++    created_at: str
++    updated_at: str
++    photos: list = field(default_factory=list)
++    replies: list = field(default_factory=list)
++
++    STATUS_CHOICES = STATUS_CHOICES
++
++    @classmethod
++    def from_dict(cls, data):
++        return cls(
++            id=int(data.get("id")),
++            ticket_type=data.get("ticket_type") or "SUGGESTION",
++            title=data.get("title") or "",
++            description=data.get("description") or "",
++            status=data.get("status") or "PENDING",
++            priority=data.get("priority") or "NORMAL",
++            screen_name=data.get("screen_name") or "",
++            user_name_snapshot=data.get("user_name_snapshot") or "",
++            phone_snapshot=data.get("phone_snapshot") or "",
++            created_at=data.get("created_at") or _now(),
++            updated_at=data.get("updated_at") or _now(),
++            photos=data.get("photos") or [],
++            replies=data.get("replies") or [],
++        )
++
++    def to_dict(self):
++        return {
++            "id": self.id,
++            "ticket_type": self.ticket_type,
++            "title": self.title,
++            "description": self.description,
++            "status": self.status,
++            "priority": self.priority,
++            "screen_name": self.screen_name,
++            "user_name_snapshot": self.user_name_snapshot,
++            "phone_snapshot": self.phone_snapshot,
++            "created_at": self.created_at,
++            "updated_at": self.updated_at,
++            "photos": self.photos,
++            "replies": self.replies,
++        }
++
++    def get_ticket_type_display(self):
++        return _display(TYPE_CHOICES, self.ticket_type)
++
++    def get_status_display(self):
++        return _display(STATUS_CHOICES, self.status)
++
++    def get_priority_display(self):
++        return _display(PRIORITY_CHOICES, self.priority)
++
++    @property
++    def created_display(self):
++        return self.created_at
++
++
++def list_tickets(status=None, ticket_type=None):
++    tickets = [SuggestionTicket.from_dict(item) for item in _read_payload()["tickets"]]
++    if status:
++        tickets = [ticket for ticket in tickets if ticket.status == status]
++    if ticket_type:
++        tickets = [ticket for ticket in tickets if ticket.ticket_type == ticket_type]
++    return sorted(tickets, key=lambda ticket: ticket.id, reverse=True)
++
++
++def get_ticket(ticket_id):
++    for ticket in list_tickets():
++        if ticket.id == int(ticket_id):
++            return ticket
++    return None
++
++
++def _save_ticket(updated_ticket):
++    data = _read_payload()
++    tickets = []
++    replaced = False
++    for item in data["tickets"]:
++        if int(item.get("id")) == int(updated_ticket.id):
++            tickets.append(updated_ticket.to_dict())
++            replaced = True
++        else:
++            tickets.append(item)
++    if not replaced:
++        tickets.append(updated_ticket.to_dict())
++    data["tickets"] = tickets
++    data["last_id"] = max(int(data.get("last_id") or 0), int(updated_ticket.id))
++    _write_payload(data)
++
++
++def _save_photos(ticket_id, files):
++    saved = []
++    for upload in files or []:
++        ext = Path(upload.name or "").suffix.lower() or ".jpg"
++        target = _photo_dir(ticket_id) / f"{ticket_id}_{uuid4().hex}{ext}"
++        with target.open("wb") as output:
++            for chunk in upload.chunks():
++                output.write(chunk)
++        rel = Path("suggestions") / "photos" / str(ticket_id) / target.name
++        saved.append({
++            "name": upload.name,
++            "url": f"{settings.MEDIA_URL}{rel.as_posix()}",
++        })
++    return saved
++
++
++def create_ticket(cleaned_data, user, files=None):
++    data = _read_payload()
++    ticket_id = int(data.get("last_id") or 0) + 1
++    username = user.get_username() if getattr(user, "is_authenticated", False) else "Anonymous"
++    now = _now()
++    ticket = SuggestionTicket(
++        id=ticket_id,
++        ticket_type=cleaned_data.get("ticket_type") or "SUGGESTION",
++        title=cleaned_data.get("title") or "",
++        description=cleaned_data.get("description") or "",
++        status="PENDING",
++        priority=cleaned_data.get("priority") or "NORMAL",
++        screen_name=cleaned_data.get("screen_name") or "",
++        user_name_snapshot=username,
++        phone_snapshot="",
++        created_at=now,
++        updated_at=now,
++        photos=_save_photos(ticket_id, files),
++        replies=[],
++    )
++    data["last_id"] = ticket_id
++    data["tickets"].append(ticket.to_dict())
++    _write_payload(data)
++    return ticket
++
++
++def create_whatsapp_ticket(message, phone_number="", user_name="", screen_name="WhatsApp", priority="NORMAL"):
++    data = _read_payload()
++    ticket_id = int(data.get("last_id") or 0) + 1
++    message = (message or "").strip()
++    title = message.splitlines()[0].strip()[:80] if message else "WhatsApp suggestion"
++    now = _now()
++    ticket = SuggestionTicket(
++        id=ticket_id,
++        ticket_type="SUGGESTION",
++        title=title or "WhatsApp suggestion",
++        description=message,
++        status="PENDING",
++        priority=priority or "NORMAL",
++        screen_name=screen_name or "WhatsApp",
++        user_name_snapshot=user_name or "WhatsApp",
++        phone_snapshot=(phone_number or "").strip(),
++        created_at=now,
++        updated_at=now,
++        photos=[],
++        replies=[],
++    )
++    data["last_id"] = ticket_id
++    data["tickets"].append(ticket.to_dict())
++    _write_payload(data)
++    return ticket
++
++
++def update_status(ticket_id, status):
++    ticket = get_ticket(ticket_id)
++    if not ticket:
++        return None
++    ticket.status = status
++    ticket.updated_at = _now()
++    _save_ticket(ticket)
++    return ticket
++
++
++def delete_ticket(ticket_id):
++    data = _read_payload()
++    before_count = len(data["tickets"])
++    data["tickets"] = [
++        item for item in data["tickets"] if int(item.get("id")) != int(ticket_id)
++    ]
++    if len(data["tickets"]) == before_count:
++        return False
++    _write_payload(data)
++    return True
++
++
++def add_reply(ticket_id, message, user, status=None, files=None):
++    ticket = get_ticket(ticket_id)
++    if not ticket:
++        return None
++    username = user.get_username() if getattr(user, "is_authenticated", False) else "Anonymous"
++    ticket.replies.append({
++        "message": message,
++        "created_by": username,
++        "is_staff_reply": bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)),
++        "created_at": _now(),
++        "photos": _save_photos(ticket.id, files),
++    })
++    if status:
++        ticket.status = status
++    ticket.updated_at = _now()
++    _save_ticket(ticket)
++    return ticket
+
+diff --git a/settings_app/templates/settings_app/backup_center.html b/settings_app/templates/settings_app/backup_center.html
+new file mode 100644
+index 0000000..941fbe8
+--- /dev/null
++++ b/settings_app/templates/settings_app/backup_center.html
+@@ -0,0 +1,5 @@
++{% extends 'base.html' %}{% block title %}Backup & Restore{% endblock %}{% block content %}
++<style>.backup-wrap{max-width:1200px;margin:auto}.backup-top,.backup-card,.backup-list{background:#fff;border:1px solid #dfe7e3;border-radius:10px;padding:16px;margin:14px 0}.backup-actions{display:flex;gap:8px;flex-wrap:wrap}.backup-actions button,.btnx{border:0;border-radius:5px;padding:8px 13px;cursor:pointer}.blue{background:#126bdb;color:#fff}.red{background:#dc3545;color:#fff}.gray{background:#6c757d;color:#fff}.settings-grid{display:grid;grid-template-columns:1.2fr .7fr 1fr 1fr;gap:10px}.settings-grid input[type=text],.settings-grid input[type=number],select,input[type=file]{width:100%;box-sizing:border-box;padding:7px}.checks{grid-column:1/-1;display:flex;gap:14px;flex-wrap:wrap;align-items:center}.backup-table{width:100%;border-collapse:collapse}.backup-table th,.backup-table td{padding:9px;border-bottom:1px solid #e5e8e7;text-align:left;font-size:13px}.available{background:#198754;color:#fff;border-radius:10px;padding:2px 7px}.row-actions{display:flex;gap:5px;flex-wrap:wrap}@media(max-width:760px){.settings-grid{grid-template-columns:1fr}.checks{grid-column:auto}.backup-table{display:block;overflow-x:auto}.backup-actions>*{flex:1}}</style>
++<div class="backup-wrap"><div class="backup-top"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h1 style="margin:0">Backup & Restore</h1><small>Superuser only. Database, media, code and full Social backups with smart restore.</small></div><div class="backup-actions"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_db"><button class="blue">Backup DB</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_media"><button class="blue">Backup Media</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_code"><button class="gray">Backup Code</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_full"><button class="red">Full Backup</button></form></div></div></div>
++<div class="backup-card"><h3>Backup Settings, Upload & Smart Restore</h3><form method="post" class="settings-grid">{% csrf_token %}<input type="hidden" name="action" value="save_backup_settings"><label>Backup Root Folder{{ settings_form.backup_root }}</label><label>Retention Count{{ settings_form.retention_count }}</label><label>mysqldump Path{{ settings_form.mysqldump_path }}</label><label>mysql Path{{ settings_form.mysql_path }}</label><div class="checks"><label>{{ settings_form.include_db_in_full }} Include DB in Full</label><label>{{ settings_form.include_media_in_full }} Include Media in Full</label><label>{{ settings_form.include_code_in_full }} Include Code in Full</label><label>{{ settings_form.compress_backups }} Compress DB (GZIP)</label><label>{{ settings_form.auto_delete_old_backups }} Delete Old Automatically</label><label>{{ settings_form.enable_db_backup }} Enable DB</label><label>{{ settings_form.enable_media_backup }} Enable Media</label><label>{{ settings_form.enable_code_backup }} Enable Code</label><label>{{ settings_form.enable_full_backup }} Enable Full</label><button class="blue btnx">Save Settings</button></div></form><hr><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="upload_backup"><b>Upload for Restore</b>{{ upload_form.backup_file }}<button class="blue btnx">Upload Backup</button></form><form method="post" onsubmit="return confirm('Restore selected backup? A safety backup will be created first.')">{% csrf_token %}<input type="hidden" name="action" value="restore"><b>Smart Restore</b><select name="backup_id" required><option value="">----------</option>{% for b in backups %}{% if b.file_exists and b.backup_type != 'code' %}<option value="{{ b.id }}">#{{ b.serial_number }} {{ b.get_backup_type_display }} · {{ b.name }}</option>{% endif %}{% endfor %}</select><button class="red btnx">Restore Selected Backup</button></form></div></div>
++<div class="backup-list"><div style="display:flex;justify-content:space-between"><h3>Latest Available Backups</h3><small>Newest first</small></div><table class="backup-table"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Status</th><th>Size</th><th>Created</th><th>Storage</th><th>Actions</th></tr></thead><tbody>{% for b in backups %}<tr><td>{{ b.serial_number }}</td><td>{{ b.name }}</td><td>{{ b.get_backup_type_display }}</td><td>{% if b.file_exists %}<span class="available">Available</span>{% else %}Missing{% endif %}</td><td>{{ b.human_size }}</td><td>{{ b.created_at|date:'Y-m-d H:i:s' }}</td><td>{{ b.get_storage_mode_display }}</td><td><div class="row-actions">{% if b.file_exists %}<a class="blue btnx" href="{% url 'backup_download' b.id %}">Download</a>{% endif %}{% if b.is_protected %}<span class="gray btnx">Protected</span>{% else %}<form method="post" action="{% url 'backup_delete' b.id %}" onsubmit="return confirm('Delete this backup?')">{% csrf_token %}<button class="red btnx">Delete</button></form>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="8">No backups yet.</td></tr>{% endfor %}</tbody></table><div style="margin-top:12px"><b>Backup files:</b> {{ storage.backup_bytes|filesizeformat }} &nbsp; <b>Available disk:</b> {{ storage.disk_free|filesizeformat }} <form method="post" style="display:inline;float:right" onsubmit="return confirm('Purge old backups beyond retention count?')">{% csrf_token %}<input type="hidden" name="action" value="purge"><button class="red btnx">Purge Old Backups</button></form></div></div></div>{% endblock %}
+
+diff --git a/settings_app/templates/settings_app/suggestions/detail.html b/settings_app/templates/settings_app/suggestions/detail.html
+new file mode 100644
+index 0000000..b828c76
+--- /dev/null
++++ b/settings_app/templates/settings_app/suggestions/detail.html
+@@ -0,0 +1 @@
++{% extends 'base.html' %}{% block title %}Suggestion #{{ticket.id}}{% endblock %}{% block content %}<div class="card"><h1>{{ticket.title}}</h1><p><b>{{ticket.get_ticket_type_display}}</b> · {{ticket.get_priority_display}} · {{ticket.get_status_display}}</p><p><b>Screen:</b> {{ticket.screen_name|default:'—'}}</p><p>{{ticket.description|linebreaks}}</p>{% for p in ticket.photos %}<img src="{{p.url}}" style="max-width:320px;max-height:240px">{% endfor %}<form method="post" action="{% url 'suggestion_delete' ticket.id %}" onsubmit="return confirm('Delete this suggestion?')">{% csrf_token %}<button>Delete</button></form></div>{% endblock %}
+
+diff --git a/settings_app/templates/settings_app/suggestions/form.html b/settings_app/templates/settings_app/suggestions/form.html
+new file mode 100644
+index 0000000..f62734a
+--- /dev/null
++++ b/settings_app/templates/settings_app/suggestions/form.html
+@@ -0,0 +1 @@
++{% extends 'base.html' %}{% block title %}New Suggestion{% endblock %}{% block content %}<div class="card"><h1>New Suggestion / Report Error</h1><form method="post" enctype="multipart/form-data">{% csrf_token %}{{form.as_p}}<p><label>Photos (optional)</label><input type="file" name="photos" multiple accept="image/*"></p><button class="button">Save Suggestion</button></form></div>{% endblock %}
+
+diff --git a/settings_app/templates/settings_app/suggestions/list.html b/settings_app/templates/settings_app/suggestions/list.html
+new file mode 100644
+index 0000000..6412b81
+--- /dev/null
++++ b/settings_app/templates/settings_app/suggestions/list.html
+@@ -0,0 +1 @@
++{% extends 'base.html' %}{% block title %}Suggestions{% endblock %}{% block content %}<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h1>Suggestions / Report Errors</h1><a class="button" href="{% url 'suggestion_create' %}">+ New Suggestion</a></div><form method="get"><select name="status"><option value="">All statuses</option>{% for v,l in statuses %}<option value="{{v}}" {% if selected_status == v %}selected{% endif %}>{{l}}</option>{% endfor %}</select><select name="type"><option value="">All types</option>{% for v,l in types %}<option value="{{v}}" {% if selected_type == v %}selected{% endif %}>{{l}}</option>{% endfor %}</select><button>Filter</button></form><table><tr><th>#</th><th>Type</th><th>Title</th><th>Screen</th><th>Priority</th><th>Status</th><th>Created</th></tr>{% for t in tickets %}<tr><td>{{t.id}}</td><td>{{t.get_ticket_type_display}}</td><td><a href="{% url 'suggestion_detail' t.id %}">{{t.title}}</a></td><td>{{t.screen_name}}</td><td>{{t.get_priority_display}}</td><td>{{t.get_status_display}}</td><td>{{t.created_at}}</td></tr>{% empty %}<tr><td colspan="7">No suggestions found.</td></tr>{% endfor %}</table></div>{% endblock %}
+
+diff --git a/settings_app/tool_views.py b/settings_app/tool_views.py
+new file mode 100644
+index 0000000..1820ad2
+--- /dev/null
++++ b/settings_app/tool_views.py
+@@ -0,0 +1,88 @@
++from urllib.parse import quote
++from django.contrib import messages
++from django.contrib.auth.decorators import login_required, user_passes_test
++from django.http import FileResponse, Http404
++from django.shortcuts import redirect, render
++from django.views.decorators.http import require_POST
++from .forms_tools import BackupSettingsForm, BackupUploadForm, SuggestionTicketForm
++from .backup_utils import *
++from .suggestion_store import create_ticket, get_ticket, list_tickets, delete_ticket, STATUS_CHOICES, TYPE_CHOICES
++
++superuser_required=user_passes_test(lambda u:u.is_superuser)
++
++@login_required
++@superuser_required
++def backup_center(request):
++    config=load_backup_settings()
++    if request.method=='POST':
++        action=request.POST.get('action')
++        try:
++            if action=='save_backup_settings':
++                form=BackupSettingsForm(request.POST)
++                if form.is_valid(): save_backup_settings(form.cleaned_data); messages.success(request,'Backup settings saved.')
++                else: messages.error(request,'Please correct the backup settings.')
++            elif action=='upload_backup':
++                form=BackupUploadForm(request.POST,request.FILES)
++                if form.is_valid():
++                    typ=detect_uploaded_backup_type(form.cleaned_data['backup_file']); p=save_uploaded_backup(config,typ,form.cleaned_data['backup_file']); messages.success(request,f'Backup uploaded: {p.name}')
++                else: messages.error(request,'Choose a valid backup file.')
++            elif action=='backup_db': p=create_db_backup(config); prune_old_backups(config); messages.success(request,f'Database backup created: {p.name}')
++            elif action=='backup_media': p=create_media_backup(config); prune_old_backups(config); messages.success(request,f'Media backup created: {p.name}')
++            elif action=='backup_code': p=create_code_backup(config); prune_old_backups(config); messages.success(request,f'Code backup created: {p.name}')
++            elif action=='backup_full': p=create_full_backup(config); prune_old_backups(config); messages.success(request,f'Full backup created: {p.name}')
++            elif action=='purge':
++                result=purge_old_backups(config); messages.success(request,f"Purged {len(result['deleted'])} old backup(s).")
++            elif action=='restore':
++                bid=request.POST.get('backup_id',''); item=next((x for x in list_backups(config) if x.id==bid),None)
++                if not item: raise RuntimeError('Select a valid backup.')
++                if item.backup_type=='db': create_db_backup({**config,'enable_db_backup':True}); restore_database(config,bid)
++                elif item.backup_type=='media': create_media_backup({**config,'enable_media_backup':True}); restore_media(config,bid)
++                elif item.backup_type=='full': create_full_backup({**config,'enable_full_backup':True}); restore_full(config,bid)
++                else: raise RuntimeError('This backup type cannot be restored here.')
++                messages.success(request,'Restore completed. A safety backup was created first.')
++        except Exception as exc: messages.error(request,f'Backup operation failed: {exc}')
++        return redirect('backup_center')
++    config=load_backup_settings(); backups=list_backups(config); protected=protected_backup_ids(backups,retention_count(config))
++    for i,b in enumerate(backups,1): b.serial_number=i; b.is_protected=b.id in protected
++    return render(request,'settings_app/backup_center.html',{'settings_form':BackupSettingsForm(initial=config),'upload_form':BackupUploadForm(),'backups':backups,'storage':backup_storage_summary(config)})
++
++@login_required
++@superuser_required
++def backup_download(request,backup_id):
++    config=load_backup_settings(); item=next((x for x in list_backups(config) if x.id==backup_id and x.file_exists),None)
++    if not item: raise Http404
++    return FileResponse(open(item.display_path,'rb'),as_attachment=True,filename=backup_id)
++
++@login_required
++@superuser_required
++@require_POST
++def backup_delete(request,backup_id):
++    try: delete_backup(load_backup_settings(),backup_id); messages.success(request,'Backup deleted.')
++    except Exception as exc: messages.error(request,str(exc))
++    return redirect('backup_center')
++
++@login_required
++def suggestion_list(request):
++    status=request.GET.get('status','PENDING'); typ=request.GET.get('type','')
++    return render(request,'settings_app/suggestions/list.html',{'tickets':list_tickets(status=status or None,ticket_type=typ or None),'statuses':STATUS_CHOICES,'types':TYPE_CHOICES,'selected_status':status,'selected_type':typ})
++
++@login_required
++def suggestion_create(request):
++    form=SuggestionTicketForm(request.POST or None)
++    if request.method=='POST' and form.is_valid():
++        ticket=create_ticket(form.cleaned_data,request.user,request.FILES.getlist('photos')); messages.success(request,'Suggestion saved.'); return redirect('suggestion_detail',pk=ticket.id)
++    return render(request,'settings_app/suggestions/form.html',{'form':form})
++
++@login_required
++def suggestion_detail(request,pk):
++    ticket=get_ticket(pk)
++    if not ticket: raise Http404
++    return render(request,'settings_app/suggestions/detail.html',{'ticket':ticket})
++
++@login_required
++@require_POST
++def suggestion_delete(request,pk):
++    ticket=get_ticket(pk)
++    if not ticket: raise Http404
++    if not (request.user.is_staff or request.user.is_superuser or ticket.user_name_snapshot==request.user.get_username()): raise Http404
++    delete_ticket(pk); messages.success(request,'Suggestion deleted.'); return redirect('suggestion_list')

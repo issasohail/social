@@ -1,0 +1,49 @@
+diff --git a/config/urls.py b/config/urls.py
+index 9b2b77b..6e25736 100644
+--- a/config/urls.py
++++ b/config/urls.py
+@@ -23,6 +23,7 @@ from django.urls import path
+ from boards.views import board_dashboard
+ from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users
+ from settings_app.views import settings_page
++from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete
+ from .views import (create_form_invitation, create_profile_share, dashboard, harmony_create, harmony_delete,
+                    harmony_detail, harmony_edit, harmony_export, harmony_inline_update, harmony_list, health,
+                    inline_update_person, jamatkhanas, local_councils, organization_overview, people_list,
+@@ -68,5 +69,12 @@ urlpatterns = [
+     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),
+     path('staff-admin/access/<int:access_id>/remove/', staff_access_delete, name='staff_access_delete'),
+     path('settings/', settings_page, name='settings'),
++    path('settings/backup-restore/', backup_center, name='backup_center'),
++    path('settings/backup-restore/download/<path:backup_id>/', backup_download, name='backup_download'),
++    path('settings/backup-restore/delete/<path:backup_id>/', backup_delete, name='backup_delete'),
++    path('suggestions/', suggestion_list, name='suggestion_list'),
++    path('suggestions/new/', suggestion_create, name='suggestion_create'),
++    path('suggestions/<int:pk>/', suggestion_detail, name='suggestion_detail'),
++    path('suggestions/<int:pk>/delete/', suggestion_delete, name='suggestion_delete'),
+     path('admin/', admin.site.urls),
+ ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+diff --git a/templates/base.html b/templates/base.html
+index 60a82e5..167cbb9 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,4 +1,4 @@
+ {% load static %}
+ <!doctype html>
+ <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}"></head>
+-<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a>{% endif %}</nav><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout">Sign out</button></form></aside><main class="main"><header><button class="menu" aria-label="Menu">☰</button><span class="eyebrow">SOCIAL WELFARE CENTER</span><span class="user">{{ request.user.get_username }}</span></header>{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script></body></html>
+\ No newline at end of file
++<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a><a href="{% url 'suggestion_list' %}" style="background:#ffc107;color:#172126;font-weight:700">Suggestions</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout">Sign out</button></form></aside><main class="main"><header><button class="menu" aria-label="Menu">☰</button><span class="eyebrow">SOCIAL WELFARE CENTER</span><a href="{% url 'suggestion_list' %}" style="margin-left:auto;background:#ffc107;color:#172126;padding:7px 12px;border-radius:6px;font-weight:700;text-decoration:none">Suggestions</a><span class="user">{{ request.user.get_username }}</span></header>{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script></body></html>
+\ No newline at end of file
+diff --git a/templates/settings_app/settings.html b/templates/settings_app/settings.html
+index 10c954a..96ec065 100644
+--- a/templates/settings_app/settings.html
++++ b/templates/settings_app/settings.html
+@@ -1,6 +1,6 @@
+ {% extends 'base.html' %}
+ {% block title %}Settings | Social Welfare{% endblock %}
+-{% block content %}
++{% block content %}<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><a class="button" href="{% url 'backup_center' %}">Backup & Restore</a></div>
+ <section class="page-head">
+   <p class="eyebrow">SYSTEM SETTINGS</p>
+   <h1>Settings</h1>

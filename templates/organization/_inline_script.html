@@ -1,0 +1,15 @@
+<script>
+(function(){
+ const url="{% url 'organization_inline_update' %}";
+ function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('csrftoken='))?.split('=')[1]||''}
+ document.querySelectorAll('[data-editable]').forEach(cell=>cell.addEventListener('dblclick',function(){
+   if(cell.dataset.editing==='1')return; cell.dataset.editing='1'; const old=cell.dataset.value||cell.textContent.trim(); let editor;
+   if(cell.dataset.options){editor=document.createElement('select'); JSON.parse(cell.dataset.options).forEach(o=>{let op=new Option(o.label,o.value,o.value==old);editor.add(op)})}
+   else if(cell.dataset.type==='boolean'){editor=document.createElement('select');editor.add(new Option('Yes','true',old==='true'));editor.add(new Option('No','false',old==='false'))}
+   else{editor=document.createElement('input');editor.value=old}
+   editor.className='cell-editor';cell.textContent='';cell.appendChild(editor);editor.focus();
+   async function save(){if(cell.dataset.saving)return;cell.dataset.saving='1';let v=editor.value;let fd=new FormData();fd.append('model',cell.dataset.model);fd.append('id',cell.dataset.id);fd.append('field',cell.dataset.field);fd.append('value',v);try{let r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf()},body:fd});let j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Save failed');cell.dataset.value=String(j.value);cell.textContent=j.display;cell.classList.add('ajax-saved');setTimeout(()=>cell.classList.remove('ajax-saved'),900)}catch(e){cell.textContent=cell.dataset.display||old;alert(e.message)}finally{cell.dataset.editing='0';cell.dataset.saving='0'}}
+   editor.addEventListener('blur',save,{once:true});editor.addEventListener('keydown',e=>{if(e.key==='Enter')editor.blur();if(e.key==='Escape'){cell.textContent=cell.dataset.display||old;cell.dataset.editing='0'}})
+ }))
+})();
+</script>

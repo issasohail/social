@@ -21,20 +21,25 @@ from django.conf.urls.static import static
 from django.urls import path
 
 from boards.views import board_dashboard
-from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users
-from settings_app.views import settings_page
+from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users, my_profile
+from settings_app.views import settings_page, setting_list_crud
+from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete, suggestion_status_update
 from .views import (create_form_invitation, create_profile_share, dashboard, harmony_create, harmony_delete,
                    harmony_detail, harmony_edit, harmony_export, harmony_inline_update, harmony_list, health,
                    inline_update_person, jamatkhanas, local_councils, organization_overview, people_list,
                    person_create, person_delete, person_detail, person_edit, person_export, create_person_share,
-                   public_form, regional_councils, shared_person, shared_profile)
+                   public_form, identity_duplicate_check, regional_councils, shared_person, shared_profile, organization_inline_update, pending_approvals, pending_approval_action)
 
 urlpatterns = [
     path('health/', health, name='health'),
     path('', dashboard, name='dashboard'),
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('profile/', my_profile, name='my_profile'),
     path('organization/', organization_overview, name='organization'),
+    path('organization/inline-update/', organization_inline_update, name='organization_inline_update'),
+    path('pending-approvals/', pending_approvals, name='pending_approvals'),
+    path('pending-approvals/<int:invitation_id>/action/', pending_approval_action, name='pending_approval_action'),
     path('organization/regional-councils/', regional_councils, name='regional_councils'),
     path('organization/local-councils/', local_councils, name='local_councils'),
     path('organization/jamatkhanas/', jamatkhanas, name='jamatkhanas'),
@@ -58,6 +63,7 @@ urlpatterns = [
     path('family-harmony/<int:profile_id>/export/<str:export_format>/', harmony_export, name='harmony_export'),
     path('family-harmony/inline-update/', harmony_inline_update, name='harmony_inline_update'),
     path('family-harmony/<int:profile_id>/share/', create_profile_share, name='create_profile_share'),
+    path('family-harmony/form/check-id/', identity_duplicate_check, name='identity_duplicate_check'),
     path('family-harmony/form/<str:token>/', public_form, name='public_form'),
     path('family-harmony/form-invitation/new/', create_form_invitation, name='create_form_invitation'),
     path('family-harmony/share/<str:token>/', shared_profile, name='shared_profile'),
@@ -67,5 +73,14 @@ urlpatterns = [
     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),
     path('staff-admin/access/<int:access_id>/remove/', staff_access_delete, name='staff_access_delete'),
     path('settings/', settings_page, name='settings'),
+    path('settings/lists/<str:category>/', setting_list_crud, name='setting_list_crud'),
+    path('settings/backup-restore/', backup_center, name='backup_center'),
+    path('settings/backup-restore/download/<path:backup_id>/', backup_download, name='backup_download'),
+    path('settings/backup-restore/delete/<path:backup_id>/', backup_delete, name='backup_delete'),
+    path('suggestions/', suggestion_list, name='suggestion_list'),
+    path('suggestions/new/', suggestion_create, name='suggestion_create'),
+    path('suggestions/<int:pk>/', suggestion_detail, name='suggestion_detail'),
+    path('suggestions/<int:pk>/status/', suggestion_status_update, name='suggestion_status_update'),
+    path('suggestions/<int:pk>/delete/', suggestion_delete, name='suggestion_delete'),
     path('admin/', admin.site.urls),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

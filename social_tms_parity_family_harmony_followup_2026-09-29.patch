@@ -1,0 +1,2075 @@
+diff --git a/accounts/views.py b/accounts/views.py
+index 3a406ff..e062558 100644
+--- a/accounts/views.py
++++ b/accounts/views.py
+@@ -166,3 +166,17 @@ def staff_access_delete(request, access_id):
+ 		record_audit(request, 'jurisdiction_changed', instance=access, new_values={'is_active': False})
+ 		messages.success(request, f'Access removed from {username}.')
+ 	return redirect('staff_users')
++
++from django.contrib.auth.decorators import login_required
++
++@login_required
++def my_profile(request):
++    user = request.user
++    if request.method == 'POST':
++        user.first_name = (request.POST.get('first_name') or '').strip()
++        user.last_name = (request.POST.get('last_name') or '').strip()
++        user.email = (request.POST.get('email') or '').strip()
++        user.save(update_fields=['first_name','last_name','email'])
++        messages.success(request, 'Profile updated.')
++        return redirect('my_profile')
++    return render(request, 'accounts/profile.html', {'profile_user': user})
+diff --git a/config/context_processors.py b/config/context_processors.py
+new file mode 100644
+index 0000000..90b0963
+--- /dev/null
++++ b/config/context_processors.py
+@@ -0,0 +1,9 @@
++def social_nav(request):
++    count = 0
++    if getattr(request, 'user', None) and request.user.is_authenticated:
++        try:
++            from family_harmony.models import PublicFormInvitation
++            count = PublicFormInvitation.objects.filter(submitted_at__isnull=False, profile__isnull=False, profile__status__in=['DRAFT','AWAITING_CONSENT']).count()
++        except Exception:
++            count = 0
++    return {'PENDING_APPROVAL_COUNT': count}
+diff --git a/config/settings.py b/config/settings.py
+index 8e2e993..3aa40a6 100644
+--- a/config/settings.py
++++ b/config/settings.py
+@@ -76,6 +76,7 @@ TEMPLATES = [
+                 'django.template.context_processors.request',
+                 'django.contrib.auth.context_processors.auth',
+                 'django.contrib.messages.context_processors.messages',
++                'config.context_processors.social_nav',
+             ],
+         },
+     },
+diff --git a/config/urls.py b/config/urls.py
+index 6e25736..7d582b2 100644
+--- a/config/urls.py
++++ b/config/urls.py
+@@ -21,21 +21,25 @@ from django.conf.urls.static import static
+ from django.urls import path
+ 
+ from boards.views import board_dashboard
+-from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users
+-from settings_app.views import settings_page
+-from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete
++from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users, my_profile
++from settings_app.views import settings_page, setting_list_crud
++from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete, suggestion_status_update
+ from .views import (create_form_invitation, create_profile_share, dashboard, harmony_create, harmony_delete,
+                    harmony_detail, harmony_edit, harmony_export, harmony_inline_update, harmony_list, health,
+                    inline_update_person, jamatkhanas, local_councils, organization_overview, people_list,
+                    person_create, person_delete, person_detail, person_edit, person_export, create_person_share,
+-                   public_form, identity_duplicate_check, regional_councils, shared_person, shared_profile)
++                   public_form, identity_duplicate_check, regional_councils, shared_person, shared_profile, organization_inline_update, pending_approvals, pending_approval_action)
+ 
+ urlpatterns = [
+     path('health/', health, name='health'),
+     path('', dashboard, name='dashboard'),
+     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
++    path('profile/', my_profile, name='my_profile'),
+     path('organization/', organization_overview, name='organization'),
++    path('organization/inline-update/', organization_inline_update, name='organization_inline_update'),
++    path('pending-approvals/', pending_approvals, name='pending_approvals'),
++    path('pending-approvals/<int:invitation_id>/action/', pending_approval_action, name='pending_approval_action'),
+     path('organization/regional-councils/', regional_councils, name='regional_councils'),
+     path('organization/local-councils/', local_councils, name='local_councils'),
+     path('organization/jamatkhanas/', jamatkhanas, name='jamatkhanas'),
+@@ -69,12 +73,14 @@ urlpatterns = [
+     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),
+     path('staff-admin/access/<int:access_id>/remove/', staff_access_delete, name='staff_access_delete'),
+     path('settings/', settings_page, name='settings'),
++    path('settings/lists/<str:category>/', setting_list_crud, name='setting_list_crud'),
+     path('settings/backup-restore/', backup_center, name='backup_center'),
+     path('settings/backup-restore/download/<path:backup_id>/', backup_download, name='backup_download'),
+     path('settings/backup-restore/delete/<path:backup_id>/', backup_delete, name='backup_delete'),
+     path('suggestions/', suggestion_list, name='suggestion_list'),
+     path('suggestions/new/', suggestion_create, name='suggestion_create'),
+     path('suggestions/<int:pk>/', suggestion_detail, name='suggestion_detail'),
++    path('suggestions/<int:pk>/status/', suggestion_status_update, name='suggestion_status_update'),
+     path('suggestions/<int:pk>/delete/', suggestion_delete, name='suggestion_delete'),
+     path('admin/', admin.site.urls),
+ ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+diff --git a/config/views.py b/config/views.py
+index 53c8759..de6e093 100644
+--- a/config/views.py
++++ b/config/views.py
+@@ -334,15 +334,31 @@ def person_detail(request, person_id):
+ 
+ @login_required
+ def person_export(request, person_id, export_format):
+-    person = get_object_or_404(Person, pk=person_id)
+-    rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.mobile or '—', person.occupation or '—', person.masked_identity_number() or '—')]
+-    headers = ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Occupation', 'CNIC']
+-    export = _export_response(request, rows, headers, f'Person: {person.full_name}', 'Person detail', export_format=export_format)
+-    if export is not None:
+-        return export
++    person=get_object_or_404(Person,pk=person_id)
++    if export_format=='pdf':
++        from reportlab.lib.pagesizes import letter
++        from reportlab.pdfgen import canvas
++        from reportlab.lib.utils import ImageReader
++        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Person - {person.full_name}')
++        green=(.07,.42,.41); c.setFillColorRGB(*green); c.rect(0,H-78,W,78,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',18); c.drawString(34,H-36,'Social Welfare Center'); c.setFont('Helvetica',10); c.drawString(34,H-56,f'Person Detail · {person.serial_number}')
++        y=H-112
++        if person.photo:
++            try: c.drawImage(ImageReader(person.photo.path),W-128,H-188,88,88,preserveAspectRatio=True,mask='auto')
++            except Exception: pass
++        c.setFillColorRGB(.1,.18,.2); c.setFont('Helvetica-Bold',17); c.drawString(34,y,person.full_name); y-=28
++        sections=[('Personal Information',[('Title',person.title),('Gender',person.gender),('Date of Birth',person.date_of_birth),('Age',person.age),('Marital Status',person.marital_status),('Nationality',person.nationality)]),('Contact & Residence',[('Mobile',person.mobile),('WhatsApp',person.whatsapp_number),('Email',person.email),('City / Province',f'{person.city} / {person.province}'),('Country',person.country),('Current Address',person.current_address)]),('Organization',[('Regional Council',person.region),('Local Council',person.local_council),('Jamatkhana',person.jamatkhana)]),('Education & Career',[('Education',person.education),('Education Details',person.education_details),('Occupation',person.occupation),('Employer / Business',person.employer_or_business),('Income Range',person.income_range),('Languages',person.languages)])]
++        for heading,items in sections:
++            c.setFillColorRGB(.88,.94,.91); c.rect(30,y-4,W-60,18,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',9); c.drawString(35,y+1,heading); y-=20
++            for label,value in items:
++                text=str(value or '—').replace('\n',' ')[:115]; c.setFillColorRGB(.2,.25,.25); c.setFont('Helvetica-Bold',7.5); c.drawString(35,y,label+':'); c.setFont('Helvetica',7.5); c.drawString(135,y,text); y-=13
++            y-=5
++        c.setStrokeColorRGB(.75,.8,.78); c.line(30,34,W-30,34); c.setFont('Helvetica',6.5); c.setFillColorRGB(.35,.4,.4); c.drawString(32,22,'Confidential Social Welfare record'); c.drawRightString(W-32,22,'US Letter · Page 1 of 1'); c.save()
++        r=HttpResponse(output.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{person.serial_number.lower()}-person.pdf"'; return r
++    rows=[(person.serial_number,person.full_name,person.age or '',person.gender or '—',person.city or '—',person.mobile or '—',person.occupation or '—',person.masked_identity_number() or '—')]
++    export=_export_response(request,rows,['Serial','Name','Age','Gender','City','Phone','Occupation','CNIC'],f'Person: {person.full_name}','Person detail',export_format=export_format)
++    if export is not None:return export
+     raise Http404()
+ 
+-
+ @login_required
+ def person_edit(request, person_id):
+     person = get_object_or_404(Person, pk=person_id)
+@@ -613,8 +629,57 @@ def shared_person(request, token):
+ 
+ @login_required
+ def create_form_invitation(request):
+-    if not request.user.has_perm('family_harmony.add_familyharmonyprofile'):
+-        raise Http404()
+-    raw_token = secrets.token_urlsafe(32)
+-    invitation = PublicFormInvitation.objects.create(token_hash=hashlib.sha256(raw_token.encode()).hexdigest(), created_by=request.user, expires_at=timezone.now() + timedelta(days=max(FamilyHarmonySettings.current().minimum_expiry_days, min(FamilyHarmonySettings.current().default_expiry_days, FamilyHarmonySettings.current().maximum_expiry_days))))
+-    return render(request, 'family_harmony/invitation_created.html', {'token': raw_token, 'invitation': invitation})
+\ No newline at end of file
++    if not request.user.has_perm('family_harmony.add_familyharmonyprofile') and not request.user.is_superuser: raise Http404()
++    raw_token=secrets.token_urlsafe(32); cfg=FamilyHarmonySettings.current(); days=max(cfg.minimum_expiry_days,min(cfg.default_expiry_days,cfg.maximum_expiry_days))
++    invitation=PublicFormInvitation.objects.create(token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),created_by=request.user,expires_at=timezone.now()+timedelta(days=days))
++    public_url=request.build_absolute_uri(reverse('public_form',kwargs={'token':raw_token}))
++    whatsapp_url='https://wa.me/?text='+quote(f'Marriage Profile Submission Form\nPlease complete this secure form: {public_url}\nNo username or password is required. Link expires in {days} days.')
++    if request.GET.get('redirect')=='whatsapp': return redirect(whatsapp_url)
++    return render(request,'family_harmony/invitation_created.html',{'token':raw_token,'invitation':invitation,'public_url':public_url,'whatsapp_url':whatsapp_url,'expiry_days':days})
++@login_required
++def organization_inline_update(request):
++    if request.method != 'POST':
++        return JsonResponse({'ok': False, 'error': 'POST required.'}, status=405)
++    model_name = (request.POST.get('model') or '').lower()
++    field = request.POST.get('field') or ''
++    record_id = request.POST.get('id')
++    value = (request.POST.get('value') or '').strip()
++    model_map = {'regional': RegionalCouncil, 'local': LocalCouncil, 'jamatkhana': Jamatkhana}
++    allowed = {
++        'regional': {'name','code','national_council_id','is_active'},
++        'local': {'name','code','regional_council_id','is_active'},
++        'jamatkhana': {'name','short_name','code','local_council_id','is_active'},
++    }
++    Model = model_map.get(model_name)
++    if not Model or field not in allowed.get(model_name, set()):
++        return JsonResponse({'ok': False, 'error': 'Field is not editable.'}, status=400)
++    item = get_object_or_404(Model, pk=record_id)
++    try:
++        if field == 'is_active': value = value.lower() in {'1','true','yes','on'}
++        elif field.endswith('_id'): value = int(value)
++        elif not value and field in {'name','code'}: raise ValueError('This field cannot be blank.')
++        setattr(item, field, value); item.save()
++        display = str(getattr(item, field[:-3])) if field.endswith('_id') else ('Yes' if value is True else 'No' if value is False else value)
++        return JsonResponse({'ok': True, 'value': value, 'display': display})
++    except (IntegrityError, ValueError) as exc:
++        return JsonResponse({'ok': False, 'error': f'Could not save: {exc}'}, status=400)
++
++@login_required
++def pending_approvals(request):
++    invitations = PublicFormInvitation.objects.filter(submitted_at__isnull=False, profile__isnull=False, profile__status__in=['DRAFT','AWAITING_CONSENT']).select_related('profile__person','created_by').order_by('-submitted_at')
++    return render(request, 'pending_approvals.html', {'invitations': invitations})
++
++@login_required
++def pending_approval_action(request, invitation_id):
++    if request.method != 'POST': raise Http404()
++    invitation = get_object_or_404(PublicFormInvitation.objects.select_related('profile'), pk=invitation_id, profile__isnull=False)
++    action = request.POST.get('action')
++    if action == 'approve':
++        invitation.profile.status = FamilyHarmonyProfile.Status.ACTIVE
++        invitation.profile.save(update_fields=['status','updated_at'])
++        messages.success(request, 'Marriage profile approved and activated.')
++    elif action == 'reject':
++        invitation.profile.status = FamilyHarmonyProfile.Status.ARCHIVED
++        invitation.profile.save(update_fields=['status','updated_at'])
++        messages.success(request, 'Marriage profile rejected and archived.')
++    return redirect('pending_approvals')
+diff --git a/settings_app/forms_tools.py b/settings_app/forms_tools.py
+index 0f9ff31..4ba8ac7 100644
+--- a/settings_app/forms_tools.py
++++ b/settings_app/forms_tools.py
+@@ -30,3 +30,12 @@ class SuggestionTicketForm(forms.Form):
+     title=forms.CharField(max_length=160)
+     description=forms.CharField(required=False,widget=forms.Textarea(attrs={'rows':5}))
+     priority=forms.ChoiceField(choices=(('LOW','Low'),('NORMAL','Normal'),('HIGH','High'),('URGENT','Urgent')),initial='NORMAL')
++
++class SuggestionReplyForm(forms.Form):
++    message=forms.CharField(required=False, widget=forms.Textarea(attrs={'rows':3, 'placeholder':'Add a reply or update'}))
++
++class BackupRestoreForm(forms.Form):
++    backup_id=forms.ChoiceField(choices=())
++    confirm_text=forms.CharField(required=False)
++    def __init__(self,*args,backup_choices=None,**kwargs):
++        super().__init__(*args,**kwargs); self.fields['backup_id'].choices=backup_choices or [('', '----------')]
+diff --git a/settings_app/migrations/0007_business_type_options.py b/settings_app/migrations/0007_business_type_options.py
+new file mode 100644
+index 0000000..bd914a8
+--- /dev/null
++++ b/settings_app/migrations/0007_business_type_options.py
+@@ -0,0 +1,12 @@
++from django.db import migrations, models
++
++def seed(apps, schema_editor):
++    Settings = apps.get_model("settings_app", "FamilyHarmonySettings")
++    obj, _ = Settings.objects.get_or_create(pk=1)
++    if not obj.business_type_options:
++        obj.business_type_options = ["Salaried / Employment", "Self-employed", "Sole Proprietorship", "Partnership", "Private Limited Company", "Family Business", "Professional Practice", "Freelance / Consultancy", "Not applicable", "Other"]
++        obj.save(update_fields=["business_type_options"])
++
++class Migration(migrations.Migration):
++    dependencies=[("settings_app","0006_family_profile_lists")]
++    operations=[migrations.AddField(model_name="familyharmonysettings", name="business_type_options", field=models.JSONField(blank=True, default=list)), migrations.RunPython(seed, migrations.RunPython.noop)]
+diff --git a/settings_app/models.py b/settings_app/models.py
+index c6705b4..54632ca 100644
+--- a/settings_app/models.py
++++ b/settings_app/models.py
+@@ -13,6 +13,7 @@ class FamilyHarmonySettings(models.Model):
+     education_levels = models.JSONField(default=list, blank=True)
+     occupation_options = models.JSONField(default=list, blank=True)
+     employer_options = models.JSONField(default=list, blank=True)
++    business_type_options = models.JSONField(default=list, blank=True)
+     income_ranges = models.JSONField(default=list, blank=True)
+     portfolio_options = models.JSONField(default=list, blank=True)
+     family_type_options = models.JSONField(default=list, blank=True)
+@@ -38,6 +39,8 @@ class FamilyHarmonySettings(models.Model):
+             settings.occupation_options = ['Government employee', 'Private employee', 'Business owner', 'Self-employed', 'Teacher', 'Doctor', 'Engineer', 'Student', 'Homemaker', 'Retired', 'Unemployed', 'Other']
+         if not settings.employer_options:
+             settings.employer_options = ['Government', 'Private company', 'Own business', 'NGO', 'Self-employed', 'Not applicable', 'Other']
++        if not settings.business_type_options:
++            settings.business_type_options = ['Salaried / Employment', 'Self-employed', 'Sole Proprietorship', 'Partnership', 'Private Limited Company', 'Family Business', 'Professional Practice', 'Freelance / Consultancy', 'Not applicable', 'Other']
+         if not settings.income_ranges:
+             settings.income_ranges = ['No income', 'Below 50,000', '50,000 - 100,000', '100,000 - 200,000', '200,000 - 500,000', 'Above 500,000', 'Other']
+         if not settings.portfolio_options:
+@@ -50,5 +53,5 @@ class FamilyHarmonySettings(models.Model):
+             settings.marital_status_options = ['Never married', 'Divorced', 'Widowed', 'Separated', 'Other']
+         if not settings.relationship_options:
+             settings.relationship_options = ['Father', 'Mother', 'Brother', 'Sister', 'Son', 'Daughter', 'Guardian', 'Other']
+-        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options'])
++        settings.save(update_fields=['title_options', 'education_levels', 'occupation_options', 'employer_options', 'business_type_options', 'income_ranges', 'portfolio_options', 'family_type_options', 'language_options', 'marital_status_options', 'relationship_options'])
+         return settings
+diff --git a/settings_app/templates/settings_app/backup_center.html b/settings_app/templates/settings_app/backup_center.html
+index 941fbe8..4b2b8a2 100644
+--- a/settings_app/templates/settings_app/backup_center.html
++++ b/settings_app/templates/settings_app/backup_center.html
+@@ -1,5 +1,438 @@
+-{% extends 'base.html' %}{% block title %}Backup & Restore{% endblock %}{% block content %}
+-<style>.backup-wrap{max-width:1200px;margin:auto}.backup-top,.backup-card,.backup-list{background:#fff;border:1px solid #dfe7e3;border-radius:10px;padding:16px;margin:14px 0}.backup-actions{display:flex;gap:8px;flex-wrap:wrap}.backup-actions button,.btnx{border:0;border-radius:5px;padding:8px 13px;cursor:pointer}.blue{background:#126bdb;color:#fff}.red{background:#dc3545;color:#fff}.gray{background:#6c757d;color:#fff}.settings-grid{display:grid;grid-template-columns:1.2fr .7fr 1fr 1fr;gap:10px}.settings-grid input[type=text],.settings-grid input[type=number],select,input[type=file]{width:100%;box-sizing:border-box;padding:7px}.checks{grid-column:1/-1;display:flex;gap:14px;flex-wrap:wrap;align-items:center}.backup-table{width:100%;border-collapse:collapse}.backup-table th,.backup-table td{padding:9px;border-bottom:1px solid #e5e8e7;text-align:left;font-size:13px}.available{background:#198754;color:#fff;border-radius:10px;padding:2px 7px}.row-actions{display:flex;gap:5px;flex-wrap:wrap}@media(max-width:760px){.settings-grid{grid-template-columns:1fr}.checks{grid-column:auto}.backup-table{display:block;overflow-x:auto}.backup-actions>*{flex:1}}</style>
+-<div class="backup-wrap"><div class="backup-top"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h1 style="margin:0">Backup & Restore</h1><small>Superuser only. Database, media, code and full Social backups with smart restore.</small></div><div class="backup-actions"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_db"><button class="blue">Backup DB</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_media"><button class="blue">Backup Media</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_code"><button class="gray">Backup Code</button></form><form method="post">{% csrf_token %}<input type="hidden" name="action" value="backup_full"><button class="red">Full Backup</button></form></div></div></div>
+-<div class="backup-card"><h3>Backup Settings, Upload & Smart Restore</h3><form method="post" class="settings-grid">{% csrf_token %}<input type="hidden" name="action" value="save_backup_settings"><label>Backup Root Folder{{ settings_form.backup_root }}</label><label>Retention Count{{ settings_form.retention_count }}</label><label>mysqldump Path{{ settings_form.mysqldump_path }}</label><label>mysql Path{{ settings_form.mysql_path }}</label><div class="checks"><label>{{ settings_form.include_db_in_full }} Include DB in Full</label><label>{{ settings_form.include_media_in_full }} Include Media in Full</label><label>{{ settings_form.include_code_in_full }} Include Code in Full</label><label>{{ settings_form.compress_backups }} Compress DB (GZIP)</label><label>{{ settings_form.auto_delete_old_backups }} Delete Old Automatically</label><label>{{ settings_form.enable_db_backup }} Enable DB</label><label>{{ settings_form.enable_media_backup }} Enable Media</label><label>{{ settings_form.enable_code_backup }} Enable Code</label><label>{{ settings_form.enable_full_backup }} Enable Full</label><button class="blue btnx">Save Settings</button></div></form><hr><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><form method="post" enctype="multipart/form-data">{% csrf_token %}<input type="hidden" name="action" value="upload_backup"><b>Upload for Restore</b>{{ upload_form.backup_file }}<button class="blue btnx">Upload Backup</button></form><form method="post" onsubmit="return confirm('Restore selected backup? A safety backup will be created first.')">{% csrf_token %}<input type="hidden" name="action" value="restore"><b>Smart Restore</b><select name="backup_id" required><option value="">----------</option>{% for b in backups %}{% if b.file_exists and b.backup_type != 'code' %}<option value="{{ b.id }}">#{{ b.serial_number }} {{ b.get_backup_type_display }} · {{ b.name }}</option>{% endif %}{% endfor %}</select><button class="red btnx">Restore Selected Backup</button></form></div></div>
+-<div class="backup-list"><div style="display:flex;justify-content:space-between"><h3>Latest Available Backups</h3><small>Newest first</small></div><table class="backup-table"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Status</th><th>Size</th><th>Created</th><th>Storage</th><th>Actions</th></tr></thead><tbody>{% for b in backups %}<tr><td>{{ b.serial_number }}</td><td>{{ b.name }}</td><td>{{ b.get_backup_type_display }}</td><td>{% if b.file_exists %}<span class="available">Available</span>{% else %}Missing{% endif %}</td><td>{{ b.human_size }}</td><td>{{ b.created_at|date:'Y-m-d H:i:s' }}</td><td>{{ b.get_storage_mode_display }}</td><td><div class="row-actions">{% if b.file_exists %}<a class="blue btnx" href="{% url 'backup_download' b.id %}">Download</a>{% endif %}{% if b.is_protected %}<span class="gray btnx">Protected</span>{% else %}<form method="post" action="{% url 'backup_delete' b.id %}" onsubmit="return confirm('Delete this backup?')">{% csrf_token %}<button class="red btnx">Delete</button></form>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="8">No backups yet.</td></tr>{% endfor %}</tbody></table><div style="margin-top:12px"><b>Backup files:</b> {{ storage.backup_bytes|filesizeformat }} &nbsp; <b>Available disk:</b> {{ storage.disk_free|filesizeformat }} <form method="post" style="display:inline;float:right" onsubmit="return confirm('Purge old backups beyond retention count?')">{% csrf_token %}<input type="hidden" name="action" value="purge"><button class="red btnx">Purge Old Backups</button></form></div></div></div>{% endblock %}
++{% extends "base.html" %}
++{% block title %}Backup & Restore{% endblock %}
++{% block content %}
++<div class="backup-center container-fluid py-3 px-0">
++  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
++    <div>
++      <h3 class="mb-0">Backup &amp; Restore</h3>
++      <div class="text-muted small">
++        Superuser only. Backup, restore, and reset actions are protected and use POST-only actions.
++      </div>
++    </div>
++    <div class="backup-actions d-flex flex-wrap gap-2">
++      <form method="post" class="d-inline js-long-operation" data-operation-label="Database backup">
++        {% csrf_token %}
++        <input type="hidden" name="action" value="backup_db">
++        <button type="submit" class="btn btn-sm btn-outline-primary">
++          <i class="bi bi-database me-1"></i> Backup DB
++        </button>
++      </form>
++      <form method="post" class="d-inline js-long-operation" data-operation-label="Media backup">
++        {% csrf_token %}
++        <input type="hidden" name="action" value="backup_media">
++        <button type="submit" class="btn btn-sm btn-outline-primary">
++          <i class="bi bi-images me-1"></i> Backup Media
++        </button>
++      </form>
++      <form method="post" class="d-inline js-long-operation" data-operation-label="Full backup">
++        {% csrf_token %}
++        <input type="hidden" name="action" value="backup_full">
++        <button type="submit" class="btn btn-sm btn-danger">
++          <i class="bi bi-shield-check me-1"></i> Full Backup
++        </button>
++      </form>
++      <form method="post" class="d-inline">
++        {% csrf_token %}
++        <input type="hidden" name="action" value="fresh_reset">
++        <input type="hidden" name="confirm_text" value="RESET SOCIAL">
++        <button type="submit" class="btn btn-sm btn-outline-danger">Run Fresh Reset</button>
++      </form>
++    </div>
++  </div>
++
++  <div class="alert alert-warning py-2 small">
++    <strong>Important:</strong>
++    Restore operations are destructive. The system now creates a safety backup immediately before restore actions.
++    Live source code restore should remain disabled in production unless you intentionally enable it.
++  </div>
++
++  <div class="row g-3">
++    <div class="col-12">
++      <div class="card shadow-sm">
++        <div class="card-header py-2"><strong>Backup Settings, Upload &amp; Smart Restore</strong></div>
++        <div class="card-body backup-control-grid">
++          <form method="post" id="backupSettingsForm" class="backup-settings-form">
++            {% csrf_token %}<input type="hidden" name="action" value="save_backup_settings">
++            <div class="backup-control-item">
++              <label class="form-label small mb-1">Backup Root Folder</label>
++              {{ backup_settings_form.backup_root }}
++            </div>
++            <div class="backup-control-item">
++              <label class="form-label small mb-1">Retention Count <button type="button" class="backup-help" data-bs-toggle="modal" data-bs-target="#retentionHelpModal" aria-label="Retention help"><i class="bi bi-question-circle"></i></button></label>
++              {{ backup_settings_form.retention_count }}
++            </div>
++            <div class="backup-control-item">
++              <label class="form-label small mb-1">mysqldump Path <button type="button" class="backup-help" data-bs-toggle="modal" data-bs-target="#mysqldumpHelpModal" aria-label="mysqldump help"><i class="bi bi-question-circle"></i></button></label>
++              {{ backup_settings_form.mysqldump_path }}
++            </div>
++            <div class="backup-control-item">
++              <label class="form-label small mb-1">mysql Path <button type="button" class="backup-help" data-bs-toggle="modal" data-bs-target="#mysqlHelpModal" aria-label="mysql help"><i class="bi bi-question-circle"></i></button></label>
++              {{ backup_settings_form.mysql_path }}
++            </div>
++            <div class="backup-option-grid">
++              <label class="form-check">{{ backup_settings_form.include_db_in_full }} <span class="form-check-label small">Include DB in Full</span></label>
++              <label class="form-check">{{ backup_settings_form.include_media_in_full }} <span class="form-check-label small">Include Media in Full</span></label>
++              <label class="form-check">{{ backup_settings_form.include_code_in_full }} <span class="form-check-label small">Include Code in Full</span></label>
++              <label class="form-check">{{ backup_settings_form.compress_backups }} <span class="form-check-label small">Compress DB Backups (GZIP)</span></label>
++              <label class="form-check">{{ backup_settings_form.auto_delete_old_backups }} <span class="form-check-label small">Delete Old Backups Automatically</span></label>
++              <label class="form-check">{{ backup_settings_form.enable_db_backup }} <span class="form-check-label small">Enable DB Backup</span></label>
++              <label class="form-check">{{ backup_settings_form.enable_media_backup }} <span class="form-check-label small">Enable Media Backup</span></label>
++              <label class="form-check">{{ backup_settings_form.enable_code_backup }} <span class="form-check-label small">Enable Code Backup</span></label>
++              <label class="form-check">{{ backup_settings_form.enable_full_backup }} <span class="form-check-label small">Enable Full Backup</span></label>
++              <label class="form-check">{{ backup_settings_form.fresh_reset_enabled }} <span class="form-check-label small">Enable Fresh Reset</span></label>
++              <button type="submit" class="btn btn-sm btn-primary backup-save-settings">Save Settings</button>
++            </div>
++          </form>
++
++          <form method="post" enctype="multipart/form-data" class="backup-control-item backup-upload-control">
++            {% csrf_token %}<input type="hidden" name="action" value="upload_backup">
++            <label class="form-label small mb-1">Upload for Restore</label>
++            {{ backup_upload_form.backup_file }}
++            <button type="submit" class="btn btn-sm btn-outline-primary mt-1 w-100">Upload Backup</button>
++          </form>
++
++          <form method="post" id="restore-backup" class="backup-control-item js-long-operation" data-operation-label="Restore" data-is-restore="true" data-confirm-message="Restore the selected backup? A safety backup will be created first.">
++            {% csrf_token %}<input type="hidden" name="action" value="restore_smart"><input type="hidden" name="confirm_text" value="RESTORE">
++            <label class="form-label small mb-1">Smart Restore</label>
++            {{ restore_form.backup_id }}
++            <button type="submit" class="btn btn-sm btn-danger mt-1 w-100">Restore Selected Backup</button>
++          </form>
++        </div>
++      </div>
++    </div>
++
++    <div class="col-12">
++      <div class="card shadow-sm">
++        <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
++          <strong>Latest Available Backups</strong>
++          <div class="text-muted small">Newest first</div>
++        </div>
++        <div class="card-body p-0">
++          <div class="table-responsive">
++            <table class="table table-sm align-middle mb-0">
++              <thead class="table-light">
++                <tr>
++                  <th style="width: 56px;">#</th>
++                  <th>Name</th>
++                  <th>Type</th>
++                  <th>Status</th>
++                  <th>Size</th>
++                  <th>Created</th>
++                  <th>Storage</th>
++                  <th>Actions</th>
++                </tr>
++              </thead>
++              <tbody>
++                {% for b in backups %}
++                  <tr data-backup-id="{{ b.id }}">
++                    <td data-label="S.N" class="backup-cell-serial">{{ b.serial_number }}</td>
++                    <td data-label="Name" class="backup-cell-name">
++                      <div class="fw-semibold">{{ b.name }}</div>
++                    </td>
++                    <td data-label="Type" class="backup-cell-type">{{ b.get_backup_type_display }}</td>
++                    <td data-label="Status" class="backup-cell-status">
++                      {% if b.file_exists %}<span class="badge text-bg-success">Available</span>{% else %}<span class="badge text-bg-danger">File Missing</span>{% endif %}
++                    </td>
++                    <td data-label="Size">{% if b.file_exists %}{{ b.human_size }}{% else %}—{% endif %}</td>
++                    <td data-label="Created" class="backup-cell-created">{{ b.created_at|date:"Y-m-d H:i:s" }}</td>
++                    <td data-label="Storage" class="backup-cell-storage">{{ b.get_storage_mode_display }}</td>
++                    <td data-label="Actions" class="backup-cell-actions">
++                      <div class="backup-row-actions">
++                        {% if b.file_exists %}<a href="{% url 'backup_download' b.id %}" class="btn btn-sm btn-outline-primary">Download</a>{% endif %}
++                        {% if not b.file_exists %}
++                          <span class="text-danger small">Restore unavailable</span>
++                        {% elif b.is_protected %}
++                          <button type="button"
++                                  class="btn btn-sm btn-outline-secondary"
++                                  disabled
++                                  title="The newest 3 files of each backup type are protected.">
++                            Protected
++                          </button>
++                        {% else %}
++                          <button type="button"
++                                  class="btn btn-sm btn-outline-danger js-backup-delete"
++                                  data-url="{% url 'backup_delete' b.id %}">
++                            Delete
++                          </button>
++                        {% endif %}
++                        {% if b.file_exists and b.backup_type == 'db' or b.file_exists and b.backup_type == 'media' or b.file_exists and b.backup_type == 'full' %}
++                          <a href="{% url 'backup_center' %}?selected_backup={{ b.id }}#restore-backup" class="btn btn-sm btn-outline-secondary">Use for Restore</a>
++                        {% else %}
++                          <span class="text-muted small">Code backup</span>
++                        {% endif %}
++                      </div>
++                    </td>
++                  </tr>
++                {% empty %}
++                  <tr><td colspan="8" class="text-center text-muted py-4">No backups found yet.</td></tr>
++                {% endfor %}
++              </tbody>
++            </table>
++          </div>
++          <div class="backup-storage-summary border-top p-2 d-flex flex-wrap align-items-center gap-2 gap-lg-3 small">
++            <span><strong>Backup files:</strong> {{ backup_storage.backup_bytes|filesizeformat }}</span>
++            <span><strong>Disk used:</strong> {{ backup_storage.disk_used|filesizeformat }}</span>
++            <span><strong>Available:</strong> {{ backup_storage.disk_free|filesizeformat }}</span>
++            <span><strong>Total:</strong> {{ backup_storage.disk_total|filesizeformat }}</span>
++            <form method="post" class="ms-lg-auto js-long-operation" data-operation-label="Backup purge" data-confirm-message="Delete every old backup except the newest 3 files of each type? This cannot be undone.">
++              {% csrf_token %}<input type="hidden" name="action" value="purge_old_backups"><input type="hidden" name="confirm_text" value="PURGE">
++              <button type="submit" class="btn btn-sm btn-outline-danger">Purge Old Backups</button>
++            </form>
++          </div>
++        </div>
++      </div>
++    </div>
++  </div>
++</div>
++
++{% for modal_id, modal_title, modal_text in backup_help_modals %}
++<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-hidden="true">
++  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
++    <div class="modal-header"><h5 class="modal-title">{{ modal_title }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
++    <div class="modal-body small">{{ modal_text }}</div>
++    <div class="modal-footer"><button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button></div>
++  </div></div>
++</div>
++{% endfor %}
++
++<div id="backupProgressOverlay" class="backup-progress-overlay d-none" role="alert" aria-live="assertive" aria-busy="true">
++  <div class="backup-progress-window shadow-lg">
++    <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
++    <h5 class="mb-2" id="backupProgressTitle">Backup in progress</h5>
++    <div class="fw-semibold text-danger mb-2">Do not close this window.</div>
++    <p class="text-muted small mb-2" id="backupProgressMessage">Please wait while Social Welfare completes this operation.</p>
++    <div id="backupRestoreLogoutWarning" class="alert alert-warning py-2 small d-none mb-3">
++      When the restore is complete, you will be logged out. Please log in again.
++    </div>
++    <div class="small text-uppercase text-muted">Elapsed time</div>
++    <div class="backup-progress-timer" id="backupProgressTimer">00:00:00</div>
++  </div>
++</div>
++{% endblock %}
++
++{% block extra_css %}
++<style>
++.container-fluid{width:100%;padding:0 18px}.d-flex{display:flex}.d-inline{display:inline}.flex-wrap{flex-wrap:wrap}.justify-content-between{justify-content:space-between}.align-items-center{align-items:center}.gap-2{gap:8px}.gap-3{gap:12px}.mb-0{margin-bottom:0}.mb-3{margin-bottom:16px}.mt-1{margin-top:4px}.w-100{width:100%}.small{font-size:12px}.text-muted{color:#6c757d}.text-danger{color:#dc3545}.card{background:#fff;border:1px solid #dfe4e2;border-radius:6px}.card-header{padding:10px 14px;border-bottom:1px solid #e4e7e6;background:#fafafa}.card-body{padding:14px}.btn{display:inline-block;border:1px solid #ced4da;border-radius:4px;padding:7px 11px;background:#fff;cursor:pointer;font:12px Arial,sans-serif}.btn-primary,.btn-outline-primary{background:#0d6efd;color:#fff;border-color:#0d6efd}.btn-danger{background:#dc3545;color:#fff;border-color:#dc3545}.btn-outline-danger{color:#dc3545;border-color:#dc3545}.btn-outline-secondary{color:#5d646b}.form-control,.form-select{border:1px solid #ced4da;border-radius:4px;padding:7px;background:#fff}.form-check{display:flex;align-items:center;gap:5px}.form-check-input{width:auto}.table-responsive{overflow:auto}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:9px;border-bottom:1px solid #e6e8e7}.table-light{background:#f7f8f9}.badge.text-bg-success{background:#198754;color:#fff}.badge.text-bg-danger{background:#dc3545;color:#fff}.border-top{border-top:1px solid #dee2e6}.p-2{padding:8px}.p-0{padding:0}.py-3{padding-top:16px;padding-bottom:16px}
++
++.backup-center .card { border-radius: .4rem; }
++.backup-center .backup-actions .btn { white-space: nowrap; }
++.backup-control-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .65rem; align-items: end; }
++.backup-settings-form { display: contents; }
++.backup-control-item { min-width: 0; }
++.backup-control-item .form-control,
++.backup-control-item .form-select { width: 100%; min-width: 0; }
++.backup-upload-control { grid-column: 5; grid-row: 1; }
++#restore-backup { grid-column: 6; grid-row: 1; }
++.backup-option-grid { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: .35rem; align-items: center; border-top: 1px solid #dee2e6; padding-top: .65rem; }
++.backup-option-grid .form-check { margin: 0; min-width: 0; }
++.backup-save-settings { width: 100%; }
++.backup-help { border: 0; background: transparent; color: #0d6efd; padding: 0; line-height: 1; }
++.backup-row-actions { display: flex; flex-wrap: wrap; gap: .25rem; }
++.backup-progress-overlay {
++  position: fixed;
++  inset: 0;
++  z-index: 2000;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  padding: 1rem;
++  background: rgba(15, 23, 42, .72);
++  backdrop-filter: blur(2px);
++}
++.backup-progress-overlay.d-none { display: none !important; }
++.backup-progress-window {
++  width: min(440px, 100%);
++  padding: 1.5rem;
++  border-radius: .65rem;
++  background: #fff;
++  text-align: center;
++}
++.backup-progress-timer {
++  font-size: 1.8rem;
++  font-weight: 700;
++  font-variant-numeric: tabular-nums;
++  letter-spacing: .08em;
++}
++@media (max-width: 420px) {
++  .backup-center h3 { font-size: 1.25rem; }
++  .backup-center .backup-actions { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: .25rem !important; }
++  .backup-center .backup-actions form,
++  .backup-center .backup-actions button { width: 100%; }
++  .backup-center .backup-actions .btn { min-height: 2.25rem; padding: .25rem .15rem; font-size: .62rem; white-space: normal; line-height: 1.1; }
++  .backup-center .backup-actions .bi { margin-right: .15rem !important; }
++  .backup-center .card-body { padding: .75rem; }
++  .backup-center .table { font-size: .78rem; }
++  .backup-center .btn-sm { font-size: .75rem; padding: .32rem .45rem; }
++  .backup-center .form-control-sm,
++  .backup-center .form-select-sm { font-size: .78rem; min-height: 2rem; }
++}
++@media (max-width: 1199.98px) {
++  .backup-control-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
++  .backup-option-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
++  .backup-option-grid,
++  .backup-upload-control,
++  #restore-backup { grid-column: auto; grid-row: auto; }
++  .backup-option-grid { grid-column: 1 / -1; }
++}
++@media (max-width: 360px) {
++  .backup-center { font-size: .78rem; }
++  .backup-center .table th,
++  .backup-center .table td { padding: .3rem; }
++}
++@media (max-width: 991.98px) {
++  .backup-control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .backup-option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .backup-upload-control,
++  #restore-backup { grid-column: span 1; }
++  .backup-center .table-responsive { overflow-x: visible; }
++  .backup-center .table thead { display: none; }
++  .backup-center .table,
++  .backup-center .table tbody { display: block; width: 100%; }
++  .backup-center .table tbody { padding: .5rem; }
++  .backup-center .table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; border: 1px solid #dee2e6; border-radius: .45rem; margin-bottom: .65rem; padding: .45rem .55rem; gap: .2rem .75rem; }
++  .backup-center .table td { display: block; width: 100%; border: 0; padding: .2rem 0; overflow-wrap: anywhere; }
++  .backup-center .table td::before { content: attr(data-label); display: block; color: #6c757d; font-size: .72rem; font-weight: 600; }
++  .backup-center .backup-cell-serial { grid-column: 1; grid-row: 1; }
++  .backup-center .backup-cell-name { grid-column: 2; grid-row: 1; }
++  .backup-center .backup-cell-type { grid-column: 1; grid-row: 2; }
++  .backup-center .backup-cell-storage { grid-column: 2; grid-row: 2; }
++  .backup-center .backup-cell-status { grid-column: 1; grid-row: 3; }
++  .backup-center .table td[data-label="Size"] { grid-column: 2; grid-row: 3; }
++  .backup-center .backup-cell-created,
++  .backup-center .backup-cell-actions { grid-column: 1 / -1; }
++  .backup-center .backup-cell-created { grid-row: 4; }
++  .backup-center .backup-cell-actions { grid-row: 5; }
++  .backup-center .backup-cell-actions::before { display: none; }
++  .backup-center .backup-row-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; }
++  .backup-center .backup-row-actions .btn { width: 100%; white-space: normal; }
++  .backup-storage-summary > span { flex: 1 1 calc(50% - .5rem); }
++  .backup-storage-summary form { width: 100%; }
++  .backup-storage-summary form .btn { width: 100%; }
++}
++@media (max-width: 575.98px) {
++  .backup-control-grid { grid-template-columns: 1fr; }
++  .backup-option-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++  .backup-upload-control,
++  #restore-backup { grid-column: auto; }
++}
++</style>
++{% endblock %}
++
++{% block extra_js %}
++<script>
++const backupSettingsForm = document.getElementById("backupSettingsForm");
++if (backupSettingsForm) {
++  backupSettingsForm.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function (field) {
++    field.addEventListener("change", function () {
++      if (backupSettingsForm.dataset.submitting === "true") return;
++      if (!backupSettingsForm.checkValidity()) {
++        backupSettingsForm.reportValidity();
++        return;
++      }
++      backupSettingsForm.dataset.submitting = "true";
++      const saveButton = backupSettingsForm.querySelector('.backup-save-settings');
++      if (saveButton) {
++        saveButton.disabled = true;
++        saveButton.textContent = "Saving...";
++      }
++      backupSettingsForm.requestSubmit();
++    });
++  });
++}
++
++document.querySelectorAll(".js-long-operation").forEach(function (form) {
++  form.addEventListener("submit", function (event) {
++    if (!form.checkValidity()) return;
++    event.preventDefault();
++    const confirmation = form.dataset.confirmMessage;
++    if (confirmation && !window.confirm(confirmation)) return;
++    const overlay = document.getElementById("backupProgressOverlay");
++    const title = document.getElementById("backupProgressTitle");
++    const message = document.getElementById("backupProgressMessage");
++    const timer = document.getElementById("backupProgressTimer");
++    const logoutWarning = document.getElementById("backupRestoreLogoutWarning");
++    const label = form.dataset.operationLabel || "Backup operation";
++    const isRestore = form.dataset.isRestore === "true";
++    title.textContent = label + " in progress";
++    message.textContent = isRestore
++      ? "TMS is creating a safety backup and restoring the selected data."
++      : "Social Welfare is preparing and saving your backup.";
++    if (logoutWarning) {
++      logoutWarning.classList.toggle("d-none", !isRestore);
++    }
++    overlay.classList.remove("d-none");
++    document.body.style.overflow = "hidden";
++    const startedAt = Date.now();
++    const updateTimer = function () {
++      const totalSeconds = Math.floor((Date.now() - startedAt) / 1000);
++      const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
++      const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
++      const seconds = String(totalSeconds % 60).padStart(2, "0");
++      timer.textContent = hours + ":" + minutes + ":" + seconds;
++    };
++    updateTimer();
++    const timerInterval = window.setInterval(updateTimer, 1000);
++    window.requestAnimationFrame(function () {
++      window.setTimeout(function () {
++        if (window.self === window.top) {
++          HTMLFormElement.prototype.submit.call(form);
++          return;
++        }
++
++        const submitUrl = form.getAttribute("action") || window.location.href;
++        const submitMethod = form.getAttribute("method") || "POST";
++        fetch(submitUrl, {
++          method: submitMethod,
++          body: new FormData(form),
++          credentials: "same-origin",
++          redirect: "follow"
++        })
++          .then(function (response) {
++            window.clearInterval(timerInterval);
++            const responseUrl = response.url || submitUrl;
++            const submittedPath = new URL(submitUrl, window.location.href).pathname;
++            const responsePath = new URL(responseUrl, window.location.href).pathname;
++            if (isRestore && response.redirected && responsePath !== submittedPath) {
++              window.top.location.assign(responseUrl);
++              return;
++            }
++            window.location.assign(responseUrl);
++          })
++          .catch(function () {
++            window.clearInterval(timerInterval);
++            title.textContent = label + " connection interrupted";
++            message.textContent = "The server response could not be received. Check the backup list before trying this operation again.";
++            if (logoutWarning) {
++              logoutWarning.classList.add("d-none");
++            }
++          });
++      }, 50);
++    });
++  });
++});
++
++document.addEventListener("click", function (event) {
++  const button = event.target.closest(".js-backup-delete");
++  if (!button) return;
++  if (!confirm("Delete this backup file?")) return;
++  const csrf = "{{ csrf_token }}";
++  fetch(button.dataset.url, {
++    method: "POST",
++    credentials: "same-origin",
++    headers: {
++      "X-CSRFToken": csrf,
++      "X-Requested-With": "XMLHttpRequest"
++    }
++  })
++    .then(response => response.json())
++    .then(data => {
++      if (!data.success) {
++        alert(data.error || "Could not delete backup.");
++        return;
++      }
++      button.closest("tr")?.remove();
++    })
++    .catch(() => alert("Could not delete backup."));
++});
++</script>
++{% endblock %}
+diff --git a/settings_app/templates/settings_app/suggestions/detail.html b/settings_app/templates/settings_app/suggestions/detail.html
+index b828c76..e7a548f 100644
+--- a/settings_app/templates/settings_app/suggestions/detail.html
++++ b/settings_app/templates/settings_app/suggestions/detail.html
+@@ -1 +1,184 @@
+-{% extends 'base.html' %}{% block title %}Suggestion #{{ticket.id}}{% endblock %}{% block content %}<div class="card"><h1>{{ticket.title}}</h1><p><b>{{ticket.get_ticket_type_display}}</b> · {{ticket.get_priority_display}} · {{ticket.get_status_display}}</p><p><b>Screen:</b> {{ticket.screen_name|default:'—'}}</p><p>{{ticket.description|linebreaks}}</p>{% for p in ticket.photos %}<img src="{{p.url}}" style="max-width:320px;max-height:240px">{% endfor %}<form method="post" action="{% url 'suggestion_delete' ticket.id %}" onsubmit="return confirm('Delete this suggestion?')">{% csrf_token %}<button>Delete</button></form></div>{% endblock %}
++{% extends "base.html" %}
++{% block title %}{{ ticket.get_ticket_type_display }} #{{ ticket.id }}{% endblock %}
++{% block content %}<style>.container{max-width:1180px;margin:24px auto;padding:0 18px}.card{background:#fff;border:1px solid #dce5df;border-radius:8px;margin-bottom:16px}.card-body{padding:18px}.btn{display:inline-block;border:1px solid #d0d8d5;border-radius:5px;padding:7px 11px;background:#fff;cursor:pointer}.btn-warning{background:#ffc107}.btn-primary{background:#126b68;color:#fff}.btn-danger{background:#dc3545;color:#fff}.form-control,.form-select{width:100%;padding:9px;border:1px solid #dce5df;border-radius:5px}.row{display:flex;flex-wrap:wrap;gap:12px}.col,.col-md-4,.col-md-6,.col-md-8{flex:1 1 260px}.badge{padding:5px 8px;border-radius:10px}.table{width:100%}.d-flex{display:flex}.gap-2{gap:8px}.justify-content-between{justify-content:space-between}.align-items-center{align-items:center}.mb-0{margin-bottom:0}.mb-3{margin-bottom:16px}.mt-3{margin-top:16px}.text-muted{color:#6b7d82}</style>
++<style>
++  .suggestion-photo-grid img { width:100%; aspect-ratio:1; object-fit:cover; }
++  .suggestion-reply-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,110px)); gap:.5rem; margin-top:.5rem; }
++  .suggestion-reply-photo-preview figure { margin:0; min-width:0; }
++  .suggestion-reply-photo-preview img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
++  .suggestion-reply-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
++  @media (max-width:575.98px) {
++    .suggestion-detail-head { align-items:flex-start !important; }
++    .suggestion-detail-card .card-header { align-items:flex-start !important; flex-wrap:wrap; }
++    .suggestion-detail-card .js-ticket-status { width:100% !important; }
++    .suggestion-photo-grid > div { width:50%; }
++  }
++</style>
++<div class="d-flex justify-content-between align-items-center mb-2 suggestion-detail-head">
++  <h5 class="mb-0">{{ ticket.get_ticket_type_display }} #{{ ticket.id }}</h5>
++  <a href="{% url 'suggestion_list' %}" class="btn btn-sm btn-outline-secondary">Back</a>
++</div>
++
++<div class="card shadow-sm mb-3 suggestion-detail-card">
++  <div class="card-header d-flex justify-content-between align-items-center gap-2">
++    <strong>{{ ticket.title }}</strong>
++    {% if request.user.is_staff or request.user.is_superuser %}
++      <select class="form-select form-select-sm js-ticket-status"
++              data-url="{% url 'suggestion_status_update' ticket.id %}"
++              style="width:190px">
++        {% for value,label in status_choices %}
++          <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
++        {% endfor %}
++      </select>
++    {% else %}
++      <span class="badge bg-secondary">{{ ticket.get_status_display }}</span>
++    {% endif %}
++  </div>
++  <div class="card-body">
++    <div class="row small mb-3">
++      <div class="col-md-3"><strong>User:</strong> {{ ticket.user_name_snapshot }}</div>
++      <div class="col-md-3"><strong>Phone:</strong> {{ ticket.phone_snapshot|default:"-" }}</div>
++      <div class="col-md-3"><strong>Screen:</strong> {{ ticket.screen_name|default:"-" }}</div>
++      <div class="col-md-3"><strong>Priority:</strong> {{ ticket.get_priority_display }}</div>
++      <div class="col-md-3"><strong>Created:</strong> {{ ticket.created_at }}</div>
++    </div>
++    <div class="border rounded p-2 bg-light">{{ ticket.description|linebreaksbr }}</div>
++    {% if ticket.photos %}
++      <hr>
++      <h6>Photos / Screenshots</h6>
++      <div class="row g-2 suggestion-photo-grid">
++        {% for p in ticket.photos %}
++          <div class="col-6 col-md-3 col-lg-2">
++            <a href="{{ p.url }}" target="_blank">
++              <img src="{{ p.url }}" alt="{{ p.name }}" class="img-fluid rounded border">
++            </a>
++            <a href="{{ p.url }}" download class="btn btn-sm btn-outline-primary w-100 mt-1">
++              <i class="bi bi-download"></i> Download
++            </a>
++          </div>
++        {% endfor %}
++      </div>
++    {% endif %}
++  </div>
++</div>
++
++<div class="card shadow-sm">
++  <div class="card-header"><strong>Replies</strong></div>
++  <div class="card-body">
++    {% for r in ticket.replies %}
++      <div class="mb-2 p-2 rounded {% if r.is_staff_reply %}bg-warning-subtle{% else %}bg-light{% endif %}">
++        <div class="small text-muted d-flex justify-content-between gap-2">
++          <span>{% if r.is_staff_reply %}<strong>Admin</strong>{% else %}<strong>{{ r.created_by }}</strong>{% endif %}</span>
++          <span>{{ r.created_at }}</span>
++        </div>
++        {% if r.message %}<div>{{ r.message|linebreaksbr }}</div>{% endif %}
++        {% if r.photos %}
++          <div class="row g-2 mt-1 suggestion-photo-grid">
++            {% for p in r.photos %}
++              <div class="col-6 col-md-3 col-lg-2">
++                <a href="{{ p.url }}" target="_blank"><img src="{{ p.url }}" alt="{{ p.name }}" class="img-fluid rounded border"></a>
++              </div>
++            {% endfor %}
++          </div>
++        {% endif %}
++      </div>
++    {% empty %}
++      <div class="text-muted small">No replies yet.</div>
++    {% endfor %}
++    <hr>
++    <form method="post" enctype="multipart/form-data" id="suggestionReplyForm">
++      {% csrf_token %}
++      <label class="form-label">Reply</label>
++      {{ form.message }}
++      <label class="form-label mt-2">Images / Screenshots</label>
++      <div id="replyPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
++      <input type="file" name="photos" class="form-control form-control-sm" multiple accept="image/*">
++      <div class="suggestion-reply-photo-preview" id="suggestionReplyPhotoPreview" aria-live="polite"></div>
++      <div class="form-text">Choose images, or copy an image and paste it anywhere in this reply form.</div>
++      {% if request.user.is_staff or request.user.is_superuser %}
++        <label class="form-label mt-2">Change Status</label>
++        <select name="status" class="form-select form-select-sm" style="max-width:250px">
++          {% for value,label in status_choices %}
++            <option value="{{ value }}" {% if ticket.status == value %}selected{% endif %}>{{ label }}</option>
++          {% endfor %}
++        </select>
++      {% endif %}
++      <button class="btn btn-primary btn-sm mt-3"><i class="bi bi-send"></i> Send Reply</button>
++    </form>
++  </div>
++</div>
++
++<script>
++document.addEventListener("DOMContentLoaded", function () {
++  const form = document.getElementById("suggestionReplyForm");
++  const photos = form ? form.querySelector('input[type="file"][name="photos"]') : null;
++  const preview = document.getElementById("suggestionReplyPhotoPreview");
++  const alertEl = document.getElementById("replyPhotoAlert");
++  if (!form || !photos || !preview) return;
++
++  function renderPreview() {
++    preview.replaceChildren();
++    Array.from(photos.files || []).forEach(function (file) {
++      const figure = document.createElement("figure");
++      const img = document.createElement("img");
++      const caption = document.createElement("figcaption");
++      img.alt = file.name;
++      img.src = URL.createObjectURL(file);
++      img.onload = function () { URL.revokeObjectURL(img.src); };
++      caption.textContent = file.name;
++      figure.append(img, caption);
++      preview.appendChild(figure);
++    });
++  }
++
++  photos.addEventListener("change", renderPreview);
++  form.addEventListener("paste", function (event) {
++    const pastedImages = Array.from((event.clipboardData && event.clipboardData.items) || [])
++      .filter(function (item) { return item.kind === "file" && item.type.startsWith("image/"); })
++      .map(function (item) { return item.getAsFile(); })
++      .filter(Boolean);
++    if (!pastedImages.length) return;
++
++    event.preventDefault();
++    try {
++      const transfer = new DataTransfer();
++      Array.from(photos.files || []).forEach(function (file) { transfer.items.add(file); });
++      pastedImages.forEach(function (file, index) {
++        const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
++        transfer.items.add(new File([file], "pasted-image-" + Date.now() + "-" + (index + 1) + "." + extension, { type: file.type }));
++      });
++      photos.files = transfer.files;
++      if (alertEl) alertEl.classList.add("d-none");
++      renderPreview();
++    } catch (error) {
++      if (alertEl) {
++        alertEl.textContent = "This browser could not attach the pasted image. Please use the file picker.";
++        alertEl.classList.remove("d-none");
++      }
++    }
++  });
++});
++
++document.addEventListener("change", function(e){
++  const el = e.target.closest(".js-ticket-status");
++  if(!el) return;
++
++  const formData = new FormData();
++  formData.append("status", el.value);
++  formData.append("csrfmiddlewaretoken", "{{ csrf_token }}");
++
++  fetch(el.dataset.url, {
++    method: "POST",
++    body: formData,
++    headers: {"X-Requested-With": "XMLHttpRequest"}
++  })
++  .then(r => r.json())
++  .then(data => {
++    if(!data.ok){
++      alert(data.error || "Could not update status.");
++    }
++  })
++  .catch(() => alert("Status update failed."));
++});
++</script>
++{% endblock %}
+diff --git a/settings_app/templates/settings_app/suggestions/form.html b/settings_app/templates/settings_app/suggestions/form.html
+index f62734a..0757bf7 100644
+--- a/settings_app/templates/settings_app/suggestions/form.html
++++ b/settings_app/templates/settings_app/suggestions/form.html
+@@ -1 +1,133 @@
+-{% extends 'base.html' %}{% block title %}New Suggestion{% endblock %}{% block content %}<div class="card"><h1>New Suggestion / Report Error</h1><form method="post" enctype="multipart/form-data">{% csrf_token %}{{form.as_p}}<p><label>Photos (optional)</label><input type="file" name="photos" multiple accept="image/*"></p><button class="button">Save Suggestion</button></form></div>{% endblock %}
++{% extends "base.html" %}
++{% block title %}New Suggestion / Report Error{% endblock %}
++{% block content %}<style>.container{max-width:1180px;margin:24px auto;padding:0 18px}.card{background:#fff;border:1px solid #dce5df;border-radius:8px;margin-bottom:16px}.card-body{padding:18px}.btn{display:inline-block;border:1px solid #d0d8d5;border-radius:5px;padding:7px 11px;background:#fff;cursor:pointer}.btn-warning{background:#ffc107}.btn-primary{background:#126b68;color:#fff}.btn-danger{background:#dc3545;color:#fff}.form-control,.form-select{width:100%;padding:9px;border:1px solid #dce5df;border-radius:5px}.row{display:flex;flex-wrap:wrap;gap:12px}.col,.col-md-4,.col-md-6,.col-md-8{flex:1 1 260px}.badge{padding:5px 8px;border-radius:10px}.table{width:100%}.d-flex{display:flex}.gap-2{gap:8px}.justify-content-between{justify-content:space-between}.align-items-center{align-items:center}.mb-0{margin-bottom:0}.mb-3{margin-bottom:16px}.mt-3{margin-top:16px}.text-muted{color:#6b7d82}</style>
++<style>
++  .suggestion-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:.5rem; margin-top:.5rem; }
++  .suggestion-photo-preview figure { margin:0; min-width:0; }
++  .suggestion-photo-preview img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
++  .suggestion-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
++  @media (max-width:575.98px) { .card-body { padding:.75rem; } input[name="photos"] { font-size:.82rem; } }
++</style>
++<div class="card shadow-sm">
++  <div class="card-header d-flex justify-content-between align-items-center">
++    <h5 class="mb-0">New Suggestion / Report Error</h5>
++    <a href="{% url 'suggestion_list' %}" class="btn btn-sm btn-outline-secondary">Back</a>
++  </div>
++  <div class="card-body">
++    <form method="post" enctype="multipart/form-data" id="suggestionCreateForm">
++      {% csrf_token %}
++      <div class="row g-2">
++        <div class="col-md-4">
++          <label class="form-label">Type</label>
++          {{ form.ticket_type }}
++        </div>
++        <div class="col-md-4">
++          <label class="form-label">Priority</label>
++          {{ form.priority }}
++        </div>
++        <div class="col-md-4">
++          <label class="form-label">Screen Name</label>
++          {{ form.screen_name }}
++        </div>
++        <div class="col-12">
++          <label class="form-label">Title</label>
++          {{ form.title }}
++        </div>
++        <div class="col-12">
++          <label class="form-label">Description</label>
++          {{ form.description }}
++        </div>
++        <div class="col-12">
++          <label class="form-label">Photos / Screenshots</label>
++          <div id="photoUploadAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
++          <input type="file" name="photos" class="form-control" multiple accept="image/*">
++          <div class="suggestion-photo-preview" id="suggestionPhotoPreview" aria-live="polite"></div>
++          <div class="form-text">Upload multiple screenshots, or copy an image and paste it anywhere in this form.</div>
++        </div>
++      </div>
++      <div class="mt-3 d-flex gap-2">
++        <button class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
++        <a href="{% url 'suggestion_list' %}" class="btn btn-outline-secondary">Cancel</a>
++      </div>
++    </form>
++  </div>
++</div>
++<script>
++document.addEventListener("DOMContentLoaded", function () {
++  const form = document.getElementById("suggestionCreateForm");
++  const photos = document.querySelector('input[type="file"][name="photos"]');
++  const photoPreview = document.getElementById("suggestionPhotoPreview");
++  const photoAlert = document.getElementById("photoUploadAlert");
++
++  function renderPhotoPreview() {
++    if (!photos || !photoPreview) return;
++    photoPreview.replaceChildren();
++    Array.from(photos.files || []).forEach(function (file) {
++      const figure = document.createElement("figure");
++      const img = document.createElement("img");
++      const caption = document.createElement("figcaption");
++      img.alt = file.name;
++      img.src = URL.createObjectURL(file);
++      img.onload = function () { URL.revokeObjectURL(img.src); };
++      caption.textContent = file.name;
++      figure.append(img, caption);
++      photoPreview.appendChild(figure);
++    });
++  }
++
++  if (photos) photos.addEventListener("change", renderPhotoPreview);
++
++  if (form && photos) form.addEventListener("paste", function (event) {
++    const pastedImages = Array.from((event.clipboardData && event.clipboardData.items) || [])
++      .filter(function (item) { return item.kind === "file" && item.type.startsWith("image/"); })
++      .map(function (item) { return item.getAsFile(); })
++      .filter(Boolean);
++    if (!pastedImages.length) return;
++
++    event.preventDefault();
++    try {
++      const transfer = new DataTransfer();
++      Array.from(photos.files || []).forEach(function (file) { transfer.items.add(file); });
++      pastedImages.forEach(function (file, index) {
++        const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
++        transfer.items.add(new File([file], "pasted-image-" + Date.now() + "-" + (index + 1) + "." + extension, { type: file.type }));
++      });
++      photos.files = transfer.files;
++      if (photoAlert) photoAlert.classList.add("d-none");
++      renderPhotoPreview();
++    } catch (error) {
++      if (photoAlert) {
++        photoAlert.textContent = "This browser could not attach the pasted image. Please use the file picker.";
++        photoAlert.classList.remove("d-none");
++      }
++    }
++  });
++
++  const description = document.querySelector("textarea[name='description']");
++  if (!description) return;
++
++  description.addEventListener("focus", function () {
++    if (!description.value.trim()) {
++      description.value = "1. ";
++      description.setSelectionRange(description.value.length, description.value.length);
++    }
++  });
++
++  description.addEventListener("keydown", function (event) {
++    if (event.key !== "Enter" || event.shiftKey) return;
++    const cursor = description.selectionStart;
++    const lineStart = description.value.lastIndexOf("\n", cursor - 1) + 1;
++    const currentLine = description.value.slice(lineStart, cursor);
++    const match = currentLine.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
++    if (!match) return;
++
++    event.preventDefault();
++    if (!match[3].trim()) {
++      description.setRangeText("", lineStart, cursor, "end");
++      return;
++    }
++    description.setRangeText("\n" + match[1] + (Number(match[2]) + 1) + ". ", cursor, cursor, "end");
++  });
++});
++</script>
++{% endblock %}
+diff --git a/settings_app/templates/settings_app/suggestions/list.html b/settings_app/templates/settings_app/suggestions/list.html
+index 6412b81..e369200 100644
+--- a/settings_app/templates/settings_app/suggestions/list.html
++++ b/settings_app/templates/settings_app/suggestions/list.html
+@@ -1 +1,489 @@
+-{% extends 'base.html' %}{% block title %}Suggestions{% endblock %}{% block content %}<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h1>Suggestions / Report Errors</h1><a class="button" href="{% url 'suggestion_create' %}">+ New Suggestion</a></div><form method="get"><select name="status"><option value="">All statuses</option>{% for v,l in statuses %}<option value="{{v}}" {% if selected_status == v %}selected{% endif %}>{{l}}</option>{% endfor %}</select><select name="type"><option value="">All types</option>{% for v,l in types %}<option value="{{v}}" {% if selected_type == v %}selected{% endif %}>{{l}}</option>{% endfor %}</select><button>Filter</button></form><table><tr><th>#</th><th>Type</th><th>Title</th><th>Screen</th><th>Priority</th><th>Status</th><th>Created</th></tr>{% for t in tickets %}<tr><td>{{t.id}}</td><td>{{t.get_ticket_type_display}}</td><td><a href="{% url 'suggestion_detail' t.id %}">{{t.title}}</a></td><td>{{t.screen_name}}</td><td>{{t.get_priority_display}}</td><td>{{t.get_status_display}}</td><td>{{t.created_at}}</td></tr>{% empty %}<tr><td colspan="7">No suggestions found.</td></tr>{% endfor %}</table></div>{% endblock %}
++{% extends "base.html" %}
++{% block title %}Suggestions / Report Errors{% endblock %}
++{% block content %}<style>.container{max-width:1180px;margin:24px auto;padding:0 18px}.card{background:#fff;border:1px solid #dce5df;border-radius:8px;margin-bottom:16px}.card-body{padding:18px}.btn{display:inline-block;border:1px solid #d0d8d5;border-radius:5px;padding:7px 11px;background:#fff;cursor:pointer}.btn-warning{background:#ffc107}.btn-primary{background:#126b68;color:#fff}.btn-danger{background:#dc3545;color:#fff}.form-control,.form-select{width:100%;padding:9px;border:1px solid #dce5df;border-radius:5px}.row{display:flex;flex-wrap:wrap;gap:12px}.col,.col-md-4,.col-md-6,.col-md-8{flex:1 1 260px}.badge{padding:5px 8px;border-radius:10px}.table{width:100%}.d-flex{display:flex}.gap-2{gap:8px}.justify-content-between{justify-content:space-between}.align-items-center{align-items:center}.mb-0{margin-bottom:0}.mb-3{margin-bottom:16px}.mt-3{margin-top:16px}.text-muted{color:#6b7d82}</style>
++<style>
++  .ticket-page { margin: 0 auto; max-width: 1200px; }
++  .ticket-table-card .table-responsive { overflow-x: auto; min-width: 0; }
++  .ticket-table { table-layout: fixed; width: 100%; min-width: 860px; white-space: nowrap; }
++  .ticket-table col.col-sn { width: 40px; }
++  .ticket-table col.col-type { width: 100px; }
++  .ticket-table col.col-screen { width: 120px; }
++  .ticket-table col.col-status { width: 150px; }
++  .ticket-table col.col-user { width: 100px; }
++  .ticket-table col.col-date { width: 160px; }
++  .ticket-table col.col-action { width: 70px; }
++  .ticket-table td, .ticket-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++  .ticket-title-link {
++    display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
++    white-space: nowrap; vertical-align: bottom; text-decoration: none; font-weight: 500;
++    color: #1a1a1a;
++  }
++  .ticket-title-link:hover { color: #1a1a1a; text-decoration: underline; }
++  .ticket-sn { font-weight: 700; color: #000; }
++  .ticket-status-badge { cursor: pointer; }
++  .ticket-status-badge:not([role="button"]) { cursor: default; }
++  .ticket-status-edit-wrap select { min-width: 130px; }
++  .ticket-cards { display: none; }
++  .ticket-card {
++    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
++    padding: .6rem .75rem; margin-bottom: .5rem;
++  }
++  .ticket-card-title {
++    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
++    overflow: hidden; overflow-wrap: anywhere; font-weight: 500; text-decoration: none;
++    color: #1a1a1a;
++  }
++  .ticket-card-title:hover { color: #1a1a1a; text-decoration: underline; }
++  .ticket-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
++  .ticket-card-top-actions { display:flex; align-items:flex-start; flex:0 0 auto; gap:.35rem; }
++  .ticket-card-sn { font-size: .8rem; color: #000; font-weight: 800; margin-right: .35rem; }
++  .ticket-card-title-wrap { display: flex; align-items: flex-start; min-width: 0; }
++  .ticket-card-meta {
++    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
++    gap: .4rem .75rem; margin-top: .5rem; font-size: .78rem; color: #6c757d;
++  }
++  .ticket-card-meta-left { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: .6rem; min-width: 0; }
++  .ticket-card-meta .btn { padding: .25rem .5rem; font-size: .85rem; line-height: 1; }
++  .ticket-card-meta .js-ticket-delete { flex: 0 0 auto; margin-left: auto; }
++  .suggestion-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:.5rem; margin-top:.5rem; }
++  .suggestion-photo-preview figure { margin:0; min-width:0; }
++  .suggestion-photo-preview img { display:block; width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
++  .suggestion-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:.15rem; }
++  @media (max-width: 999.98px) {
++    .ticket-table-card { display: none; }
++    .ticket-cards { display: block; }
++    .ticket-page { padding-left: .25rem; padding-right: .25rem; }
++    .ticket-hdr h5 { font-size: 1rem; }
++    .ticket-hdr .btn { padding: .2rem .45rem; font-size: .85rem; }
++    .ticket-filters .form-label { margin-bottom: .15rem; }
++  }
++  @media (max-width: 360px) {
++    .ticket-page { font-size: .78rem; }
++  }
++</style>
++
++<div class="ticket-page">
++  <div class="d-flex justify-content-between align-items-center mb-2 ticket-hdr">
++    <h5 class="mb-0">Suggestions / Report Errors</h5>
++    <a href="{% url 'suggestion_create' %}" class="btn btn-primary btn-sm">
++      <i class="bi bi-plus-circle"></i> New
++    </a>
++  </div>
++
++  <form method="get" class="card card-body shadow-sm mb-2 py-2 ticket-filters">
++    <div class="row g-2 align-items-end">
++      <div class="col-6 col-md-3">
++        <label class="form-label small mb-1">Status</label>
++        <select name="status" class="form-select form-select-sm js-ticket-filter">
++          <option value="">All</option>
++          {% for value,label in status_choices %}
++            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
++          {% endfor %}
++        </select>
++      </div>
++      <div class="col-6 col-md-3">
++        <label class="form-label small mb-1">Type</label>
++        <select name="type" class="form-select form-select-sm js-ticket-filter">
++          <option value="">All</option>
++          {% for value,label in type_choices %}
++            <option value="{{ value }}" {% if selected_type == value %}selected{% endif %}>{{ label }}</option>
++          {% endfor %}
++        </select>
++      </div>
++      <div class="col-12 col-md-3 d-flex gap-1">
++        <button class="btn btn-sm btn-dark flex-fill">Filter</button>
++        <a href="{% url 'suggestion_list' %}" class="btn btn-sm btn-outline-secondary flex-fill">Pending</a>
++        <a href="{% url 'suggestion_list' %}?status=" class="btn btn-sm btn-outline-secondary flex-fill">All</a>
++      </div>
++    </div>
++  </form>
++
++  {{ status_choices|json_script:"ticket-status-choices" }}
++
++  <div class="card shadow-sm ticket-table-card">
++    <div class="table-responsive">
++      <table class="table table-sm table-hover align-middle mb-0 ticket-table">
++        <colgroup>
++          <col class="col-sn"><col class="col-type"><col><col class="col-screen">
++          <col class="col-status"><col class="col-user"><col class="col-date"><col class="col-action">
++        </colgroup>
++        <thead class="table-light">
++          <tr>
++            <th>#</th><th>Type</th><th>Title</th><th>Screen</th>
++            <th>Status</th><th>User</th><th>Date</th><th>Action</th>
++          </tr>
++        </thead>
++        <tbody>
++          {% for t in tickets %}
++            <tr data-ticket-row="{{ t.id }}">
++              <td><span class="ticket-sn">{{ forloop.counter }}</span></td>
++              <td>{{ t.get_ticket_type_display }}</td>
++              <td>
++                <a href="{% url 'suggestion_detail' t.id %}" class="ticket-title-link" title="{{ t.title }}">
++                  {{ t.title }}
++                </a>
++              </td>
++              <td>{{ t.screen_name|default:"-" }}</td>
++              <td>
++                {% if request.user.is_staff or request.user.is_superuser %}
++                  <span class="badge bg-secondary ticket-status-badge" role="button" tabindex="0"
++                        data-ticket-id="{{ t.id }}" data-status="{{ t.status }}"
++                        data-url="{% url 'suggestion_status_update' t.id %}">{{ t.get_status_display }}</span>
++                {% else %}
++                  <span class="badge bg-secondary">{{ t.get_status_display }}</span>
++                {% endif %}
++              </td>
++              <td>{{ t.user_name_snapshot }}</td>
++              <td class="js-ticket-date" data-created="{{ t.created_at|default:'' }}"></td>
++              <td>
++                {% if request.user.is_staff or request.user.is_superuser or t.user_name_snapshot == request.user.get_username %}
++                  <button type="button" class="btn btn-outline-danger btn-sm js-ticket-delete"
++                          data-url="{% url 'suggestion_delete' t.id %}">Delete</button>
++                {% endif %}
++              </td>
++            </tr>
++          {% empty %}
++            <tr><td colspan="8" class="text-center text-muted py-4">No records found.</td></tr>
++          {% endfor %}
++        </tbody>
++      </table>
++    </div>
++  </div>
++
++  <div class="ticket-cards">
++    {% for t in tickets %}
++      <div class="ticket-card" data-ticket-row="{{ t.id }}">
++        <div class="ticket-card-top">
++          <div class="ticket-card-title-wrap">
++            <span class="ticket-card-sn">#{{ forloop.counter }}</span>
++            <a href="{% url 'suggestion_detail' t.id %}" class="ticket-card-title">{{ t.title }}</a>
++          </div>
++          <div class="ticket-card-top-actions">
++          {% if request.user.is_staff or request.user.is_superuser %}
++            <span class="badge bg-secondary ticket-status-badge" role="button" tabindex="0"
++                  data-ticket-id="{{ t.id }}" data-status="{{ t.status }}"
++                  data-url="{% url 'suggestion_status_update' t.id %}">{{ t.get_status_display }}</span>
++          {% else %}
++            <span class="badge bg-secondary">{{ t.get_status_display }}</span>
++          {% endif %}
++          {% if request.user.is_staff or request.user.is_superuser or t.user_name_snapshot == request.user.get_username %}
++            <button type="button" class="btn btn-outline-danger btn-sm js-ticket-delete" aria-label="Delete"
++                    data-url="{% url 'suggestion_delete' t.id %}"><i class="bi bi-trash"></i></button>
++          {% endif %}
++          </div>
++        </div>
++        <div class="ticket-card-meta">
++          <div class="ticket-card-meta-left">
++            <span>{{ t.get_ticket_type_display }}</span>
++            <span>{{ t.user_name_snapshot }}</span>
++            <span class="js-ticket-date" data-created="{{ t.created_at|default:'' }}"></span>
++          </div>
++        </div>
++      </div>
++    {% empty %}
++      <div class="text-center text-muted py-4">No records found.</div>
++    {% endfor %}
++  </div>
++</div>
++
++<div class="modal fade" id="newTicketModal" tabindex="-1">
++  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
++    <div class="modal-content">
++      <form method="post" action="{% url 'suggestion_create' %}" enctype="multipart/form-data">
++        {% csrf_token %}
++        <div class="modal-header">
++          <h5 class="modal-title">New Suggestion / Report Error</h5>
++          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
++        </div>
++        <div class="modal-body">
++          <div class="row g-2">
++            <div class="col-md-4">
++              <label class="form-label">Type</label>
++              <select name="ticket_type" class="form-select" required>
++                <option value="SUGGESTION">Suggestion</option>
++                <option value="ERROR">Report Error</option>
++              </select>
++            </div>
++            <div class="col-md-4">
++              <label class="form-label">Priority</label>
++              <select name="priority" class="form-select">
++                <option value="NORMAL">Normal</option>
++                <option value="LOW">Low</option>
++                <option value="HIGH">High</option>
++                <option value="URGENT">Urgent</option>
++              </select>
++            </div>
++            <div class="col-md-4">
++              <label class="form-label">Screen Name</label>
++              <input type="text" name="screen_name" class="form-control" placeholder="Example: Settings, Payment List">
++            </div>
++            <div class="col-12">
++              <label class="form-label">Title</label>
++              <input type="text" name="title" class="form-control" required>
++            </div>
++            <div class="col-12">
++              <label class="form-label">Description</label>
++              <textarea name="description" class="form-control" rows="4"></textarea>
++            </div>
++            <div class="col-12">
++              <label class="form-label">Photos / Screenshots</label>
++              <div id="newTicketPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
++              <input type="file" name="photos" class="form-control" multiple accept="image/*">
++              <div class="suggestion-photo-preview" data-photo-preview aria-live="polite"></div>
++            </div>
++          </div>
++        </div>
++        <div class="modal-footer">
++          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
++          <button class="btn btn-primary"><i class="bi bi-save"></i> Save</button>
++        </div>
++      </form>
++    </div>
++  </div>
++</div>
++
++<script>
++function suggestionGetCookie(name) {
++  let cookieValue = null;
++  if (document.cookie && document.cookie !== '') {
++    const cookies = document.cookie.split(';');
++    for (let i = 0; i < cookies.length; i++) {
++      const cookie = cookies[i].trim();
++      if (cookie.substring(0, name.length + 1) === (name + '=')) {
++        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
++        break;
++      }
++    }
++  }
++  return cookieValue;
++}
++
++const TICKET_STATUS_CHOICES = JSON.parse(document.getElementById("ticket-status-choices").textContent);
++
++document.querySelectorAll('input[type="file"][name="photos"]').forEach(function (input) {
++  input.addEventListener("change", function () {
++    const preview = input.parentElement.querySelector("[data-photo-preview]");
++    if (!preview) return;
++    preview.replaceChildren();
++    Array.from(input.files || []).forEach(function (file) {
++      const figure = document.createElement("figure");
++      const img = document.createElement("img");
++      const caption = document.createElement("figcaption");
++      img.alt = file.name;
++      img.src = URL.createObjectURL(file);
++      img.onload = function () { URL.revokeObjectURL(img.src); };
++      caption.textContent = file.name;
++      figure.append(img, caption);
++      preview.appendChild(figure);
++    });
++  });
++});
++
++function formatTicketDate(raw) {
++  if (!raw) return "-";
++  const d = new Date(raw);
++  if (isNaN(d.getTime())) return raw;
++  const mm = String(d.getMonth() + 1).padStart(2, "0");
++  const dd = String(d.getDate()).padStart(2, "0");
++  const yyyy = d.getFullYear();
++  let hh = d.getHours();
++  const min = String(d.getMinutes()).padStart(2, "0");
++  const ampm = hh >= 12 ? "PM" : "AM";
++  hh = hh % 12;
++  if (hh === 0) hh = 12;
++  return mm + "-" + dd + "-" + yyyy + " " + hh + ":" + min + " " + ampm;
++}
++
++document.querySelectorAll(".js-ticket-date").forEach(function (el) {
++  el.textContent = formatTicketDate(el.dataset.created);
++});
++
++document.addEventListener("change", function (e) {
++  const filterEl = e.target.closest(".js-ticket-filter");
++  if (filterEl) {
++    const form = filterEl.closest("form");
++    if (form) form.submit();
++  }
++});
++
++document.addEventListener("click", function (e) {
++  const badge = e.target.closest(".ticket-status-badge");
++  if (badge) {
++    activateStatusEdit(badge);
++    return;
++  }
++
++  const button = e.target.closest(".js-ticket-delete");
++  if (button) {
++    if (!confirm("Delete this suggestion?")) return;
++    const csrftoken = suggestionGetCookie("csrftoken") || "{{ csrf_token }}";
++    const formData = new FormData();
++    formData.append("csrfmiddlewaretoken", csrftoken);
++    fetch(button.dataset.url, {
++      method: "POST",
++      body: formData,
++      credentials: "same-origin",
++      headers: { "X-Requested-With": "XMLHttpRequest", "X-CSRFToken": csrftoken },
++    })
++    .then(r => r.json())
++    .then(data => {
++      if (!data || !data.success) {
++        throw new Error((data && data.error) || "Could not delete suggestion.");
++      }
++      const ticketId = button.closest("[data-ticket-row]").dataset.ticketRow;
++      document.querySelectorAll('[data-ticket-row="' + ticketId + '"]')
++        .forEach(function (row) { row.remove(); });
++    })
++    .catch(err => alert(err && err.message ? err.message : "Delete failed."));
++  }
++});
++
++function activateStatusEdit(badge) {
++  if (badge.dataset.editing === "1") return;
++  badge.dataset.editing = "1";
++
++  const wrap = document.createElement("span");
++  wrap.className = "ticket-status-edit-wrap";
++
++  const select = document.createElement("select");
++  select.className = "form-select form-select-sm";
++  TICKET_STATUS_CHOICES.forEach(function (choice) {
++    const opt = document.createElement("option");
++    opt.value = choice[0];
++    opt.textContent = choice[1];
++    if (choice[0] === badge.dataset.status) opt.selected = true;
++    select.appendChild(opt);
++  });
++  wrap.appendChild(select);
++  badge.replaceWith(wrap);
++
++  const ticketId = badge.dataset.ticketId;
++  const url = badge.dataset.url;
++  const originalStatus = badge.dataset.status;
++  const originalLabel = badge.textContent;
++  const $select = $(select);
++  let handled = false;
++
++  function restoreBadge(newValue, newLabel) {
++    const newBadge = document.createElement("span");
++    newBadge.className = "badge bg-secondary ticket-status-badge";
++    newBadge.setAttribute("role", "button");
++    newBadge.setAttribute("tabindex", "0");
++    newBadge.dataset.ticketId = ticketId;
++    newBadge.dataset.status = newValue;
++    newBadge.dataset.url = url;
++    newBadge.textContent = newLabel;
++    wrap.replaceWith(newBadge);
++  }
++
++  $select.select2({ width: "150px", minimumResultsForSearch: -1, dropdownAutoWidth: false });
++  $select.select2("open");
++
++  $select.on("select2:select", function () {
++    handled = true;
++    const newValue = select.value;
++    const newLabel = select.options[select.selectedIndex].text;
++    if (newValue === originalStatus) {
++      restoreBadge(newValue, newLabel);
++      return;
++    }
++    const formData = new FormData();
++    formData.append("status", newValue);
++    const csrftoken = suggestionGetCookie("csrftoken");
++    formData.append("csrfmiddlewaretoken", csrftoken || "{{ csrf_token }}");
++
++    fetch(url, {
++      method: "POST",
++      body: formData,
++      credentials: "same-origin",
++      headers: {
++        "X-Requested-With": "XMLHttpRequest",
++        "X-CSRFToken": csrftoken || "{{ csrf_token }}"
++      },
++    })
++    .then(r => r.json())
++    .then(data => {
++      if (!data || !data.ok) throw new Error((data && data.error) || "Could not update status.");
++      restoreBadge(newValue, newLabel);
++    })
++    .catch(err => {
++      alert(err && err.message ? err.message : "Status update failed.");
++      restoreBadge(originalStatus, originalLabel);
++    });
++  });
++
++  $select.on("select2:close", function () {
++    setTimeout(function () {
++      if (!handled && wrap.isConnected) restoreBadge(originalStatus, originalLabel);
++    }, 150);
++  });
++}
++</script>
++<script>
++document.addEventListener("DOMContentLoaded", function () {
++  const form = document.querySelector("#newTicketModal form[enctype='multipart/form-data']");
++  const input = form ? form.querySelector("input[type='file'][name='photos']") : null;
++  const alertEl = document.getElementById("newTicketPhotoAlert");
++  if (!form || !input || !alertEl) return;
++
++  const MAX = 5 * 1024 * 1024;
++  const allowedExt = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
++
++  function showError(msg) {
++    alertEl.textContent = msg || "";
++    alertEl.classList.toggle("d-none", !msg);
++  }
++
++  function validateFiles(files) {
++    Array.from(files || []).forEach(function (file) {
++      const name = String(file.name || "").toLowerCase();
++      const ext = name.slice(name.lastIndexOf("."));
++      if (file.size > MAX) throw new Error((file.name || "Photo") + ": maximum allowed size is 5MB.");
++      if (ext && !allowedExt.includes(ext)) throw new Error((file.name || "Photo") + ": unsupported image type.");
++    });
++  }
++
++  input.addEventListener("change", function () {
++    try { validateFiles(input.files); showError(""); }
++    catch (e) { showError(e && e.message ? e.message : "Invalid photo."); }
++  });
++
++  form.addEventListener("submit", function (e) {
++    try { validateFiles(input.files); showError(""); }
++    catch (err) {
++      e.preventDefault();
++      showError(err && err.message ? err.message : "Invalid photo.");
++    }
++  });
++});
++</script>
++<script>
++document.addEventListener("DOMContentLoaded", function () {
++  const description = document.querySelector("#newTicketModal textarea[name='description']");
++  if (!description) return;
++
++  description.addEventListener("focus", function () {
++    if (!description.value.trim()) {
++      description.value = "1. ";
++      description.setSelectionRange(description.value.length, description.value.length);
++    }
++  });
++
++  description.addEventListener("keydown", function (event) {
++    if (event.key !== "Enter" || event.shiftKey) return;
++    const cursor = description.selectionStart;
++    const lineStart = description.value.lastIndexOf("\n", cursor - 1) + 1;
++    const currentLine = description.value.slice(lineStart, cursor);
++    const match = currentLine.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
++    if (!match) return;
++
++    event.preventDefault();
++    if (!match[3].trim()) {
++      description.setRangeText("", lineStart, cursor, "end");
++      return;
++    }
++    description.setRangeText("\n" + match[1] + (Number(match[2]) + 1) + ". ", cursor, cursor, "end");
++  });
++});
++</script>
++{% endblock %}
+diff --git a/settings_app/tool_views.py b/settings_app/tool_views.py
+index 1820ad2..8497c97 100644
+--- a/settings_app/tool_views.py
++++ b/settings_app/tool_views.py
+@@ -1,12 +1,13 @@
+ from urllib.parse import quote
+ from django.contrib import messages
+ from django.contrib.auth.decorators import login_required, user_passes_test
+-from django.http import FileResponse, Http404
++from django.contrib.auth import logout
++from django.http import FileResponse, Http404, JsonResponse
+ from django.shortcuts import redirect, render
+ from django.views.decorators.http import require_POST
+-from .forms_tools import BackupSettingsForm, BackupUploadForm, SuggestionTicketForm
++from .forms_tools import BackupSettingsForm, BackupUploadForm, BackupRestoreForm, SuggestionTicketForm, SuggestionReplyForm
+ from .backup_utils import *
+-from .suggestion_store import create_ticket, get_ticket, list_tickets, delete_ticket, STATUS_CHOICES, TYPE_CHOICES
++from .suggestion_store import create_ticket, get_ticket, list_tickets, delete_ticket, update_status, add_reply, STATUS_CHOICES, TYPE_CHOICES
+ 
+ superuser_required=user_passes_test(lambda u:u.is_superuser)
+ 
+@@ -14,37 +15,49 @@ superuser_required=user_passes_test(lambda u:u.is_superuser)
+ @superuser_required
+ def backup_center(request):
+     config=load_backup_settings()
+-    if request.method=='POST':
+-        action=request.POST.get('action')
+-        try:
+-            if action=='save_backup_settings':
+-                form=BackupSettingsForm(request.POST)
+-                if form.is_valid(): save_backup_settings(form.cleaned_data); messages.success(request,'Backup settings saved.')
+-                else: messages.error(request,'Please correct the backup settings.')
+-            elif action=='upload_backup':
+-                form=BackupUploadForm(request.POST,request.FILES)
+-                if form.is_valid():
+-                    typ=detect_uploaded_backup_type(form.cleaned_data['backup_file']); p=save_uploaded_backup(config,typ,form.cleaned_data['backup_file']); messages.success(request,f'Backup uploaded: {p.name}')
+-                else: messages.error(request,'Choose a valid backup file.')
+-            elif action=='backup_db': p=create_db_backup(config); prune_old_backups(config); messages.success(request,f'Database backup created: {p.name}')
+-            elif action=='backup_media': p=create_media_backup(config); prune_old_backups(config); messages.success(request,f'Media backup created: {p.name}')
+-            elif action=='backup_code': p=create_code_backup(config); prune_old_backups(config); messages.success(request,f'Code backup created: {p.name}')
+-            elif action=='backup_full': p=create_full_backup(config); prune_old_backups(config); messages.success(request,f'Full backup created: {p.name}')
+-            elif action=='purge':
+-                result=purge_old_backups(config); messages.success(request,f"Purged {len(result['deleted'])} old backup(s).")
+-            elif action=='restore':
+-                bid=request.POST.get('backup_id',''); item=next((x for x in list_backups(config) if x.id==bid),None)
+-                if not item: raise RuntimeError('Select a valid backup.')
+-                if item.backup_type=='db': create_db_backup({**config,'enable_db_backup':True}); restore_database(config,bid)
+-                elif item.backup_type=='media': create_media_backup({**config,'enable_media_backup':True}); restore_media(config,bid)
+-                elif item.backup_type=='full': create_full_backup({**config,'enable_full_backup':True}); restore_full(config,bid)
+-                else: raise RuntimeError('This backup type cannot be restored here.')
+-                messages.success(request,'Restore completed. A safety backup was created first.')
+-        except Exception as exc: messages.error(request,f'Backup operation failed: {exc}')
+-        return redirect('backup_center')
+-    config=load_backup_settings(); backups=list_backups(config); protected=protected_backup_ids(backups,retention_count(config))
+-    for i,b in enumerate(backups,1): b.serial_number=i; b.is_protected=b.id in protected
+-    return render(request,'settings_app/backup_center.html',{'settings_form':BackupSettingsForm(initial=config),'upload_form':BackupUploadForm(),'backups':backups,'storage':backup_storage_summary(config)})
++    backups=list_backups(config)
++    for i,b in enumerate(backups,1): b.serial_number=i
++    protected=protected_backup_ids(backups,retention_count(config))
++    for b in backups: b.is_protected=b.id in protected
++    restore_choices=[('', '----------')]+[(b.id,f'S.N {b.serial_number} · {b.get_backup_type_display()} · {b.name} ({b.created_at:%Y-%m-%d %H:%M})') for b in backups if b.file_exists and b.backup_type in {'db','media','full'}]
++    selected=request.GET.get('selected_backup')
++    def context(settings_form=None):
++        return {'backup_settings_form':settings_form or BackupSettingsForm(initial=config),'backup_upload_form':BackupUploadForm(),'restore_form':BackupRestoreForm(backup_choices=restore_choices,initial={'backup_id':selected}),'backups':backups,'backup_storage':backup_storage_summary(config),'backup_help_modals':[]}
++    if request.method=='GET': return render(request,'settings_app/backup_center.html',context())
++    action=request.POST.get('action')
++    try:
++        if action=='save_backup_settings':
++            form=BackupSettingsForm(request.POST)
++            if form.is_valid(): save_backup_settings(form.cleaned_data); messages.success(request,'Backup settings saved.'); return redirect('backup_center')
++            return render(request,'settings_app/backup_center.html',context(form))
++        if action=='upload_backup':
++            form=BackupUploadForm(request.POST,request.FILES)
++            if form.is_valid():
++                typ=detect_uploaded_backup_type(form.cleaned_data['backup_file']); uploaded=save_uploaded_backup(config,typ,form.cleaned_data['backup_file']); messages.success(request,f'{typ.title()} backup detected and uploaded: {uploaded.name}'); return redirect(f"{reverse('backup_center')}?selected_backup={quote(uploaded.name,safe='')}#restore-backup")
++            messages.error(request,'Upload failed. Choose a valid backup file.'); return redirect('backup_center')
++        if action=='backup_db': created=create_db_backup(config); prune_old_backups(config); messages.success(request,f'Database backup created: {created.name}')
++        elif action=='backup_media': created=create_media_backup(config); prune_old_backups(config); messages.success(request,f'Media backup created: {created.name}')
++        elif action=='backup_code': created=create_code_backup(config); prune_old_backups(config); messages.success(request,f'Code backup created: {created.name}')
++        elif action=='backup_full': created=create_full_backup(config); prune_old_backups(config); messages.success(request,f'Full backup created: {created.name}')
++        elif action=='purge_old_backups':
++            if request.POST.get('confirm_text')!='PURGE': messages.error(request,'Backup purge was not confirmed.')
++            else:
++                result=purge_old_backups(config); messages.success(request,f"Purged {len(result['deleted'])} old backup file(s). Reclaimed {result['reclaimed_bytes']/(1024*1024):.2f} MB.")
++        elif action=='restore_smart':
++            form=BackupRestoreForm(request.POST,backup_choices=restore_choices)
++            if not form.is_valid() or form.cleaned_data.get('confirm_text')!='RESTORE': messages.error(request,'Restore confirmation failed.')
++            else:
++                backup=next((b for b in backups if b.id==form.cleaned_data['backup_id']),None)
++                if not backup: raise RuntimeError('Selected backup was not found.')
++                if backup.backup_type=='db': safety=create_db_backup({**config,'enable_db_backup':True}); restore_database(config,backup.id)
++                elif backup.backup_type=='media': safety=create_media_backup({**config,'enable_media_backup':True}); restore_media(config,backup.id)
++                elif backup.backup_type=='full': safety=create_full_backup({**config,'enable_full_backup':True}); restore_full(config,backup.id)
++                else: raise RuntimeError('Code-only backups cannot be restored from Smart Restore.')
++                logout(request); messages.success(request,f'{backup.get_backup_type_display()} restore completed. Safety backup: {safety.name}. Please log in again.'); return redirect('login')
++        elif action=='fresh_reset': messages.error(request,'Fresh reset is intentionally disabled for Social Welfare.')
++        else: messages.error(request,'Unknown backup action.')
++    except Exception as exc: messages.error(request,f'Backup operation failed: {exc}')
++    return redirect('backup_center')
+ 
+ @login_required
+ @superuser_required
+@@ -57,14 +70,18 @@ def backup_download(request,backup_id):
+ @superuser_required
+ @require_POST
+ def backup_delete(request,backup_id):
+-    try: delete_backup(load_backup_settings(),backup_id); messages.success(request,'Backup deleted.')
+-    except Exception as exc: messages.error(request,str(exc))
+-    return redirect('backup_center')
++    try:
++        delete_backup(load_backup_settings(),backup_id)
++        if request.headers.get('X-Requested-With') == 'XMLHttpRequest': return JsonResponse({'success': True})
++        messages.success(request,'Backup deleted.'); return redirect('backup_center')
++    except Exception as exc:
++        if request.headers.get('X-Requested-With') == 'XMLHttpRequest': return JsonResponse({'success': False, 'error': str(exc)}, status=400)
++        messages.error(request,str(exc)); return redirect('backup_center')
+ 
+ @login_required
+ def suggestion_list(request):
+     status=request.GET.get('status','PENDING'); typ=request.GET.get('type','')
+-    return render(request,'settings_app/suggestions/list.html',{'tickets':list_tickets(status=status or None,ticket_type=typ or None),'statuses':STATUS_CHOICES,'types':TYPE_CHOICES,'selected_status':status,'selected_type':typ})
++    return render(request,'settings_app/suggestions/list.html',{'tickets':list_tickets(status=status or None,ticket_type=typ or None),'status_choices':STATUS_CHOICES,'type_choices':TYPE_CHOICES,'selected_status':status,'selected_type':typ})
+ 
+ @login_required
+ def suggestion_create(request):
+@@ -77,12 +94,33 @@ def suggestion_create(request):
+ def suggestion_detail(request,pk):
+     ticket=get_ticket(pk)
+     if not ticket: raise Http404
+-    return render(request,'settings_app/suggestions/detail.html',{'ticket':ticket})
++    if request.method == 'POST':
++        form=SuggestionReplyForm(request.POST)
++        selected_status=request.POST.get('status') if (request.user.is_staff or request.user.is_superuser) else None
++        if form.is_valid():
++            message=(form.cleaned_data.get('message') or '').strip(); photos=request.FILES.getlist('photos')
++            if message or photos or selected_status:
++                add_reply(ticket.id,message,request.user,status=selected_status,files=photos); messages.success(request,'Reply saved.'); return redirect('suggestion_detail',pk=ticket.id)
++            messages.error(request,'Reply, image, or status change is required.')
++    else: form=SuggestionReplyForm()
++    ticket=get_ticket(pk)
++    return render(request,'settings_app/suggestions/detail.html',{'ticket':ticket,'form':form,'status_choices':STATUS_CHOICES})
++
++@login_required
++@require_POST
++def suggestion_status_update(request,pk):
++    if not (request.user.is_staff or request.user.is_superuser):
++        return JsonResponse({'ok':False,'error':'Not allowed'},status=403)
++    new_status=request.POST.get('status')
++    if new_status not in dict(STATUS_CHOICES): return JsonResponse({'ok':False,'error':'Invalid status'},status=400)
++    ticket=update_status(pk,new_status)
++    return JsonResponse({'ok':bool(ticket),'status':new_status},status=200 if ticket else 404)
+ 
+ @login_required
+ @require_POST
+ def suggestion_delete(request,pk):
+     ticket=get_ticket(pk)
+-    if not ticket: raise Http404
+-    if not (request.user.is_staff or request.user.is_superuser or ticket.user_name_snapshot==request.user.get_username()): raise Http404
+-    delete_ticket(pk); messages.success(request,'Suggestion deleted.'); return redirect('suggestion_list')
++    if not ticket: return JsonResponse({'success':False,'error':'Suggestion not found.'},status=404)
++    if not (request.user.is_staff or request.user.is_superuser or ticket.user_name_snapshot==request.user.get_username()): return JsonResponse({'success':False,'error':'Permission denied.'},status=403)
++    if not delete_ticket(pk): return JsonResponse({'success':False,'error':'Suggestion not found.'},status=404)
++    return JsonResponse({'success':True})
+diff --git a/settings_app/views.py b/settings_app/views.py
+index 9104f32..607823d 100644
+--- a/settings_app/views.py
++++ b/settings_app/views.py
+@@ -1,5 +1,7 @@
+ from django.contrib.auth.decorators import login_required
+ from django.shortcuts import render
++from django.http import JsonResponse
++from django.views.decorators.http import require_POST
+ 
+ from .models import FamilyHarmonySettings
+ 
+@@ -12,6 +14,7 @@ def settings_page(request):
+         education_lines = request.POST.get('education_levels', '').strip()
+         occupation_lines = request.POST.get('occupation_options', '').strip()
+         employer_lines = request.POST.get('employer_options', '').strip()
++        business_type_lines = request.POST.get('business_type_options', '').strip()
+         income_lines = request.POST.get('income_ranges', '').strip()
+         portfolio_lines = request.POST.get('portfolio_options', '').strip()
+         family_type_lines = request.POST.get('family_type_options', '').strip()
+@@ -22,6 +25,7 @@ def settings_page(request):
+         settings.education_levels = [item.strip() for item in education_lines.splitlines() if item.strip()] or settings.education_levels
+         settings.occupation_options = [item.strip() for item in occupation_lines.splitlines() if item.strip()] or settings.occupation_options
+         settings.employer_options = [item.strip() for item in employer_lines.splitlines() if item.strip()] or settings.employer_options
++        settings.business_type_options = [item.strip() for item in business_type_lines.splitlines() if item.strip()] or settings.business_type_options
+         settings.income_ranges = [item.strip() for item in income_lines.splitlines() if item.strip()] or settings.income_ranges
+         settings.portfolio_options = [item.strip() for item in portfolio_lines.splitlines() if item.strip()] or settings.portfolio_options
+         settings.family_type_options = [item.strip() for item in family_type_lines.splitlines() if item.strip()] or settings.family_type_options
+@@ -37,3 +41,44 @@ def settings_page(request):
+         settings.name_visibility = request.POST.get('name_visibility', settings.name_visibility)
+         settings.save()
+     return render(request, 'settings_app/settings.html', {'settings': settings})
++
++
++SETTING_LIST_FIELDS = {
++    'education': 'education_levels', 'title': 'title_options', 'occupation': 'occupation_options',
++    'business_type': 'business_type_options', 'income': 'income_ranges', 'family_type': 'family_type_options',
++    'language': 'language_options', 'marital_status': 'marital_status_options', 'relationship': 'relationship_options',
++}
++
++@login_required
++@require_POST
++def setting_list_crud(request, category):
++    if not request.user.is_superuser:
++        return JsonResponse({'ok': False, 'error': 'Superuser access required.'}, status=403)
++    field = SETTING_LIST_FIELDS.get(category)
++    if not field:
++        return JsonResponse({'ok': False, 'error': 'Unknown setting list.'}, status=404)
++    obj = FamilyHarmonySettings.current()
++    values = list(getattr(obj, field) or [])
++    action = request.POST.get('action', '').strip()
++    value = request.POST.get('value', '').strip()
++    try:
++        if action == 'add':
++            if not value: raise ValueError('Value is required.')
++            if value.casefold() in {x.casefold() for x in values}: raise ValueError('That value already exists.')
++            values.append(value)
++        elif action == 'update':
++            index = int(request.POST.get('index'))
++            if not value: raise ValueError('Value is required.')
++            if not 0 <= index < len(values): raise ValueError('Invalid row.')
++            if value.casefold() in {x.casefold() for i,x in enumerate(values) if i != index}: raise ValueError('That value already exists.')
++            values[index] = value
++        elif action == 'delete':
++            index = int(request.POST.get('index'))
++            if not 0 <= index < len(values): raise ValueError('Invalid row.')
++            values.pop(index)
++        else:
++            raise ValueError('Unknown action.')
++        setattr(obj, field, values); obj.save(update_fields=[field, 'updated_at'])
++        return JsonResponse({'ok': True, 'values': values})
++    except (ValueError, TypeError) as exc:
++        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+diff --git a/static/app.css b/static/app.css
+index 2aabefc..d1459c1 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -6,4 +6,5 @@
+ .inline-error{border-color:#c65b4d;background:#fff0ed}
+ .action-button.unit{background:#7a5aa6}.pagination{display:flex;justify-content:center;align-items:center;gap:16px;margin:0 5vw 36px}.pagination a{padding:8px 14px;border:1px solid var(--line);border-radius:6px;background:var(--white);color:var(--teal);font-weight:bold}.pagination span{color:var(--muted)}
+ .row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.action-button{display:inline-flex;align-items:center;gap:4px;padding:7px 9px;border-radius:6px;color:#fff;font:12px Arial,sans-serif;font-weight:bold;white-space:nowrap}.action-button span{font-size:14px}.action-button.view{background:#3478a8}.action-button.edit{background:#b77a20}.action-button.whatsapp{background:#168b62}.action-button:hover{filter:brightness(.92);color:#fff}.select2-lite{position:relative;min-width:190px}.select2-lite-input{width:100%;min-width:190px}.select2-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none}.select2-lite-menu{display:none;position:absolute;z-index:10;top:calc(100% + 4px);left:0;right:0;max-height:220px;overflow:auto;padding:4px;background:var(--white);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}.select2-lite-menu.is-open{display:grid}.select2-lite-option{padding:8px 10px;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}.select2-lite-option:hover{background:#e0efea;color:var(--teal)}
+-.page-head,.metrics,.profile-grid{padding-left:16px;padding-right:16px}.empty{margin:0 16px}}.form-panel{max-width:1100px;margin:0 auto 36px}.form-panel form{max-width:none}.form-layout{display:grid;gap:28px}.form-section{display:grid;gap:18px}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.form-field{display:grid;gap:6px;min-width:0}.form-field label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.field-full{grid-column:1 / -1}.form-panel input,.form-panel select,.form-panel textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--white);transition:border-color .15s ease,box-shadow .15s ease}.form-panel textarea{min-height:86px;resize:vertical}.form-panel input:focus,.form-panel select:focus,.form-panel textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(18,107,104,.12)}.form-panel ul{list-style:none;padding:0;display:grid;gap:6px}.form-panel .errorlist{margin:0;padding:0;list-style:none;color:#b63a2c;font-size:13px}.messages{padding:16px 5vw 0}.message{background:#e0efea;color:var(--teal);padding:12px 16px;border-radius:6px}.actions,.filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.secondary{display:inline-block;border:1px solid var(--line);border-radius:6px;background:white;color:var(--teal);padding:10px 14px;font-weight:bold}.form-actions{display:flex;justify-content:flex-end;padding-top:8px}.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}.detail-grid small,.detail-grid strong{display:block}.detail-grid small{color:var(--muted);margin-bottom:4px}.filter-bar input,.filter-bar select{min-width:150px}.detail-hero{display:flex;gap:24px;align-items:center}.detail-hero img{width:144px;height:144px;object-fit:cover;border-radius:16px;border:4px solid #e0efea}.table-avatar{width:42px;height:42px;object-fit:cover;border-radius:50%;vertical-align:middle}.initials{display:inline-grid;place-items:center;background:#e0efea;color:var(--teal);font-weight:bold}@media (max-width:720px){.form-row{grid-template-columns:1fr}.page-head{padding-top:36px}.form-panel{margin:0 16px 24px}}
+\ No newline at end of file
++.page-head,.metrics,.profile-grid{padding-left:16px;padding-right:16px}.empty{margin:0 16px}}.form-panel{max-width:1100px;margin:0 auto 36px}.form-panel form{max-width:none}.form-layout{display:grid;gap:28px}.form-section{display:grid;gap:18px}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.form-field{display:grid;gap:6px;min-width:0}.form-field label{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.field-full{grid-column:1 / -1}.form-panel input,.form-panel select,.form-panel textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--white);transition:border-color .15s ease,box-shadow .15s ease}.form-panel textarea{min-height:86px;resize:vertical}.form-panel input:focus,.form-panel select:focus,.form-panel textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(18,107,104,.12)}.form-panel ul{list-style:none;padding:0;display:grid;gap:6px}.form-panel .errorlist{margin:0;padding:0;list-style:none;color:#b63a2c;font-size:13px}.messages{padding:16px 5vw 0}.message{background:#e0efea;color:var(--teal);padding:12px 16px;border-radius:6px}.actions,.filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.secondary{display:inline-block;border:1px solid var(--line);border-radius:6px;background:white;color:var(--teal);padding:10px 14px;font-weight:bold}.form-actions{display:flex;justify-content:flex-end;padding-top:8px}.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}.detail-grid small,.detail-grid strong{display:block}.detail-grid small{color:var(--muted);margin-bottom:4px}.filter-bar input,.filter-bar select{min-width:150px}.detail-hero{display:flex;gap:24px;align-items:center}.detail-hero img{width:144px;height:144px;object-fit:cover;border-radius:16px;border:4px solid #e0efea}.table-avatar{width:42px;height:42px;object-fit:cover;border-radius:50%;vertical-align:middle}.initials{display:inline-grid;place-items:center;background:#e0efea;color:var(--teal);font-weight:bold}@media (max-width:720px){.form-row{grid-template-columns:1fr}.page-head{padding-top:36px}.form-panel{margin:0 16px 24px}}/* TMS-style authenticated action bar */
++.social-topbar{height:62px;padding:0 16px;background:#0f1117;color:#fff;border-bottom:1px solid #242832;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}.social-topbar .top-title{color:#dce6e5}.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}.top-btn{border:1px solid transparent;border-radius:5px;padding:7px 11px;font:700 12px Arial,sans-serif;cursor:pointer;white-space:nowrap}.top-btn.warning{background:#ffc107;color:#171717}.top-btn.outline{background:transparent;border-color:#dfe4e6;color:#fff}.top-btn.light{background:#f8f9fa;color:#111}.logout-form{margin:0}.view-toggle{display:inline-flex;align-items:center;gap:5px;font:700 12px Arial,sans-serif;color:#fff}.view-toggle input{accent-color:#0d6efd}.count-badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#dc3545;color:#fff;font-size:10px}.viewport-bar{position:fixed;right:12px;bottom:12px;z-index:50;background:#101318;color:#fff;border:1px solid #3a414b;border-radius:6px;padding:7px 10px;font:12px Arial,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.25)}.viewport-bar strong{margin-left:8px}@media(max-width:760px){.social-topbar{padding:0 10px}.top-title{display:none}.top-actions{gap:4px}.top-btn{padding:6px 7px;font-size:10px}.view-toggle span{display:none}}
+diff --git a/templates/accounts/profile.html b/templates/accounts/profile.html
+new file mode 100644
+index 0000000..f63b8d5
+--- /dev/null
++++ b/templates/accounts/profile.html
+@@ -0,0 +1,3 @@
++{% extends 'base.html' %}{% block title %}Profile | Social Welfare{% endblock %}{% block content %}
++<section class="page-head"><p class="eyebrow">MY ACCOUNT</p><h1>Profile</h1></section><section class="panel form-panel"><form method="post">{% csrf_token %}<div class="form-row"><div class="form-field"><label>Username</label><input value="{{ profile_user.username }}" disabled></div><div class="form-field"><label>First name</label><input name="first_name" value="{{ profile_user.first_name }}"></div><div class="form-field"><label>Last name</label><input name="last_name" value="{{ profile_user.last_name }}"></div><div class="form-field"><label>Email</label><input type="email" name="email" value="{{ profile_user.email }}"></div></div><div class="form-actions"><button class="primary">Save Profile</button></div></form></section>
++{% endblock %}
+diff --git a/templates/base.html b/templates/base.html
+index 167cbb9..d2138c9 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,4 +1,6 @@
+ {% load static %}
+-<!doctype html>
+-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}"></head>
+-<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a><a href="{% url 'suggestion_list' %}" style="background:#ffc107;color:#172126;font-weight:700">Suggestions</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout">Sign out</button></form></aside><main class="main"><header><button class="menu" aria-label="Menu">☰</button><span class="eyebrow">SOCIAL WELFARE CENTER</span><a href="{% url 'suggestion_list' %}" style="margin-left:auto;background:#ffc107;color:#172126;padding:7px 12px;border-radius:6px;font-weight:700;text-decoration:none">Suggestions</a><span class="user">{{ request.user.get_username }}</span></header>{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script></body></html>
+\ No newline at end of file
++<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}">{% block extra_css %}{% endblock %}</head>
++<body><div class="shell"><aside class="sidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav></aside><main class="main">
++<header class="social-topbar"><button class="menu" aria-label="Menu">☰</button><span class="eyebrow top-title">SOCIAL WELFARE CENTER</span><div class="top-actions"><label class="view-toggle" title="Show viewport size"><input id="viewportToggle" type="checkbox"><span>View</span></label><a class="top-btn warning" href="{% url 'pending_approvals' %}">Pending Approval{% if PENDING_APPROVAL_COUNT %} <b class="count-badge">{{ PENDING_APPROVAL_COUNT }}</b>{% endif %}</a><a class="top-btn warning" href="{% url 'suggestion_list' %}">Suggestions</a><a class="top-btn outline" href="{% url 'my_profile' %}">Profile</a><form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button class="top-btn light" type="submit">Logout</button></form></div></header>
++<div id="viewportBar" class="viewport-bar" hidden><span>Viewport</span><strong id="viewportSize">0 × 0</strong></div>
++{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}" defer></script><script>(function(){const t=document.getElementById('viewportToggle'),b=document.getElementById('viewportBar'),s=document.getElementById('viewportSize');function u(){if(s)s.textContent=window.innerWidth+' × '+window.innerHeight}if(t){t.addEventListener('change',()=>{b.hidden=!t.checked;u()});window.addEventListener('resize',u)}})();</script>{% block extra_js %}{% endblock %}</body></html>
+diff --git a/templates/family_harmony/invitation_created.html b/templates/family_harmony/invitation_created.html
+index 5e98530..0b1cefb 100644
+--- a/templates/family_harmony/invitation_created.html
++++ b/templates/family_harmony/invitation_created.html
+@@ -1 +1 @@
+-{% extends 'base.html' %}{% block title %}Invitation created | Family Harmony{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">FAMILY HARMONY</p><h1>Secure form link created</h1><p class="muted">Send this link to the candidate or family member. It expires {{ invitation.expires_at|date:'j M Y, H:i' }}.</p><div class="panel"><input style="width:100%" readonly value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_form' token=token %}"></div></section>{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block title %}Public marriage form link{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">FAMILY HARMONY</p><h1>Public marriage form link created</h1><p class="muted">No username or password is required. This tokenized link expires in {{ expiry_days }} days.</p></section><section class="panel"><label><strong>Public link</strong></label><input style="width:100%;margin:10px 0" readonly value="{{ public_url }}" onclick="this.select()"><div class="actions"><a class="primary" href="{{ whatsapp_url }}" target="_blank" rel="noopener">Send via WhatsApp</a><a class="secondary" href="{{ public_url }}" target="_blank" rel="noopener">Preview Public Form</a></div></section>{% endblock %}
+diff --git a/templates/family_harmony/list.html b/templates/family_harmony/list.html
+index 0fcbe19..e474539 100644
+--- a/templates/family_harmony/list.html
++++ b/templates/family_harmony/list.html
+@@ -7,6 +7,8 @@
+     <h1>Family Harmony profiles</h1>
+   </div>
+   <div class="actions">
++    <a class="primary" href="{% url 'create_form_invitation' %}">Public Marriage Form</a>
++    <a class="action-button whatsapp" href="{% url 'create_form_invitation' %}?redirect=whatsapp" target="_blank" rel="noopener">Send Form via WhatsApp</a>
+     <a class="primary" href="{% url 'harmony_create' %}">Add profile</a>
+     <a class="secondary export-link" data-export-format="xlsx" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
+     <a class="secondary export-link" data-export-format="pdf" href="?q={{ query }}&status={{ status }}&gender={{ gender }}&city={{ city }}&profession={{ profession }}&portfolio={{ portfolio }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>
+diff --git a/templates/organization/_inline_script.html b/templates/organization/_inline_script.html
+new file mode 100644
+index 0000000..681e945
+--- /dev/null
++++ b/templates/organization/_inline_script.html
+@@ -0,0 +1,15 @@
++<script>
++(function(){
++ const url="{% url 'organization_inline_update' %}";
++ function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('csrftoken='))?.split('=')[1]||''}
++ document.querySelectorAll('[data-editable]').forEach(cell=>cell.addEventListener('dblclick',function(){
++   if(cell.dataset.editing==='1')return; cell.dataset.editing='1'; const old=cell.dataset.value||cell.textContent.trim(); let editor;
++   if(cell.dataset.options){editor=document.createElement('select'); JSON.parse(cell.dataset.options).forEach(o=>{let op=new Option(o.label,o.value,o.value==old);editor.add(op)})}
++   else if(cell.dataset.type==='boolean'){editor=document.createElement('select');editor.add(new Option('Yes','true',old==='true'));editor.add(new Option('No','false',old==='false'))}
++   else{editor=document.createElement('input');editor.value=old}
++   editor.className='cell-editor';cell.textContent='';cell.appendChild(editor);editor.focus();
++   async function save(){if(cell.dataset.saving)return;cell.dataset.saving='1';let v=editor.value;let fd=new FormData();fd.append('model',cell.dataset.model);fd.append('id',cell.dataset.id);fd.append('field',cell.dataset.field);fd.append('value',v);try{let r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf()},body:fd});let j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Save failed');cell.dataset.value=String(j.value);cell.textContent=j.display;cell.classList.add('ajax-saved');setTimeout(()=>cell.classList.remove('ajax-saved'),900)}catch(e){cell.textContent=cell.dataset.display||old;alert(e.message)}finally{cell.dataset.editing='0';cell.dataset.saving='0'}}
++   editor.addEventListener('blur',save,{once:true});editor.addEventListener('keydown',e=>{if(e.key==='Enter')editor.blur();if(e.key==='Escape'){cell.textContent=cell.dataset.display||old;cell.dataset.editing='0'}})
++ }))
++})();
++</script>
+diff --git a/templates/organization/jamatkhanas.html b/templates/organization/jamatkhanas.html
+index 43411ad..16be39c 100644
+--- a/templates/organization/jamatkhanas.html
++++ b/templates/organization/jamatkhanas.html
+@@ -1,5 +1,2 @@
+-{% extends 'base.html' %}
+-{% block content %}
+-<style>.crud-table input,.crud-table select{min-width:120px;width:100%;box-sizing:border-box}.crud-table .name{min-width:230px}.crud-actions{display:flex;gap:6px;white-space:nowrap}.crud-actions button{padding:7px 10px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.filters>*{flex:1 1 145px}.crud-wrap{overflow:auto}.crud-table{min-width:900px}}
+-</style>
+-<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Jamatkhanas</h1><p class="muted">{{ subtitle }}</p></div><div class="actions"><a class="secondary" href="{% url 'settings' %}">Back to settings</a></div></section><section class="metrics"><article><span>Total JK</span><strong>{{ stats.total }}</strong></article><article><span>Active JK</span><strong>{{ stats.active }}</strong></article><article><span>People linked</span><strong>{{ stats.linked }}</strong></article></section><section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name, short name or code"><select name="region"><option value="">All Regional Councils</option>{% for r in regions %}<option value="{{ r.id }}" {% if r.id|stringformat:'s' == region %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select><select name="local_council"><option value="">All Local Councils</option>{% for l in local_councils %}<option value="{{ l.id }}" {% if l.id|stringformat:'s' == local_council %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'jamatkhanas' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table" style="width:100%;border-collapse:collapse"><thead><tr><th>S.No</th><th>Name</th><th>Short Name</th><th>Code</th><th>Local Council</th><th>Active</th><th>Actions</th></tr></thead><tbody><tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input class="name" name="name" required placeholder="Jamatkhana name"></td><td><input name="short_name" placeholder="Short name"></td><td><input name="code" required placeholder="Unique code"></td><td><select name="local_council" required>{% for l in local_councils %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>{% for item in items %}<tr><form id="j{{ item.id }}" method="post">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ item.id }}"></form><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td><input class="name" form="j{{ item.id }}" name="name" value="{{ item.name }}" required></td><td><input form="j{{ item.id }}" name="short_name" value="{{ item.short_name }}"></td><td><input form="j{{ item.id }}" name="code" value="{{ item.code }}" required></td><td><select form="j{{ item.id }}" name="local_council">{% for l in local_councils %}<option value="{{ l.id }}" {% if l.id == item.local_council_id %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></td><td><input form="j{{ item.id }}" type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}></td><td><div class="crud-actions"><button form="j{{ item.id }}" class="primary">Save</button><form method="post" onsubmit="return confirm('Delete this Jamatkhana? If it is in use it will be made inactive instead.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></div></td></tr>{% empty %}<tr><td colspan="7">No Jamatkhanas found.</td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block content %}<style>.editable-cell{cursor:text;border-radius:4px}.editable-cell:hover{background:#f0f6f4;outline:1px dashed #9bb9b1}.cell-editor{width:100%;min-width:110px;padding:6px;border:1px solid #126b68;border-radius:4px}.ajax-saved{background:#dff4e8!important}.crud-actions{display:flex;gap:6px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.crud-wrap{overflow:auto}.crud-table{min-width:850px}}</style>
++<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Jamatkhanas</h1><p class="muted">Plain text list. Double-click an editable value and leave the field to save automatically.</p></div><a class="secondary" href="{% url 'settings' %}">Back to settings</a></section><section class="metrics"><article><span>Total JK</span><strong>{{ stats.total }}</strong></article><article><span>Active JK</span><strong>{{ stats.active }}</strong></article><article><span>People linked</span><strong>{{ stats.linked }}</strong></article></section><section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name, short name or code"><select name="region"><option value="">All Regional Councils</option>{% for r in regions %}<option value="{{ r.id }}" {% if r.id|stringformat:'s' == region %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select><select name="local_council"><option value="">All Local Councils</option>{% for l in local_councils %}<option value="{{ l.id }}" {% if l.id|stringformat:'s' == local_council %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'jamatkhanas' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table"><thead><tr><th>S.No</th><th>Name</th><th>Short Name</th><th>Code</th><th>Local Council</th><th>Active</th><th>Actions</th></tr></thead><tbody><tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input name="name" required></td><td><input name="short_name"></td><td><input name="code" required></td><td><select name="local_council">{% for l in local_councils %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>{% for item in items %}<tr><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td class="editable-cell" data-editable data-model="jamatkhana" data-id="{{ item.id }}" data-field="name" data-value="{{ item.name }}" data-display="{{ item.name }}">{{ item.name }}</td><td class="editable-cell" data-editable data-model="jamatkhana" data-id="{{ item.id }}" data-field="short_name" data-value="{{ item.short_name }}" data-display="{{ item.short_name }}">{{ item.short_name|default:'—' }}</td><td class="editable-cell" data-editable data-model="jamatkhana" data-id="{{ item.id }}" data-field="code" data-value="{{ item.code }}" data-display="{{ item.code }}">{{ item.code }}</td><td class="editable-cell" data-editable data-model="jamatkhana" data-id="{{ item.id }}" data-field="local_council_id" data-value="{{ item.local_council_id }}" data-display="{{ item.local_council.name }}" data-options='[{% for l in local_councils %}{"value":"{{ l.id }}","label":"{{ l.name|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>{{ item.local_council.name }}</td><td class="editable-cell" data-editable data-model="jamatkhana" data-id="{{ item.id }}" data-field="is_active" data-type="boolean" data-value="{{ item.is_active|yesno:'true,false' }}" data-display="{{ item.is_active|yesno:'Yes,No' }}">{{ item.is_active|yesno:'Yes,No' }}</td><td><form method="post" onsubmit="return confirm('Delete this Jamatkhana? If in use it will be made inactive.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% include 'organization/_inline_script.html' %}{% endblock %}
+\ No newline at end of file
+diff --git a/templates/organization/local_councils.html b/templates/organization/local_councils.html
+index b49dd22..473d7f6 100644
+--- a/templates/organization/local_councils.html
++++ b/templates/organization/local_councils.html
+@@ -1,5 +1,2 @@
+-{% extends 'base.html' %}
+-{% block content %}
+-<style>.crud-table input,.crud-table select{min-width:120px;width:100%;box-sizing:border-box}.crud-table .name{min-width:230px}.crud-actions{display:flex;gap:6px;white-space:nowrap}.crud-actions button{padding:7px 10px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.filters>*{flex:1 1 145px}.crud-wrap{overflow:auto}.crud-table{min-width:900px}}
+-</style>
+-<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Local Councils</h1><p class="muted">{{ subtitle }}</p></div><div class="actions"><a class="secondary" href="{% url 'settings' %}">Back to settings</a></div></section><section class="metrics"><article><span>Total LC</span><strong>{{ stats.total }}</strong></article><article><span>Active LC</span><strong>{{ stats.active }}</strong></article><article><span>JK linked</span><strong>{{ stats.linked }}</strong></article></section><section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name or code"><select name="region"><option value="">All Regional Councils</option>{% for r in regions %}<option value="{{ r.id }}" {% if r.id|stringformat:'s' == region %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'local_councils' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table" style="width:100%;border-collapse:collapse"><thead><tr><th>S.No</th><th>Name</th><th>Code</th><th>Regional Council</th><th>Jamatkhanas</th><th>Active</th><th>Actions</th></tr></thead><tbody><tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input class="name" name="name" required placeholder="Local Council name"></td><td><input name="code" required placeholder="Unique code"></td><td><select name="regional_council" required>{% for r in regions %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></td><td>—</td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>{% for item in items %}<tr><form id="l{{ item.id }}" method="post">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ item.id }}"></form><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td><input class="name" form="l{{ item.id }}" name="name" value="{{ item.name }}" required></td><td><input form="l{{ item.id }}" name="code" value="{{ item.code }}" required></td><td><select form="l{{ item.id }}" name="regional_council">{% for r in regions %}<option value="{{ r.id }}" {% if r.id == item.regional_council_id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></td><td>{{ item.jamatkhanas.count }}</td><td><input form="l{{ item.id }}" type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}></td><td><div class="crud-actions"><button form="l{{ item.id }}" class="primary">Save</button><form method="post" onsubmit="return confirm('Delete this Local Council? If it is in use it will be made inactive instead.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></div></td></tr>{% empty %}<tr><td colspan="7">No Local Councils found.</td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block content %}<style>.editable-cell{cursor:text;border-radius:4px}.editable-cell:hover{background:#f0f6f4;outline:1px dashed #9bb9b1}.cell-editor{width:100%;min-width:110px;padding:6px;border:1px solid #126b68;border-radius:4px}.ajax-saved{background:#dff4e8!important}.crud-actions{display:flex;gap:6px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.crud-wrap{overflow:auto}.crud-table{min-width:850px}}</style>
++<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Local Councils</h1><p class="muted">Plain text list. Double-click an editable value and leave the field to save automatically.</p></div><a class="secondary" href="{% url 'settings' %}">Back to settings</a></section><section class="metrics"><article><span>Total LC</span><strong>{{ stats.total }}</strong></article><article><span>Active LC</span><strong>{{ stats.active }}</strong></article><article><span>JK linked</span><strong>{{ stats.linked }}</strong></article></section><section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name or code"><select name="region"><option value="">All Regional Councils</option>{% for r in regions %}<option value="{{ r.id }}" {% if r.id|stringformat:'s' == region %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'local_councils' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table"><thead><tr><th>S.No</th><th>Name</th><th>Code</th><th>Regional Council</th><th>Jamatkhanas</th><th>Active</th><th>Actions</th></tr></thead><tbody><tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input name="name" required></td><td><input name="code" required></td><td><select name="regional_council">{% for r in regions %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></td><td>—</td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>{% for item in items %}<tr><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td class="editable-cell" data-editable data-model="local" data-id="{{ item.id }}" data-field="name" data-value="{{ item.name }}" data-display="{{ item.name }}">{{ item.name }}</td><td class="editable-cell" data-editable data-model="local" data-id="{{ item.id }}" data-field="code" data-value="{{ item.code }}" data-display="{{ item.code }}">{{ item.code }}</td><td class="editable-cell" data-editable data-model="local" data-id="{{ item.id }}" data-field="regional_council_id" data-value="{{ item.regional_council_id }}" data-display="{{ item.regional_council.name }}" data-options='[{% for r in regions %}{"value":"{{ r.id }}","label":"{{ r.name|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>{{ item.regional_council.name }}</td><td>{{ item.jamatkhanas.count }}</td><td class="editable-cell" data-editable data-model="local" data-id="{{ item.id }}" data-field="is_active" data-type="boolean" data-value="{{ item.is_active|yesno:'true,false' }}" data-display="{{ item.is_active|yesno:'Yes,No' }}">{{ item.is_active|yesno:'Yes,No' }}</td><td><form method="post" onsubmit="return confirm('Delete this Local Council? If in use it will be made inactive.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% include 'organization/_inline_script.html' %}{% endblock %}
+\ No newline at end of file
+diff --git a/templates/organization/regional_councils.html b/templates/organization/regional_councils.html
+index 58e9a45..0859d6f 100644
+--- a/templates/organization/regional_councils.html
++++ b/templates/organization/regional_councils.html
+@@ -1,9 +1,2 @@
+-{% extends 'base.html' %}
+-{% block content %}
+-<style>.crud-table input,.crud-table select{min-width:120px;width:100%;box-sizing:border-box}.crud-table .name{min-width:230px}.crud-actions{display:flex;gap:6px;white-space:nowrap}.crud-actions button{padding:7px 10px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.filters>*{flex:1 1 145px}.crud-wrap{overflow:auto}.crud-table{min-width:900px}}
+-</style>
+-<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Regional Councils</h1><p class="muted">{{ subtitle }}</p></div><div class="actions"><a class="secondary" href="{% url 'settings' %}">Back to settings</a></div></section>
+-<section class="metrics"><article><span>Total RC</span><strong>{{ stats.total }}</strong></article><article><span>Active RC</span><strong>{{ stats.active }}</strong></article><article><span>Linked LC</span><strong>{{ stats.linked }}</strong></article></section>
+-<section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name or code"><select name="national"><option value="">All National Councils</option>{% for n in nationals %}<option value="{{ n.id }}" {% if n.id|stringformat:'s' == national %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'regional_councils' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table" style="width:100%;border-collapse:collapse"><thead><tr><th>S.No</th><th>Name</th><th>Code</th><th>National Council</th><th>Local Councils</th><th>Active</th><th>Actions</th></tr></thead><tbody>
+-<tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input class="name" name="name" required placeholder="Regional Council name"></td><td><input name="code" required placeholder="Unique code"></td><td><select name="national_council" required>{% for n in nationals %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}</select></td><td>—</td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>
+-{% for item in items %}<tr><form id="r{{ item.id }}" method="post">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ item.id }}"></form><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td><input class="name" form="r{{ item.id }}" name="name" value="{{ item.name }}" required></td><td><input form="r{{ item.id }}" name="code" value="{{ item.code }}" required></td><td><select form="r{{ item.id }}" name="national_council">{% for n in nationals %}<option value="{{ n.id }}" {% if n.id == item.national_council_id %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select></td><td>{{ item.locals.count }}</td><td><input form="r{{ item.id }}" type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}></td><td><div class="crud-actions"><button form="r{{ item.id }}" class="primary">Save</button><form method="post" onsubmit="return confirm('Delete this Regional Council? If it is in use it will be made inactive instead.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></div></td></tr>{% empty %}<tr><td colspan="7">No Regional Councils found.</td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% endblock %}
+\ No newline at end of file
++{% extends 'base.html' %}{% block content %}<style>.editable-cell{cursor:text;border-radius:4px}.editable-cell:hover{background:#f0f6f4;outline:1px dashed #9bb9b1}.cell-editor{width:100%;min-width:110px;padding:6px;border:1px solid #126b68;border-radius:4px}.ajax-saved{background:#dff4e8!important}.crud-actions{display:flex;gap:6px}.create-row{background:#f6faf8}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:16px 18px 0}.filters input,.filters select{min-height:40px}@media(max-width:640px){.crud-wrap{overflow:auto}.crud-table{min-width:850px}}</style>
++<section class="page-head inline"><div><p class="eyebrow">JURISDICTION</p><h1>Regional Councils</h1><p class="muted">Plain text list. Double-click Name, Code, National Council or Active to edit; leaving the field saves by AJAX.</p></div><a class="secondary" href="{% url 'settings' %}">Back to settings</a></section><section class="metrics"><article><span>Total RC</span><strong>{{ stats.total }}</strong></article><article><span>Active RC</span><strong>{{ stats.active }}</strong></article><article><span>Linked LC</span><strong>{{ stats.linked }}</strong></article></section><section class="panel"><form method="get" class="filters"><input type="search" name="q" value="{{ query }}" placeholder="Search name or code"><select name="national"><option value="">All National Councils</option>{% for n in nationals %}<option value="{{ n.id }}" {% if n.id|stringformat:'s' == national %}selected{% endif %}>{{ n.name }}</option>{% endfor %}</select><select name="status"><option value="">All statuses</option><option value="active" {% if status == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="primary">Apply</button><a class="secondary" href="{% url 'regional_councils' %}">Clear</a></form><div class="crud-wrap" style="padding:18px"><table class="crud-table"><thead><tr><th>S.No</th><th>Name</th><th>Code</th><th>National Council</th><th>Local Councils</th><th>Active</th><th>Actions</th></tr></thead><tbody><tr class="create-row"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create"><td>New</td><td><input name="name" required></td><td><input name="code" required></td><td><select name="national_council">{% for n in nationals %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}</select></td><td>—</td><td><input type="checkbox" name="is_active" checked></td><td><button class="primary">Add</button></td></form></tr>{% for item in items %}<tr><td>{{ forloop.counter0|add:page_obj.start_index }}</td><td class="editable-cell" data-editable data-model="regional" data-id="{{ item.id }}" data-field="name" data-value="{{ item.name }}" data-display="{{ item.name }}">{{ item.name }}</td><td class="editable-cell" data-editable data-model="regional" data-id="{{ item.id }}" data-field="code" data-value="{{ item.code }}" data-display="{{ item.code }}">{{ item.code }}</td><td class="editable-cell" data-editable data-model="regional" data-id="{{ item.id }}" data-field="national_council_id" data-value="{{ item.national_council_id }}" data-display="{{ item.national_council.name }}" data-options='[{% for n in nationals %}{"value":"{{ n.id }}","label":"{{ n.name|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>{{ item.national_council.name }}</td><td>{{ item.locals.count }}</td><td class="editable-cell" data-editable data-model="regional" data-id="{{ item.id }}" data-field="is_active" data-type="boolean" data-value="{{ item.is_active|yesno:'true,false' }}" data-display="{{ item.is_active|yesno:'Yes,No' }}">{{ item.is_active|yesno:'Yes,No' }}</td><td><form method="post" onsubmit="return confirm('Delete this Regional Council? If in use it will be made inactive.');">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ item.id }}"><button class="secondary">Delete</button></form></td></tr>{% empty %}<tr><td colspan="7">No Regional Councils found.</td></tr>{% endfor %}</tbody></table></div></section>{% include 'partials/pagination.html' %}{% include 'organization/_inline_script.html' %}{% endblock %}
+\ No newline at end of file
+diff --git a/templates/pending_approvals.html b/templates/pending_approvals.html
+new file mode 100644
+index 0000000..e107d68
+--- /dev/null
++++ b/templates/pending_approvals.html
+@@ -0,0 +1,4 @@
++{% extends 'base.html' %}{% block title %}Pending Approval | Social Welfare{% endblock %}{% block content %}
++<section class="page-head inline"><div><p class="eyebrow">REVIEW QUEUE</p><h1>Pending Approval</h1><p class="muted">Marriage profiles submitted through public invitation links and waiting for staff review.</p></div></section>
++<section class="panel table-wrap"><table><thead><tr><th>#</th><th>Submitted</th><th>Name</th><th>CNIC / ID</th><th>City</th><th>Status</th><th>Actions</th></tr></thead><tbody>{% for invitation in invitations %}<tr><td>{{ forloop.counter }}</td><td>{{ invitation.submitted_at|date:'Y-m-d H:i' }}</td><td><a href="{% url 'harmony_detail' invitation.profile.id %}"><strong>{{ invitation.profile.person.full_name }}</strong></a></td><td>{{ invitation.profile.person.masked_identity_number }}</td><td>{{ invitation.profile.person.city|default:'—' }}</td><td>{{ invitation.profile.get_status_display }}</td><td class="row-actions"><a class="action-button view" href="{% url 'harmony_detail' invitation.profile.id %}">View</a><form method="post" action="{% url 'pending_approval_action' invitation.id %}">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="primary">Approve</button></form><form method="post" action="{% url 'pending_approval_action' invitation.id %}" onsubmit="return confirm('Reject and archive this profile?')">{% csrf_token %}<input type="hidden" name="action" value="reject"><button class="secondary">Reject</button></form></td></tr>{% empty %}<tr><td colspan="7" class="muted">No pending public submissions.</td></tr>{% endfor %}</tbody></table></section>
++{% endblock %}
+diff --git a/templates/people/list.html b/templates/people/list.html
+index 3bfac6d..14da1f3 100644
+--- a/templates/people/list.html
++++ b/templates/people/list.html
+@@ -7,6 +7,8 @@
+     <h1>People</h1>
+   </div>
+   <div class="actions">
++    <a class="primary" href="{% url 'create_form_invitation' %}">Public Marriage Form</a>
++    <a class="action-button whatsapp" href="{% url 'create_form_invitation' %}?redirect=whatsapp" target="_blank" rel="noopener">Send Form via WhatsApp</a>
+     <a class="primary" href="{% url 'person_create' %}">Add person</a>
+     <a class="secondary export-link" data-export-format="xlsx" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=xlsx">Excel</a>
+     <a class="secondary export-link" data-export-format="pdf" href="?q={{ query }}&gender={{ gender }}&city={{ city }}&local_council={{ local_council }}&jamatkhana={{ jamatkhana }}&format=pdf">PDF</a>
+diff --git a/templates/settings_app/_list_crud.html b/templates/settings_app/_list_crud.html
+new file mode 100644
+index 0000000..8be2e14
+--- /dev/null
++++ b/templates/settings_app/_list_crud.html
+@@ -0,0 +1 @@
++<div class="setting-card" data-url="{% url 'setting_list_crud' category %}"><h3>{{ title }}</h3><div class="setting-list">{% for value in values %}<div class="setting-row"><span>{{ forloop.counter }}</span><input class="setting-value" data-index="{{ forloop.counter0 }}" value="{{ value }}"><button type="button" class="setting-delete" data-index="{{ forloop.counter0 }}">Delete</button></div>{% empty %}<span class="muted">No options yet.</span>{% endfor %}</div><div class="setting-add"><input class="setting-new" placeholder="New {{ title|lower }} value"><button type="button" class="primary setting-add-btn">Add</button></div><div class="setting-save-state"></div></div>
+diff --git a/templates/settings_app/settings.html b/templates/settings_app/settings.html
+index 96ec065..495cf53 100644
+--- a/templates/settings_app/settings.html
++++ b/templates/settings_app/settings.html
+@@ -1,123 +1,18 @@
+-{% extends 'base.html' %}
+-{% block title %}Settings | Social Welfare{% endblock %}
+-{% block content %}<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><a class="button" href="{% url 'backup_center' %}">Backup & Restore</a></div>
+-<section class="page-head">
+-  <p class="eyebrow">SYSTEM SETTINGS</p>
+-  <h1>Settings</h1>
+-</section>
+-
+-<section class="panel form-panel">
+-  <div class="form-section">
+-    <h2>Jurisdiction lists</h2>
+-    <div class="form-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
+-      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+-        <h3 style="margin:0 0 8px; font-size:1.05rem;">Regional Councils</h3>
+-        <p style="margin:0 0 12px; color:#5d7175;">View and manage all RC records.</p>
+-        <a class="primary" href="{% url 'settings_regional_councils' %}">Open RC list</a>
+-      </div>
+-      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+-        <h3 style="margin:0 0 8px; font-size:1.05rem;">Local Councils</h3>
+-        <p style="margin:0 0 12px; color:#5d7175;">Review LC coverage and filters.</p>
+-        <a class="primary" href="{% url 'settings_local_councils' %}">Open LC list</a>
+-      </div>
+-      <div class="form-field" style="padding:16px;border:1px solid #dfe7e1;border-radius:12px;background:#f8fbfa;">
+-        <h3 style="margin:0 0 8px; font-size:1.05rem;">Jamatkhanas</h3>
+-        <p style="margin:0 0 12px; color:#5d7175;">View all JK details and group access.</p>
+-        <a class="primary" href="{% url 'settings_jamatkhanas' %}">Open JK list</a>
+-      </div>
+-    </div>
+-  </div>
+-
+-  <form method="post">
+-    {% csrf_token %}
+-
+-    <div class="form-layout">
+-      <div class="form-section">
+-        <h2>Education levels</h2>
+-        <div class="form-row">
+-          <div class="form-field field-full">
+-            <label for="education_levels">One item per line</label>
+-            <textarea id="education_levels" name="education_levels" rows="8">{% for item in settings.education_levels %}{{ item }}
+-{% endfor %}</textarea>
+-          </div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section">
+-        <h2>Title options</h2>
+-        <div class="form-row">
+-          <div class="form-field field-full">
+-            <label for="title_options">One item per line</label>
+-            <textarea id="title_options" name="title_options" rows="8">{% for item in settings.title_options %}{{ item }}
+-{% endfor %}</textarea>
+-          </div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section">
+-        <h2>Person dropdowns</h2>
+-        <div class="form-row">
+-          <div class="form-field"><label for="occupation_options">Occupations, one per line</label><textarea id="occupation_options" name="occupation_options" rows="8">{% for item in settings.occupation_options %}{{ item }}
+-{% endfor %}</textarea></div>
+-          <div class="form-field"><label for="employer_options">Employers or business types, one per line</label><textarea id="employer_options" name="employer_options" rows="8">{% for item in settings.employer_options %}{{ item }}
+-{% endfor %}</textarea></div>
+-          <div class="form-field"><label for="income_ranges">Income ranges, one per line</label><textarea id="income_ranges" name="income_ranges" rows="8">{% for item in settings.income_ranges %}{{ item }}
+-{% endfor %}</textarea></div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section">
+-        <h2>Family Harmony portfolios</h2>
+-        <div class="form-row">
+-          <div class="form-field field-full"><label for="portfolio_options">One portfolio per line</label><textarea id="portfolio_options" name="portfolio_options" rows="8">{% for item in settings.portfolio_options %}{{ item }}
+-{% endfor %}</textarea></div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section"><h2>Marriage profile lists</h2><div class="form-row"><div class="form-field"><label>Family types</label><textarea name="family_type_options" rows="7">{% for item in settings.family_type_options %}{{ item }}
+-{% endfor %}</textarea></div><div class="form-field"><label>Languages</label><textarea name="language_options" rows="7">{% for item in settings.language_options %}{{ item }}
+-{% endfor %}</textarea></div><div class="form-field"><label>Marital statuses</label><textarea name="marital_status_options" rows="7">{% for item in settings.marital_status_options %}{{ item }}
+-{% endfor %}</textarea></div><div class="form-field"><label>Relationships</label><textarea name="relationship_options" rows="7">{% for item in settings.relationship_options %}{{ item }}
+-{% endfor %}</textarea></div></div></div>
+-
+-      <div class="form-section">
+-        <h2>Share defaults</h2>
+-        <div class="form-row">
+-          <div class="form-field"><label for="default_expiry_days">Default expiry days</label><input id="default_expiry_days" name="default_expiry_days" type="number" value="{{ settings.default_expiry_days }}"></div>
+-          <div class="form-field"><label for="minimum_expiry_days">Minimum expiry days</label><input id="minimum_expiry_days" name="minimum_expiry_days" type="number" value="{{ settings.minimum_expiry_days }}"></div>
+-          <div class="form-field"><label for="maximum_expiry_days">Maximum expiry days</label><input id="maximum_expiry_days" name="maximum_expiry_days" type="number" value="{{ settings.maximum_expiry_days }}"></div>
+-          <div class="form-field"><label for="default_max_views">Default max views</label><input id="default_max_views" name="default_max_views" type="number" value="{{ settings.default_max_views }}"></div>
+-        </div>
+-      </div>
+-
+-      <div class="form-section">
+-        <div class="form-row">
+-          <div class="form-field">
+-            <label for="photo_visibility">Photo visibility</label>
+-            <select id="photo_visibility" name="photo_visibility">
+-              <option value="after_interest" {% if settings.photo_visibility == 'after_interest' %}selected{% endif %}>After interest</option>
+-              <option value="always" {% if settings.photo_visibility == 'always' %}selected{% endif %}>Always</option>
+-              <option value="never" {% if settings.photo_visibility == 'never' %}selected{% endif %}>Never</option>
+-            </select>
+-          </div>
+-          <div class="form-field">
+-            <label for="name_visibility">Name visibility</label>
+-            <select id="name_visibility" name="name_visibility">
+-              <option value="full_name" {% if settings.name_visibility == 'full_name' %}selected{% endif %}>Full name</option>
+-              <option value="first_name" {% if settings.name_visibility == 'first_name' %}selected{% endif %}>First name</option>
+-              <option value="initials" {% if settings.name_visibility == 'initials' %}selected{% endif %}>Initials</option>
+-            </select>
+-          </div>
+-          <div class="form-field">
+-            <label class="checkbox-row"><input type="checkbox" name="require_last_four_cnic" {% if settings.require_last_four_cnic %}checked{% endif %}> Require last four CNIC digits</label>
+-          </div>
+-        </div>
+-      </div>
+-    </div>
+-
+-    <div class="form-actions">
+-      <button class="primary" type="submit">Save settings</button>
+-    </div>
+-  </form>
+-</section>
++{% extends 'base.html' %}{% block title %}Settings | Social Welfare{% endblock %}{% block content %}
++<section class="page-head inline"><div><p class="eyebrow">SYSTEM SETTINGS</p><h1>Settings</h1><p class="muted">Organization, Family Harmony lists, public-link expiry and protected maintenance tools.</p></div><div class="actions"><a class="secondary" href="{% url 'backup_center' %}">Backup & Restore</a></div></section>
++<section class="panel"><h2>Organization</h2><div class="settings-links"><a class="secondary" href="{% url 'settings_regional_councils' %}">Regional Councils</a><a class="secondary" href="{% url 'settings_local_councils' %}">Local Councils</a><a class="secondary" href="{% url 'settings_jamatkhanas' %}">Jamatkhanas</a></div></section>
++<section class="panel"><div class="panel-head"><div><h2>Editable reference lists</h2><p class="muted">Add, edit or delete individual values. Changes are used by People and Family Harmony forms.</p></div></div><div class="setting-crud-grid">
++{% include 'settings_app/_list_crud.html' with title='Education Levels' category='education' values=settings.education_levels %}
++{% include 'settings_app/_list_crud.html' with title='Title Options' category='title' values=settings.title_options %}
++{% include 'settings_app/_list_crud.html' with title='Occupations' category='occupation' values=settings.occupation_options %}
++{% include 'settings_app/_list_crud.html' with title='Business Types' category='business_type' values=settings.business_type_options %}
++{% include 'settings_app/_list_crud.html' with title='Income Ranges' category='income' values=settings.income_ranges %}
++{% include 'settings_app/_list_crud.html' with title='Family Types' category='family_type' values=settings.family_type_options %}
++{% include 'settings_app/_list_crud.html' with title='Languages' category='language' values=settings.language_options %}
++{% include 'settings_app/_list_crud.html' with title='Marital Status' category='marital_status' values=settings.marital_status_options %}
++{% include 'settings_app/_list_crud.html' with title='Relationships' category='relationship' values=settings.relationship_options %}
++</div></section>
++<section class="panel form-panel"><h2>Public sharing defaults</h2><form method="post">{% csrf_token %}<input type="hidden" name="title_options" value="{% for x in settings.title_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="education_levels" value="{% for x in settings.education_levels %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="occupation_options" value="{% for x in settings.occupation_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="employer_options" value="{% for x in settings.employer_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="business_type_options" value="{% for x in settings.business_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="income_ranges" value="{% for x in settings.income_ranges %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="portfolio_options" value="{% for x in settings.portfolio_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="family_type_options" value="{% for x in settings.family_type_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="language_options" value="{% for x in settings.language_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="marital_status_options" value="{% for x in settings.marital_status_options %}{{ x }}&#10;{% endfor %}"><input type="hidden" name="relationship_options" value="{% for x in settings.relationship_options %}{{ x }}&#10;{% endfor %}"><div class="form-row"><div class="form-field"><label>Default link expiry days</label><input name="default_expiry_days" type="number" value="{{ settings.default_expiry_days }}"></div><div class="form-field"><label>Minimum expiry days</label><input name="minimum_expiry_days" type="number" value="{{ settings.minimum_expiry_days }}"></div><div class="form-field"><label>Maximum expiry days</label><input name="maximum_expiry_days" type="number" value="{{ settings.maximum_expiry_days }}"></div><div class="form-field"><label>Default max views</label><input name="default_max_views" type="number" value="{{ settings.default_max_views }}"></div></div><div class="form-actions"><button class="primary">Save sharing defaults</button></div></form></section>
++<style>.settings-links{display:flex;gap:8px;flex-wrap:wrap}.setting-crud-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.setting-card{border:1px solid var(--line);border-radius:7px;padding:14px;background:#fbfcfb}.setting-card h3{margin:0 0 10px}.setting-list{display:grid;gap:5px}.setting-row{display:grid;grid-template-columns:34px 1fr 62px;gap:6px;align-items:center}.setting-row input{width:100%;padding:7px}.setting-row button{padding:7px;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:pointer}.setting-add{display:flex;gap:6px;margin-top:9px}.setting-add input{flex:1}.setting-save-state{font-size:11px;color:var(--teal);min-height:16px}</style>
++<script>(function(){function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('csrftoken='))?.split('=')[1]||''}document.querySelectorAll('.setting-card').forEach(card=>{const url=card.dataset.url,state=card.querySelector('.setting-save-state');async function send(action,index,value){let fd=new FormData();fd.append('action',action);if(index!==null)fd.append('index',index);if(value!==null)fd.append('value',value);state.textContent='Saving…';let r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf()},body:fd});let j=await r.json();if(!r.ok||!j.ok){state.textContent=j.error||'Save failed';return false}state.textContent='Saved';setTimeout(()=>state.textContent='',1000);return true}card.querySelectorAll('.setting-value').forEach(inp=>inp.addEventListener('change',async()=>{await send('update',inp.dataset.index,inp.value)}));card.querySelectorAll('.setting-delete').forEach(btn=>btn.addEventListener('click',async()=>{if(confirm('Delete this option?')&&await send('delete',btn.dataset.index,''))location.reload()}));let add=card.querySelector('.setting-add-btn'),input=card.querySelector('.setting-new');add.addEventListener('click',async()=>{if(input.value.trim()&&await send('add',null,input.value.trim()))location.reload()})})})();</script>
+ {% endblock %}

@@ -166,3 +166,17 @@ def staff_access_delete(request, access_id):
 		record_audit(request, 'jurisdiction_changed', instance=access, new_values={'is_active': False})
 		messages.success(request, f'Access removed from {username}.')
 	return redirect('staff_users')
+
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def my_profile(request):
+    user = request.user
+    if request.method == 'POST':
+        user.first_name = (request.POST.get('first_name') or '').strip()
+        user.last_name = (request.POST.get('last_name') or '').strip()
+        user.email = (request.POST.get('email') or '').strip()
+        user.save(update_fields=['first_name','last_name','email'])
+        messages.success(request, 'Profile updated.')
+        return redirect('my_profile')
+    return render(request, 'accounts/profile.html', {'profile_user': user})
