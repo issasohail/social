@@ -24,6 +24,7 @@ class PersonForm(forms.ModelForm):
         self.fields['languages'].widget = forms.TextInput(attrs={
             'list': 'person-languages-options', 'data-options': '|'.join(cfg.language_options or [])
         })
+        self.fields['willing_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
         self.fields['jamatkhana'].queryset = Jamatkhana.objects.select_related(
             'local_council__regional_council'
         ).filter(is_active=True).order_by('name')

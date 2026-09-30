@@ -25,7 +25,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
     caste_tribe = forms.MultipleChoiceField(required=False, label='Caste / tribe')
     marital_status = forms.ChoiceField(required=False, label='Marital status')
     profession = forms.MultipleChoiceField(required=False, label='Profession')
-    income_range = forms.MultipleChoiceField(required=False, label='Income range')
+    income_range = forms.ChoiceField(required=False, label='Income range')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -36,12 +36,12 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
             ('marital_status', cfg.marital_status_options, ''),
             ('education_level', cfg.education_levels, ''),
             ('family_type', cfg.family_type_options, ''),
+            ('income_range', cfg.income_ranges, ''),
         ]:
             _select(self.fields[name], values, placeholder)
         for name, values in [
             ('languages', cfg.language_options), ('caste_tribe', cfg.caste_tribe_options),
             ('profession', cfg.occupation_options),
-            ('income_range', cfg.income_ranges),
         ]:
             choices = [(value, value) for value in (values or [])]
             self.fields[name].choices = choices
@@ -67,7 +67,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
             self.initial['caste_tribe'] = [value.strip() for value in (self.instance.caste_tribe or '').split(',') if value.strip()]
             self.initial['marital_status'] = (self.instance.marital_status or '').split(',')[0].strip()
             self.initial['profession'] = [value.strip() for value in (self.instance.profession or '').split(',') if value.strip()]
-            self.initial['income_range'] = [value.strip() for value in (self.instance.income_range or '').split(',') if value.strip()]
+            self.initial['income_range'] = (self.instance.income_range or '').split(',')[0].strip()
         if self.instance and self.instance.height_cm:
             total = round(self.instance.height_cm / 2.54)
             self.initial['height_feet'] = total // 12
@@ -86,7 +86,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         obj.caste_tribe = ', '.join(self.cleaned_data.get('caste_tribe') or [])
         obj.marital_status = self.cleaned_data.get('marital_status') or ''
         obj.profession = ', '.join(self.cleaned_data.get('profession') or [])
-        obj.income_range = ', '.join(self.cleaned_data.get('income_range') or [])
+        obj.income_range = self.cleaned_data.get('income_range') or ''
         if commit:
             obj.save()
             self.save_m2m()

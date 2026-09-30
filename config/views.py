@@ -445,11 +445,13 @@ def inline_update_person(request):
         'first_name', 'middle_name', 'last_name', 'title', 'gender', 'city', 'occupation',
         'mobile', 'alternate_mobile', 'whatsapp_number', 'email', 'marital_status',
         'identity_number', 'current_address', 'permanent_address', 'nationality', 'education',
-        'education_details', 'employer_or_business', 'income_range', 'languages', 'interests'
+        'education_details', 'employer_or_business', 'income_range', 'languages', 'interests', 'willing_to_relocate'
     }
     if field_name not in allowed_fields:
         return HttpResponse('Unsupported field', status=400)
 
+    if field_name == 'willing_to_relocate':
+        value = value.lower() in {'true', 'yes', '1'}
     setattr(person, field_name, value)
     person.save()
     return HttpResponse('OK')
@@ -485,8 +487,32 @@ def harmony_create(request):
 
 @login_required
 def harmony_detail(request, profile_id):
-    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person'), pk=profile_id)
-    return render(request, 'family_harmony/detail.html', {'profile': profile})
+    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'owning_jamatkhana', 'owning_local_council', 'owning_region'), pk=profile_id)
+    cfg = FamilyHarmonySettings.current()
+    inline_options = {
+        'person_gender': ['Male', 'Female'],
+        'person_nationality': cfg.nationality_options,
+        'person_identity_type': [choice.label for choice in Person.IdentityType],
+        'person_marital_status': cfg.marital_status_options,
+        'person_willing_to_relocate': ['Willing to relocate', 'Not willing to relocate'],
+        'education_level': cfg.education_levels,
+        'profession': cfg.occupation_options,
+        'income_range': cfg.income_ranges,
+        'family_type': cfg.family_type_options,
+        'caste_tribe': cfg.caste_tribe_options,
+        'physical_status': cfg.physical_status_options,
+        'disability_status': cfg.disability_options,
+        'known_diseases': cfg.known_disease_options,
+        'languages': cfg.language_options,
+        'smoking': ['No', 'Yes'],
+        'owns_house': ['Yes', 'No'],
+        'owns_car': ['Yes', 'No'],
+        'preference_preferred_education_options': cfg.education_levels,
+        'preference_preferred_professions': cfg.occupation_options,
+        'preference_preferred_income_options': cfg.income_ranges,
+        'preference_willingness_to_relocate': ['Yes', 'No'],
+    }
+    return render(request, 'family_harmony/detail.html', {'profile': profile, 'inline_options': inline_options})
 
 
 
@@ -735,11 +761,37 @@ def harmony_inline_update(request):
     value = request.POST.get('value', '')
     profile = get_object_or_404(FamilyHarmonyProfile, pk=profile_id)
 
-    allowed_fields = {'status', 'profession', 'education_level', 'institution', 'employer_or_business', 'financial_status', 'city', 'physical_status', 'disability_status', 'family_background', 'family_values', 'family_type', 'caste_tribe', 'family_residence', 'father_name', 'father_occupation', 'mother_name', 'mother_occupation', 'income_range', 'languages', 'smoking', 'interests', 'personal_statement', 'health_information'}
+    if request.FILES.get('photo'):
+        old_photo_name = profile.person.photo.name if profile.person.photo else ''
+        if old_photo_name:
+            profile.person.photo.storage.delete(old_photo_name)
+        profile.person.photo = request.FILES['photo']
+        profile.person.save()
+        return HttpResponse('OK')
+
+    person_fields = {'gender', 'nationality', 'identity_type', 'identity_number', 'date_of_birth', 'mobile', 'whatsapp_number', 'email', 'city', 'country', 'marital_status', 'current_address', 'permanent_address', 'education', 'occupation', 'employer_or_business', 'income_range', 'languages', 'interests', 'willing_to_relocate'}
+    preference_fields = {'minimum_age', 'maximum_age', 'preferred_education_options', 'preferred_professions', 'preferred_income_options', 'preferred_cities', 'willingness_to_relocate'}
+    allowed_fields = {'status', 'profession', 'education_level', 'institution', 'employer_or_business', 'financial_status', 'city', 'physical_status', 'disability_status', 'known_diseases', 'family_background', 'family_values', 'family_type', 'caste_tribe', 'family_residence', 'father_name', 'father_occupation', 'mother_name', 'mother_occupation', 'income_range', 'languages', 'smoking', 'owns_house', 'owns_car', 'interests', 'personal_statement', 'health_information', 'height_cm', 'weight_kg', 'brothers_count', 'sisters_count'} | {f'person_{name}' for name in person_fields} | {f'preference_{name}' for name in preference_fields}
     if field_name not in allowed_fields:
         return HttpResponse('Unsupported field', status=400)
 
-    if field_name == 'city':
+    if field_name.startswith('preference_'):
+        preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
+        preference_field = field_name.removeprefix('preference_')
+        if preference_field in {'preferred_education_options', 'preferred_professions', 'preferred_income_options', 'preferred_cities'}:
+            setattr(preference, preference_field, [item.strip() for item in value.split(',') if item.strip()])
+        elif preference_field == 'willingness_to_relocate':
+            setattr(preference, preference_field, value.lower() in {'true', 'yes', '1'})
+        else:
+            setattr(preference, preference_field, value or None)
+        preference.save()
+    elif field_name.startswith('person_'):
+        person_field = field_name.removeprefix('person_')
+        if person_field == 'willing_to_relocate':
+            value = value.lower() in {'true', 'yes', '1'} or value.lower().startswith('willing')
+        setattr(profile.person, person_field, value)
+        profile.person.save(update_fields=[person_field])
+    elif field_name == 'city':
         profile.person.city = value
         profile.person.save(update_fields=['city'])
     elif field_name == 'status':
@@ -749,6 +801,10 @@ def harmony_inline_update(request):
         else:
             return HttpResponse('Invalid status', status=400)
     else:
+        if field_name == 'known_diseases':
+            value = [item.strip() for item in value.split(',') if item.strip()]
+        elif field_name in {'owns_house', 'owns_car'}:
+            value = value.lower() in {'true', 'yes', '1'}
         setattr(profile, field_name, value)
         profile.save(update_fields=[field_name])
 

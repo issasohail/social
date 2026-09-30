@@ -1,0 +1,1 @@
+.mpf-row-2{grid-template-columns:repeat(2,minmax(0,1fr))}.mpf-row-1{grid-template-columns:1fr}@media(max-width:767px){.mpf-row-2,.mpf-row-1{grid-template-columns:1fr}}

@@ -1,12 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block title %}{{ title }} | Social Welfare{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}"><link rel="stylesheet" href="{% static 'family_harmony_edit.css' %}?v=1"><link rel="stylesheet" href="{% static 'family_harmony_edit_toolbar.css' %}?v=1"><link rel="stylesheet" href="{% static 'family_harmony_edit_header.css' %}?v=1"><link rel="stylesheet" href="{% static 'family_harmony_edit_addresses.css' %}?v=1"><link rel="stylesheet" href="{% static 'family_harmony_upload_position.css' %}?v=1">{% endblock %}
 {% block content %}
 <section class="profile-editor-shell mpf-page-shell">
   <div class="profile-editor-head mpf-page-head">
-    <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><p>Marriage Profile · responsive staff entry</p></div>
-    <div class="profile-editor-head-actions"><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div>
+    <div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><div class="mpf-page-head-actions"><button class="primary" type="submit" form="marriage-profile-form">Save changes</button><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">← Back</a><a class="secondary" href="{% if person_form.instance.harmony_profile %}{% url 'harmony_detail' person_form.instance.harmony_profile.id %}{% else %}{% url 'family_harmony' %}{% endif %}">Cancel</a></div></div>
   </div>
   <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="marriage-profile-form">{% csrf_token %}<input type="hidden" name="person_id" value="{{ person_id|default:person_form.instance.pk }}">
     {% include 'family_harmony/_marriage_form_fields.html' %}

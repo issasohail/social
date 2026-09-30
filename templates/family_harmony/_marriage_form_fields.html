@@ -56,16 +56,18 @@
       {% include "./_marriage_form_field.html" with field=profile_form.family_type %}
       <div class="mpf-field mpf-sibling-pair"><label>Siblings</label><div><span><small>Brothers</small>{{ profile_form.brothers_count }}</span><span><small>Sisters</small>{{ profile_form.sisters_count }}</span></div>{{ profile_form.brothers_count.errors }}{{ profile_form.sisters_count.errors }}</div>
     </div>
-    <div class="mpf-row mpf-row-3">
+    <div class="mpf-row mpf-row-2">
       {% include "./_marriage_form_field.html" with field=person_form.permanent_address %}
       {% include "./_marriage_form_field.html" with field=person_form.current_address %}
+    </div>
+    <div class="mpf-row mpf-row-1">
       {% include "./_marriage_form_field.html" with field=profile_form.family_background %}
     </div>
     <div class="mpf-row mpf-row-13">
       {% include "./_marriage_form_field.html" with field=profile_form.smoking label="Smoking" css="mpf-seg" %}
       {% include "./_marriage_form_field.html" with field=profile_form.owns_car label="Own a car" css="mpf-seg" %}
       {% include "./_marriage_form_field.html" with field=profile_form.owns_house label="House" css="mpf-seg" %}
-      {% include "./_marriage_form_field.html" with field=preference_form.willingness_to_relocate label="Willing to Relocate" css="mpf-seg" %}
+      {% include "./_marriage_form_field.html" with field=person_form.willing_to_relocate label="Willing to Relocate" css="mpf-seg" %}
       {% include "./_marriage_form_field.html" with field=profile_form.physical_status %}
       {% include "./_marriage_form_field.html" with field=profile_form.disability_status %}
       <div class="mpf-field">
@@ -81,7 +83,7 @@
       {% include "./_marriage_form_field.html" with field=profile_form.institution %}
       <div class="mpf-field"><label>Profession</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.profession }}</div></details>{{ profile_form.profession.errors }}</div>
       {% include "./_marriage_form_field.html" with field=profile_form.employer_or_business %}
-      <div class="mpf-field"><label>Income Range</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.income_range }}</div></details>{{ profile_form.income_range.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=profile_form.income_range label="Income Range" %}
       <div class="mpf-field"><label>{{ profile_form.languages.label }}</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.languages }}</div></details>{{ profile_form.languages.errors }}</div>
     </div>
   </div>
@@ -106,6 +108,7 @@
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_caste_tribe label="Caste / Tribe" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_country label="Country" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_cities label="City" %}
+      {% include "./_marriage_form_field.html" with field=preference_form.willingness_to_relocate label="Willing to Relocate" css="mpf-seg" %}
       <div class="mpf-field"><label>Languages</label><details class="mpf-multi"><summary>Select languages</summary><div class="mpf-multi-menu">{{ preference_form.preferred_languages }}</div></details>{{ preference_form.preferred_languages.errors }}</div>
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_values label="Family Values" css="mpf-col-4" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_personality label="Personality" css="mpf-col-4" %}

@@ -133,3 +133,79 @@
     });
   });
 })();
+
+/* Family Harmony detail: turn displayed values into save-on-blur inline editors. */
+(() => {
+  const detail = document.querySelector('.harmony-detail');
+  if (!detail) return;
+  const fields = {
+    'AGE / DOB': null, 'DATE OF BIRTH': 'person_date_of_birth', 'GENDER': 'person_gender', 'NATIONALITY': 'person_nationality', 'IDENTITY TYPE': 'person_identity_type', 'IDENTITY NUMBER': 'person_identity_number',
+    'JAMATKHANA': null, 'LOCAL COUNCIL': null, 'REGIONAL COUNCIL': null,
+    'MOBILE': 'person_mobile', 'EMAIL': 'person_email', 'CITY': 'person_city', 'COUNTRY': 'person_country', 'HEIGHT': 'height_cm', 'WEIGHT': 'weight_kg',
+    'PHYSICAL STATUS': 'physical_status', 'DISABILITY': 'disability_status', 'KNOWN DISEASES': 'known_diseases', 'HEALTH': 'health_information', 'HEALTH NOTES': 'health_information',
+    'FATHER': 'father_name', 'FATHER OCCUPATION': 'father_occupation', 'MOTHER': 'mother_name',
+    'MOTHER OCCUPATION': 'mother_occupation', 'BROTHERS': 'brothers_count', 'SISTERS': 'sisters_count',
+    'FAMILY RESIDENCE': 'family_residence', 'FAMILY TYPE': 'family_type', 'CASTE / TRIBE': 'caste_tribe',
+    'FAMILY BACKGROUND': 'family_background', 'FAMILY VALUES': 'family_values', 'EDUCATION': 'education_level',
+    'INSTITUTION': 'institution', 'PROFESSION': 'profession', 'EMPLOYER / BUSINESS': 'employer_or_business',
+    'INCOME': 'income_range', 'LANGUAGES': 'languages', 'SMOKING': 'smoking', 'HOUSE': 'owns_house', 'CAR': 'owns_car', 'INTERESTS': 'interests',
+    'PERSONAL STATEMENT': 'personal_statement', 'WILLING TO RELOCATE': 'person_willing_to_relocate'
+  };
+  const profileId = location.pathname.match(/family-harmony\/(\d+)/)?.[1];
+  const csrf = document.cookie.split('; ').find(x => x.startsWith('csrftoken='))?.split('=')[1] || '';
+  const optionNode = document.getElementById('harmony-inline-options');
+  const options = optionNode ? JSON.parse(optionNode.textContent) : {};
+  const multiFields = new Set(['disability_status', 'caste_tribe', 'known_diseases', 'languages', 'preference_preferred_education_options', 'preference_preferred_professions', 'preference_preferred_income_options']);
+  const headerRows = detail.querySelectorAll('.harmony-head-contact span');
+  if (headerRows[0]) {
+    const line = headerRows[0].textContent; const dob = (line.match(/DOB:\s*([^·]+)/) || [,'—'])[1].trim();
+    const match = line.match(/Height \/ Weight:\s*(\d+)\s*cm\s*\/\s*([^\s]+)\s*kg/);
+    const badges = [`<b class="harmony-pill">${dob}</b>`];
+    if (match) { const inches = Math.round(Number(match[1]) / 2.54); badges.push(`<b class="harmony-pill">${Math.floor(inches / 12)} ft ${inches % 12} in</b>`, `<b class="harmony-pill">${match[2]} kg</b>`); }
+    headerRows[0].innerHTML = badges.join('');
+  }
+  if (headerRows[1]) {
+    const place = headerRows[1].textContent.replace(/^City \/ Country:\s*/, '').split('/').map(x => x.trim()).filter(Boolean);
+    headerRows[1].innerHTML = place.map(x => `<b class="harmony-pill">${x}</b>`).join('');
+    headerRows[0]?.parentNode.insertBefore(headerRows[1], headerRows[0]);
+  }
+  detail.querySelectorAll('.biodata-item').forEach(item => {
+    const label = item.querySelector('small')?.textContent.trim().toUpperCase();
+    const preferenceSection = item.closest('.biodata-section')?.querySelector('h2')?.textContent.includes('Preferences');
+    const preferenceMap = {'MIN AGE':'preference_minimum_age','MAX AGE':'preference_maximum_age','EDUCATION':'preference_preferred_education_options','PROFESSION':'preference_preferred_professions','LOCATION':'preference_preferred_cities','INCOME':'preference_preferred_income_options','WILLING TO RELOCATE':'preference_willingness_to_relocate'};
+    const value = item.querySelector('strong'); const field = preferenceSection ? preferenceMap[label] : fields[label];
+    if (!field || !value || value.querySelector('a')) return;
+    value.classList.add('inline-value'); value.title = 'Click to edit';
+    value.addEventListener('click', () => {
+      if (value.querySelector('input, select, button')) return;
+      const original = value.textContent.trim() === '—' ? '' : value.textContent.trim();
+      const choices = options[field] || [];
+      if (multiFields.has(field)) {
+        const selected = original.split(',').map(x => x.trim()).filter(Boolean);
+        const box = document.createElement('div'); box.className = 'inline-multi-editor'; value.classList.add('is-editing');
+        choices.forEach(choice => { const label = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox'; check.value = choice; check.checked = selected.includes(choice); label.append(check, document.createTextNode(` ${choice}`)); box.append(label); });
+        const close = () => { value.classList.remove('is-editing'); value.textContent = original || '—'; };
+        const outside = event => { if (!box.contains(event.target)) { close(); document.removeEventListener('click', outside, true); } };
+        const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Apply'; box.append(apply); value.replaceChildren(box);
+        setTimeout(() => document.addEventListener('click', outside, true), 0);
+        apply.onclick = async () => { const chosen = [...box.querySelectorAll('input:checked')].map(x => x.value).join(', '); const form = new FormData(); form.append('profile_id', profileId); form.append('field', field); form.append('value', chosen); form.append('csrfmiddlewaretoken', csrf); const response = await fetch('/family-harmony/inline-update/', {method: 'POST', body: form}); document.removeEventListener('click', outside, true); value.classList.remove('is-editing'); value.textContent = response.ok ? (chosen || '—') : (original || '—'); };
+        return;
+      }
+      const input = choices.length ? document.createElement('select') : document.createElement('input');
+      if (choices.length) {
+        input.add(new Option('Select…', ''));
+        choices.forEach(choice => input.add(new Option(choice, choice, false, choice === original)));
+      } else input.value = original;
+      value.replaceChildren(input); input.focus();
+      const finish = async save => {
+        if (!save) { value.textContent = original || '—'; return; }
+        const form = new FormData(); form.append('profile_id', profileId); form.append('field', field); form.append('value', input.value); form.append('csrfmiddlewaretoken', csrf);
+        const response = await fetch('/family-harmony/inline-update/', {method: 'POST', body: form});
+        value.textContent = response.ok ? (input.value || '—') : (original || '—');
+      };
+      if (input.tagName === 'SELECT') { input.addEventListener('change', () => finish(true), {once: true}); setTimeout(() => input.addEventListener('blur', () => finish(true), {once: true}), 120); }
+      else input.addEventListener('blur', () => finish(true), {once: true});
+      input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); finish(true); } if (event.key === 'Escape') finish(false); });
+    });
+  });
+})();
