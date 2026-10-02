@@ -1,0 +1,63 @@
+--- a/leases/templates/leases/edit_clause.html
++++ b/leases/templates/leases/edit_clause.html
+@@ -377,7 +377,10 @@
+           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
+           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
+         </div>
+-        <div class="small text-muted mt-2">Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself. <a href="{% static 'punjab_estamp/punjab_portal_helper.user.js' %}" target="_blank" rel="noopener">Install/update browser helper</a>.</div>
++        <div class="small text-muted mt-2">
++          Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself.
++          <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal">Install/update browser helper</button>.
++        </div>
+       </div>
+     </div>
+ 
+@@ -394,15 +397,42 @@
+     </div>
+     {% endif %}
+ 
++    <div class="modal fade" id="punjabEstampHelperInstallModal" tabindex="-1" aria-hidden="true">
++      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
++        <div class="modal-header">
++          <h5 class="modal-title">Install / Update Punjab e-Stamp Helper</h5>
++          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
++        </div>
++        <div class="modal-body">
++          <p class="mb-2"><strong>Step 1:</strong> Install and enable Tampermonkey in Chrome.</p>
++          <p class="small text-muted mb-3">If Tampermonkey is already installed, make sure it is enabled and Chrome allows user scripts for the extension.</p>
++          <p class="mb-2"><strong>Step 2:</strong> Open the TMS helper installer and click <strong>Install</strong> or <strong>Update</strong> in Tampermonkey.</p>
++          <div class="alert alert-warning py-2 mb-0">
++            If the helper opens as plain JavaScript text instead of a Tampermonkey install screen, Tampermonkey is not installed, is disabled, or user-script access is not enabled in Chrome.
++          </div>
++        </div>
++        <div class="modal-footer flex-wrap">
++          <a class="btn btn-outline-secondary" href="https://www.tampermonkey.net/" target="_blank" rel="noopener">1. Get Tampermonkey</a>
++          <a class="btn btn-primary" href="{% static 'punjab_estamp/punjab_portal_helper.user.js' %}" target="_blank" rel="noopener">2. Install / Update TMS Helper</a>
++          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
++        </div>
++      </div></div>
++    </div>
++
+     <div class="modal fade" id="punjabEstampConnectionModal" tabindex="-1" aria-hidden="true">
+       <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+-        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Connection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
++        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Helper Not Detected</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+         <div class="modal-body">
+-          <p>Punjab e-Stamp portal could not be reached or did not respond.</p>
+-          <p class="mb-0">If you are using a VPN or proxy, disconnect it and try again. Also check your internet connection and confirm that the Punjab e-Stamp website opens directly in your browser.</p>
+-          <div class="small text-muted mt-2">Also confirm that the TMS Punjab e-Stamp browser helper is installed and enabled.</div>
+-        </div>
+-        <div class="modal-footer"><button type="button" class="btn btn-primary" id="punjabEstampTryAgain">Try Again</button><a class="btn btn-outline-primary" href="https://es.punjab-zameen.gov.pk/eStampCitizenPortal/ChallanFormView/HomePage" target="_blank" rel="noopener">Open Punjab e-Stamp</a><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button></div>
++          <p>The Punjab e-Stamp page opened, but TMS did not receive a response from the browser helper.</p>
++          <p class="mb-0">Confirm that Tampermonkey and the <strong>TMS Punjab e-Stamp Helper</strong> are installed and enabled, then try again.</p>
++          <div class="small text-muted mt-2">If the Punjab website itself does not open, also check your internet connection. If you are using a VPN or proxy, disconnect it and retry.</div>
++        </div>
++        <div class="modal-footer flex-wrap">
++          <button type="button" class="btn btn-primary" id="punjabEstampTryAgain">Try Again</button>
++          <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal" data-bs-dismiss="modal">Install / Update Helper</button>
++          <a class="btn btn-outline-secondary" href="https://es.punjab-zameen.gov.pk/eStampCitizenPortal/ChallanFormView/AddChallanForWhitePaper?name=GenerateChallan&amp;agree=true" target="_blank" rel="noopener">Open Punjab e-Stamp</a>
++          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
++        </div>
+       </div></div>
+     </div>
+ 

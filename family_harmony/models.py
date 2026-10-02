@@ -109,7 +109,7 @@ class FamilyHarmonyPreference(models.Model):
     preferred_marital_status_options = models.JSONField(default=list, blank=True)
     preferred_family_values = models.TextField(blank=True)
     preferred_personality = models.TextField(blank=True)
-    willingness_to_relocate = models.BooleanField(default=False)
+    willingness_to_relocate = models.BooleanField(null=True, blank=True, default=None)
     preferred_languages = models.JSONField(default=list, blank=True)
     preferred_family_type = models.CharField(max_length=80, blank=True)
     preferred_caste_tribe = models.CharField(max_length=120, blank=True)

@@ -14,6 +14,7 @@ python manage.py check --deploy
 cd E:\social
 $env:DJANGO_ALLOWED_HOSTS="127.0.0.1,localhost,192.168.100.28"
 .\.venv\Scripts\python.exe manage.py runserver 0.0.0.0:8080
+ python manage.py runserver 0.0.0.0:8080
 
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\backup_social_for_chatgpt.ps1 -VenvMode No

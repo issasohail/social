@@ -82,7 +82,7 @@
       {% include "./_marriage_form_field.html" with field=profile_form.education_level %}
       {% include "./_marriage_form_field.html" with field=profile_form.qualification %}
       {% include "./_marriage_form_field.html" with field=profile_form.institution %}
-      <div class="mpf-field"><label>Profession</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.profession }}</div></details>{{ profile_form.profession.errors }}</div>
+      <div class="mpf-field"><label>Profession</label>{{ profile_form.profession }}{{ profile_form.profession.errors }}</div>
       {% include "./_marriage_form_field.html" with field=profile_form.employer_or_business %}
       {% include "./_marriage_form_field.html" with field=profile_form.income_range label="Income Range" %}
     </div>

@@ -134,6 +134,39 @@
   });
 })();
 
+/* Compact public marriage form action: open, copy, or WhatsApp share. */
+(() => {
+  document.querySelectorAll('.public-marriage-actions').forEach(group => {
+    let invitation;
+    const getInvitation = async () => {
+      if (!invitation) invitation = fetch(group.dataset.invitationUrl, {headers: {'Accept': 'application/json'}}).then(async response => {
+        if (!response.ok) throw new Error('Could not create public form link');
+        return response.json();
+      });
+      return invitation;
+    };
+    group.querySelectorAll('[data-public-form-action]').forEach(button => button.addEventListener('click', async () => {
+      const action = button.dataset.publicFormAction;
+      const previous = button.textContent;
+      button.disabled = true;
+      try {
+        const links = await getInvitation();
+        if (action === 'open') window.open(links.public_url, '_blank', 'noopener');
+        if (action === 'whatsapp') window.open(links.whatsapp_url, '_blank', 'noopener');
+        if (action === 'copy') {
+          if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(links.public_url);
+          else { const input = document.createElement('textarea'); input.value = links.public_url; document.body.append(input); input.select(); document.execCommand('copy'); input.remove(); }
+          button.textContent = '✓';
+          window.setTimeout(() => { button.textContent = previous; }, 1200);
+        }
+      } catch (error) {
+        button.textContent = '!';
+        window.setTimeout(() => { button.textContent = previous; }, 1200);
+      } finally { button.disabled = false; }
+    }));
+  });
+})();
+
 /* Family Harmony detail: turn displayed values into save-on-blur inline editors. */
 (() => {
   const detail = document.querySelector('.harmony-detail');
@@ -156,6 +189,7 @@
   const optionNode = document.getElementById('harmony-inline-options');
   const options = optionNode ? JSON.parse(optionNode.textContent) : {};
   const multiFields = new Set(['disability_status', 'caste_tribe', 'known_diseases', 'languages', 'preference_preferred_education_options', 'preference_preferred_professions', 'preference_preferred_income_options']);
+  const typeableFields = new Set(['profession']);
   const headerRows = detail.querySelectorAll('.harmony-head-contact span');
   if (headerRows[0]) {
     const line = headerRows[0].textContent; const dob = (line.match(/DOB:\s*([^·]+)/) || [,'—'])[1].trim();
@@ -191,8 +225,13 @@
         apply.onclick = async () => { const chosen = [...box.querySelectorAll('input:checked')].map(x => x.value).join(', '); const form = new FormData(); form.append('profile_id', profileId); form.append('field', field); form.append('value', chosen); form.append('csrfmiddlewaretoken', csrf); const response = await fetch('/family-harmony/inline-update/', {method: 'POST', body: form}); document.removeEventListener('click', outside, true); value.classList.remove('is-editing'); value.textContent = response.ok ? (chosen || '—') : (original || '—'); };
         return;
       }
-      const input = choices.length ? document.createElement('select') : document.createElement('input');
-      if (choices.length) {
+      const input = choices.length && !typeableFields.has(field) ? document.createElement('select') : document.createElement('input');
+      if (choices.length && typeableFields.has(field)) {
+        const listId = `harmony-${field}-options`;
+        let list = document.getElementById(listId);
+        if (!list) { list = document.createElement('datalist'); list.id = listId; choices.forEach(choice => { const option = document.createElement('option'); option.value = choice; list.append(option); }); document.body.append(list); }
+        input.setAttribute('list', listId); input.value = original;
+      } else if (choices.length) {
         input.add(new Option('Select…', ''));
         choices.forEach(choice => input.add(new Option(choice, choice, false, choice === original)));
       } else input.value = original;

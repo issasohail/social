@@ -168,14 +168,24 @@ def people_list(request):
         'city_count': Person.objects.filter(is_active=True).exclude(city='').values('city').distinct().count(),
         'local_count': LocalCouncil.objects.filter(is_active=True).count(),
         'jk_count': Jamatkhana.objects.filter(is_active=True).count(),
+        'education_options': FamilyHarmonySettings.current().education_levels,
+        'occupation_options': _occupation_suggestions(),
     }
     context.update({'sort': sort_key, 'sort_dir': request.GET.get('dir', 'asc')})
     return _people_response(request, people.distinct().order_by(ordering), query, context)
 
 
+def _occupation_suggestions():
+    """Distinct occupation values already used by People records."""
+    return sorted(
+        set(Person.objects.filter(is_active=True).exclude(occupation='').values_list('occupation', flat=True)),
+        key=str.casefold,
+    )
+
+
 @login_required
 def harmony_list(request):
-    profiles = FamilyHarmonyProfile.objects.select_related('person', 'owning_region', 'owning_local_council', 'owning_jamatkhana')
+    profiles = FamilyHarmonyProfile.objects.select_related('person', 'person__region', 'person__local_council', 'person__jamatkhana')
     query = request.GET.get('q', '').strip()
     if query:
         profiles = profiles.filter(Q(person__full_name__icontains=query) | Q(person__mobile__icontains=query) | Q(person__city__icontains=query))
@@ -197,18 +207,21 @@ def harmony_list(request):
     if request.GET.get('portfolio'):
         profiles = profiles.filter(portfolio=request.GET['portfolio'])
     if request.GET.get('local_council'):
-        profiles = profiles.filter(owning_local_council_id=request.GET['local_council'])
+        profiles = profiles.filter(person__local_council_id=request.GET['local_council'])
     if request.GET.get('jamatkhana'):
-        profiles = profiles.filter(owning_jamatkhana_id=request.GET['jamatkhana'])
+        profiles = profiles.filter(person__jamatkhana_id=request.GET['jamatkhana'])
     sort_map = {'name': 'person__full_name', 'age': 'person__date_of_birth', 'gender': 'person__gender', 'city': 'person__city', 'phone': 'person__mobile', 'education': 'education_level', 'profession': 'profession', 'status': 'status'}
     sort_key = request.GET.get('sort', 'name')
     ordering = sort_map.get(sort_key, 'person__full_name')
     if request.GET.get('dir') == 'desc':
         ordering = f'-{ordering}'
+    harmony_settings = FamilyHarmonySettings.current()
     return _harmony_response(request, profiles.order_by(ordering), status, {
         'local_councils': LocalCouncil.objects.filter(is_active=True).order_by('name'),
         'jamatkhanas': Jamatkhana.objects.filter(is_active=True).select_related('local_council').order_by('name'),
-        'portfolio_options': FamilyHarmonySettings.current().portfolio_options,
+        'portfolio_options': harmony_settings.portfolio_options,
+        'education_options': harmony_settings.education_levels,
+        'profession_options': _profession_suggestions(),
         'query': query,
         'portfolio': request.GET.get('portfolio', ''),
         'local_council': request.GET.get('local_council', ''),
@@ -218,8 +231,33 @@ def harmony_list(request):
         'profile_pending': FamilyHarmonyProfile.objects.filter(status=FamilyHarmonyProfile.Status.AWAITING_CONSENT).count(),
         'profile_male': FamilyHarmonyProfile.objects.filter(person__gender='Male').count(),
         'profile_female': FamilyHarmonyProfile.objects.filter(person__gender='Female').count(),
+        'link_people': list(Person.objects.filter(is_active=True, harmony_profile__isnull=True).select_related('jamatkhana__local_council__regional_council').order_by('full_name').values('id', 'full_name', 'mobile', 'whatsapp_number', 'jamatkhana__name', 'jamatkhana__local_council__name', 'jamatkhana__local_council__regional_council__name')),
+        'link_preference_form': FamilyHarmonyPreferenceForm(),
         'sort': sort_key, 'sort_dir': request.GET.get('dir', 'asc'),
     })
+
+
+@login_required
+def harmony_link_with_preferences(request):
+    if request.method != 'POST':
+        return redirect('family_harmony')
+    person = get_object_or_404(Person, pk=request.POST.get('person_id'), is_active=True)
+    profile, created = FamilyHarmonyProfile.objects.get_or_create(person=person, defaults={'status': FamilyHarmonyProfile.Status.DRAFT})
+    preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
+    form = FamilyHarmonyPreferenceForm(request.POST, instance=preference)
+    if form.is_valid():
+        form.save()
+        return redirect('harmony_detail', profile_id=profile.pk)
+    # Preserve the existing profile if preferences are invalid; show errors on the list page.
+    return redirect('family_harmony')
+
+
+def _profession_suggestions():
+    """Distinct profession values already entered in Family Harmony profiles."""
+    values = set()
+    for value in FamilyHarmonyProfile.objects.exclude(profession='').values_list('profession', flat=True):
+        values.update(item.strip() for item in value.split(',') if item.strip())
+    return sorted(values, key=str.casefold)
 
 
 def _filter_subtitle(request):
@@ -343,11 +381,17 @@ def _people_response(request, people, query, extra_context=None):
 
 
 def _harmony_response(request, profiles, status, extra_context=None):
-    rows = [(profile.serial_number, profile.person.full_name, profile.person.age or '', profile.person.gender, profile.person.city, profile.person.mobile, profile.owning_local_council.name if profile.owning_local_council else '—', profile.owning_jamatkhana.name if profile.owning_jamatkhana else '—', profile.profession, profile.get_status_display()) for profile in profiles]
+    rows = [(profile.serial_number, profile.person.full_name, profile.person.age or '', profile.person.gender, profile.person.city, profile.person.mobile, profile.person.local_council.name if profile.person.local_council else '—', profile.person.jamatkhana.name if profile.person.jamatkhana else '—', profile.profession, profile.get_status_display()) for profile in profiles]
     export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Current LC', 'Current JK', 'Profession', 'Status'], 'Family Harmony', _filter_subtitle(request))
     if export:
         return export
     page = Paginator(profiles, 50).get_page(request.GET.get('page'))
+    # Compatibility fields are populated from the linked People record; they are
+    # not an independent source of organization assignment.
+    for profile in page:
+        profile.owning_region = profile.person.region
+        profile.owning_local_council = profile.person.local_council
+        profile.owning_jamatkhana = profile.person.jamatkhana
     context = {'profiles': page, 'page_obj': page, 'query': request.GET.get('q', ''), 'status': status, 'statuses': FamilyHarmonyProfile.Status.choices, 'gender': request.GET.get('gender', ''), 'city': request.GET.get('city', ''), 'profession': request.GET.get('profession', '')}
     context.update(extra_context or {})
     return render(request, 'family_harmony/list.html', context)
@@ -362,12 +406,12 @@ def person_create(request):
         person.updated_by = request.user
         person.save()
         return redirect('person_detail', person_id=person.pk)
-    return render(request, 'people/form.html', {'form': form, 'title': 'Add person'})
+    return render(request, 'people/form.html', {'form': form, 'title': 'Add person', 'occupation_options': _occupation_suggestions()})
 
 
 @login_required
 def person_detail(request, person_id):
-    return render(request, 'people/detail.html', {'person': get_object_or_404(Person, pk=person_id)})
+    return render(request, 'people/detail.html', {'person': get_object_or_404(Person, pk=person_id), 'occupation_options': _occupation_suggestions()})
 
 
 def _profile_pdf_filename(person, jamatkhana):
@@ -417,7 +461,7 @@ def person_edit(request, person_id):
         person.updated_by = request.user
         person.save()
         return redirect('person_detail', person_id=person.pk)
-    return render(request, 'people/form.html', {'form': form, 'title': 'Edit person', 'person': person})
+    return render(request, 'people/form.html', {'form': form, 'title': 'Edit person', 'person': person, 'occupation_options': _occupation_suggestions()})
 
 
 @login_required
@@ -460,11 +504,12 @@ def inline_update_person(request):
 @login_required
 def harmony_create(request):
     person_id = request.POST.get('person_id') or request.GET.get('person_id')
-    if not person_id:
-        people = Person.objects.filter(is_active=True, harmony_profile__isnull=True).order_by('full_name')
+    create_new_person = request.GET.get('new') == '1' or request.POST.get('new') == '1'
+    if not person_id and not create_new_person:
+        people = Person.objects.filter(is_active=True).select_related('harmony_profile').order_by('full_name')
         return render(request, 'family_harmony/select_person.html', {'people': people})
 
-    person = get_object_or_404(Person, pk=person_id, is_active=True)
+    person = get_object_or_404(Person, pk=person_id, is_active=True) if person_id else Person()
     if hasattr(person, 'harmony_profile'):
         return redirect('harmony_edit', profile_id=person.harmony_profile.pk)
     person_form = PersonForm(request.POST or None, request.FILES or None, instance=person)
@@ -476,18 +521,15 @@ def harmony_create(request):
         person.save()
         profile = profile_form.save(commit=False)
         profile.person = person
-        profile.owning_jamatkhana = person.jamatkhana
-        profile.owning_local_council = person.local_council
-        profile.owning_region = person.region
         profile.save()
         pref = preference_form.save(commit=False); pref.profile = profile; pref.save()
         return redirect('harmony_detail', profile_id=profile.pk)
-    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'person_id': person.pk, 'title': 'Add Family Harmony profile'})
+    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'person_id': person.pk, 'title': 'New Family Harmony profile' if create_new_person else 'Link Family Harmony profile', 'profession_options': _profession_suggestions()})
 
 
 @login_required
 def harmony_detail(request, profile_id):
-    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'owning_jamatkhana', 'owning_local_council', 'owning_region'), pk=profile_id)
+    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'person__jamatkhana', 'person__local_council', 'person__region'), pk=profile_id)
     cfg = FamilyHarmonySettings.current()
     inline_options = {
         'person_gender': ['Male', 'Female'],
@@ -496,7 +538,7 @@ def harmony_detail(request, profile_id):
         'person_marital_status': cfg.marital_status_options,
         'person_willing_to_relocate': ['Willing to relocate', 'Not willing to relocate'],
         'education_level': cfg.education_levels,
-        'profession': cfg.occupation_options,
+        'profession': _profession_suggestions(),
         'income_range': cfg.income_ranges,
         'family_type': cfg.family_type_options,
         'caste_tribe': cfg.caste_tribe_options,
@@ -672,12 +714,12 @@ def _marriage_profile_pdf_response(profile):
     pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
     pdf.save()
     response = HttpResponse(output.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(person, profile.owning_jamatkhana or person.jamatkhana)}"'
+    response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(person, person.jamatkhana)}"'
     return response
 
 @login_required
 def harmony_export(request, profile_id, export_format):
-    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person','owning_region','owning_local_council','owning_jamatkhana'), pk=profile_id)
+    profile = get_object_or_404(FamilyHarmonyProfile.objects.select_related('person', 'person__region', 'person__local_council', 'person__jamatkhana'), pk=profile_id)
     person=profile.person; pref=getattr(profile,'preferences',None); serial=profile.serial_number
     if export_format == 'pdf':
         return _marriage_profile_pdf_response(profile)
@@ -732,13 +774,10 @@ def harmony_edit(request, profile_id):
     if person_form.is_valid() and profile_form.is_valid() and preference_form.is_valid():
         person = person_form.save()
         profile = profile_form.save(commit=False)
-        profile.owning_jamatkhana = person.jamatkhana
-        profile.owning_local_council = person.local_council
-        profile.owning_region = person.region
         profile.save()
         preference_form.save()
         return redirect('harmony_detail', profile_id=profile.pk)
-    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'title': 'Edit Family Harmony profile'})
+    return render(request, 'family_harmony/form.html', {'person_form': person_form, 'profile_form': profile_form, 'preference_form': preference_form, 'title': 'Edit Family Harmony profile', 'profession_options': _profession_suggestions()})
 
 
 @login_required
@@ -844,7 +883,7 @@ def public_form(request, token):
                 person.region = invitation.preselected_region
             person.save()
             profile=profile_form.save(commit=False); profile.person=person; profile.status=FamilyHarmonyProfile.Status.AWAITING_CONSENT
-            profile.owning_region=person.region; profile.owning_local_council=person.local_council; profile.owning_jamatkhana=person.jamatkhana; profile.save()
+            profile.save()
             pref=preference_form.save(commit=False); pref.profile=profile; pref.save()
             invitation.profile=profile; invitation.submitted_at=timezone.now(); invitation.save(update_fields=['profile','submitted_at'])
             return render(request, 'family_harmony/public_submitted.html')
@@ -891,6 +930,8 @@ def create_form_invitation(request):
     invitation=PublicFormInvitation.objects.create(token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),created_by=request.user,expires_at=timezone.now()+timedelta(days=days))
     public_url=request.build_absolute_uri(reverse('public_form',kwargs={'token':raw_token}))
     whatsapp_url='https://wa.me/?text='+quote(f'Marriage Profile Submission Form\nPlease complete this secure form: {public_url}\nNo username or password is required. Link expires in {days} days.')
+    if request.GET.get('format') == 'json':
+        return JsonResponse({'public_url': public_url, 'whatsapp_url': whatsapp_url})
     if request.GET.get('redirect')=='whatsapp': return redirect(whatsapp_url)
     return render(request,'family_harmony/invitation_created.html',{'token':raw_token,'invitation':invitation,'public_url':public_url,'whatsapp_url':whatsapp_url,'expiry_days':days})
 @login_required

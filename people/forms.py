@@ -15,12 +15,14 @@ class PersonForm(forms.ModelForm):
         select_lists = [
             ('nationality', cfg.nationality_options), ('country', cfg.country_options),
             ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
-            ('occupation', cfg.occupation_options), ('employer_or_business', cfg.employer_options),
+            ('employer_or_business', cfg.employer_options),
             ('income_range', cfg.income_ranges),
         ]
         for name, values in select_lists:
             self.fields[name].widget = forms.Select(choices=[('', 'Select')] + [(v, v) for v in (values or [])])
             self.fields[name].choices = [('', 'Select')] + [(v, v) for v in (values or [])]
+        self.fields['occupation'].widget = forms.TextInput(attrs={'list': 'person-occupation-options', 'placeholder': 'Select or type an occupation'})
+        self.fields['occupation'].choices = [('', 'Select')] + [(v, v) for v in (cfg.occupation_options or [])]
         self.fields['languages'].widget = forms.TextInput(attrs={
             'list': 'person-languages-options', 'data-options': '|'.join(cfg.language_options or [])
         })

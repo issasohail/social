@@ -1,0 +1,13 @@
+/*
+ * Family Harmony detail cascade.
+ *
+ * Imports are deliberately ordered so existing desktop, tablet, and phone
+ * overrides retain their exact precedence.
+ */
+@import url("harmony_detail.css");
+@import url("harmony_detail_actions.css");
+@import url("harmony_detail_photo_fix.css");
+@import url("harmony_list_alignment.css");
+@import url("harmony_compact_lists.css");
+@import url("harmony_badge_row.css");
+@import url("harmony_detail_layout_fix.css");

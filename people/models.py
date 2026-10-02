@@ -66,7 +66,7 @@ class Person(models.Model):
     occupation = models.CharField(max_length=160, blank=True)
     employer_or_business = models.CharField(max_length=160, blank=True)
     income_range = models.CharField(max_length=80, blank=True)
-    willing_to_relocate = models.BooleanField(default=False)
+    willing_to_relocate = models.BooleanField(null=True, blank=True, default=None)
     languages = models.CharField(max_length=255, blank=True)
     interests = models.TextField(blank=True)
     photo = models.ImageField(upload_to='people/%Y/%m/', blank=True)

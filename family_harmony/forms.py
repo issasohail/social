@@ -25,7 +25,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
     languages = forms.MultipleChoiceField(required=False, label='Languages')
     caste_tribe = forms.MultipleChoiceField(required=False, label='Caste / tribe')
     marital_status = forms.ChoiceField(required=False, label='Marital status')
-    profession = forms.MultipleChoiceField(required=False, label='Profession')
+    profession = forms.CharField(required=False, label='Profession')
     income_range = forms.ChoiceField(required=False, label='Income range')
 
     def __init__(self, *args, **kwargs):
@@ -42,11 +42,11 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
             _select(self.fields[name], values, placeholder)
         for name, values in [
             ('languages', cfg.language_options), ('caste_tribe', cfg.caste_tribe_options),
-            ('profession', cfg.occupation_options),
         ]:
             choices = [(value, value) for value in (values or [])]
             self.fields[name].choices = choices
             self.fields[name].widget = forms.CheckboxSelectMultiple(choices=choices)
+        self.fields['profession'].widget = forms.TextInput(attrs={'list': 'profession-options', 'placeholder': 'Select or type a profession'})
         self.fields['physical_status'].widget = forms.Select(
             choices=[('', '')] + [(v, v) for v in cfg.physical_status_options]
         )
@@ -68,7 +68,6 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
             self.initial['languages'] = [value.strip() for value in (self.instance.languages or '').split(',') if value.strip()]
             self.initial['caste_tribe'] = [value.strip() for value in (self.instance.caste_tribe or '').split(',') if value.strip()]
             self.initial['marital_status'] = (self.instance.marital_status or '').split(',')[0].strip()
-            self.initial['profession'] = [value.strip() for value in (self.instance.profession or '').split(',') if value.strip()]
             self.initial['income_range'] = (self.instance.income_range or '').split(',')[0].strip()
         if self.instance and self.instance.height_cm:
             total = round(self.instance.height_cm / 2.54)
@@ -88,7 +87,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         obj.languages = ', '.join(self.cleaned_data.get('languages') or [])
         obj.caste_tribe = ', '.join(self.cleaned_data.get('caste_tribe') or [])
         obj.marital_status = self.cleaned_data.get('marital_status') or ''
-        obj.profession = ', '.join(self.cleaned_data.get('profession') or [])
+        obj.profession = (self.cleaned_data.get('profession') or '').strip()
         obj.income_range = self.cleaned_data.get('income_range') or ''
         if commit:
             obj.save()

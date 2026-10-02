@@ -25,7 +25,7 @@ from accounts.views import staff_access_create, staff_access_delete, staff_user_
 from settings_app.views import settings_page, setting_list_crud
 from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete, suggestion_status_update
 from .views import (create_form_invitation, create_profile_share, dashboard, harmony_create, harmony_delete,
-                   harmony_detail, harmony_edit, harmony_export, harmony_inline_update, harmony_list, health,
+                   harmony_detail, harmony_edit, harmony_export, harmony_inline_update, harmony_link_with_preferences, harmony_list, health,
                    inline_update_person, jamatkhanas, local_councils, organization_overview, people_list,
                    person_create, person_delete, person_detail, person_edit, person_export, create_person_share,
                    public_form, identity_duplicate_check, regional_councils, shared_person, shared_profile, organization_inline_update, pending_approvals, pending_approval_action)
@@ -57,6 +57,7 @@ urlpatterns = [
     path('people/inline-update/', inline_update_person, name='inline_update_person'),
     path('family-harmony/', harmony_list, name='family_harmony'),
     path('family-harmony/new/', harmony_create, name='harmony_create'),
+    path('family-harmony/link/', harmony_link_with_preferences, name='harmony_link_with_preferences'),
     path('family-harmony/<int:profile_id>/', harmony_detail, name='harmony_detail'),
     path('family-harmony/<int:profile_id>/edit/', harmony_edit, name='harmony_edit'),
     path('family-harmony/<int:profile_id>/delete/', harmony_delete, name='harmony_delete'),
