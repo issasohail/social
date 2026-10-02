@@ -244,18 +244,3 @@
   .mpf-form .mpf-field>label{font-size:9px!important}
   .mpf-form .mpf-field input:not([type=checkbox]):not([type=radio]):not([type=file]),.mpf-form .mpf-field select,.mpf-form .mpf-multi>summary{height:31px!important;min-height:31px!important;font-size:12px!important;padding:3px 5px!important}
 }
-
-/* Applied by form.html from the actual rendered shell width. */
-.mpf-narrow-form .mpf-four-row-layout{display:block!important;width:100%!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:8px!important;margin:0 0 8px!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field{display:block!important;grid-column:auto!important;grid-row:auto!important;order:initial!important;flex:none!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field input,.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field select,.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field textarea,.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi,.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi>summary{box-sizing:border-box!important;width:100%!important;max-width:100%!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair>div{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair>div>span{display:grid!important;grid-template-columns:1fr!important;gap:3px!important}
-.mpf-narrow-form .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair input{width:100%!important;min-width:0!important}
-.mpf-narrow-form .mpf-compact-profile-layout,.mpf-narrow-form .mpf-career-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;width:100%!important;gap:8px!important;margin:0 0 8px!important;padding:0!important}
-.mpf-narrow-form .mpf-compact-profile-layout>.mpf-field,.mpf-narrow-form .mpf-career-row>.mpf-field{display:block!important;grid-column:auto!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important}
-.mpf-narrow-form .mpf-compact-profile-layout>.mpf-field input,.mpf-narrow-form .mpf-compact-profile-layout>.mpf-field select,.mpf-narrow-form .mpf-compact-profile-layout>.mpf-field textarea,.mpf-narrow-form .mpf-career-row>.mpf-field input,.mpf-narrow-form .mpf-career-row>.mpf-field select{box-sizing:border-box!important;width:100%!important;max-width:100%!important}
-.mpf-narrow-form .mpf-lifestyle-stack{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%!important;gap:8px!important}
-.mpf-narrow-form .mpf-form .mpf-field>label{font-size:9px!important}
-.mpf-narrow-form .mpf-form .mpf-field input:not([type=checkbox]):not([type=radio]):not([type=file]),.mpf-narrow-form .mpf-form .mpf-field select,.mpf-narrow-form .mpf-form .mpf-multi>summary{height:31px!important;min-height:31px!important;font-size:12px!important;padding:3px 5px!important}

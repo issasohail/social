@@ -1,0 +1,124 @@
+/* Adaptive phone/tablet grid. Loaded after legacy mobile rules to remove
+   fixed-position columns. Desktop rules from 768px up are untouched. */
+
+@media (max-width: 767px) {
+  #marriage-profile-form .mpf-upload-strip {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  #marriage-profile-form .mpf-upload-card,
+  #marriage-profile-form .mpf-profile-card {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row,
+  #marriage-profile-form .mpf-compact-profile-layout,
+  #marriage-profile-form .mpf-career-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    gap: 9px !important;
+    margin: 0 0 9px !important;
+    padding: 0 !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field,
+  #marriage-profile-form .mpf-compact-profile-layout > .mpf-field,
+  #marriage-profile-form .mpf-career-row > .mpf-field {
+    display: block !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    order: initial !important;
+    flex: none !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout input,
+  #marriage-profile-form .mpf-four-row-layout select,
+  #marriage-profile-form .mpf-four-row-layout textarea,
+  #marriage-profile-form .mpf-four-row-layout .mpf-multi,
+  #marriage-profile-form .mpf-four-row-layout .mpf-multi > summary {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-sibling-pair > div {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-sibling-pair > div > span {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 3px !important;
+  }
+
+  #marriage-profile-form .mpf-lifestyle-stack {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    gap: 9px !important;
+  }
+
+  #marriage-profile-form .mpf-compact-profile-layout > .mpf-field:has(textarea) {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+/* At 360px, retain two readable controls per row. Long text controls span
+   both tracks so no fixed left/right column can squeeze them. */
+@media (min-width: 360px) and (max-width: 567px) {
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row,
+  #marriage-profile-form .mpf-compact-profile-layout,
+  #marriage-profile-form .mpf-career-row,
+  #marriage-profile-form .mpf-lifestyle-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_identity_number),
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_email),
+  #marriage-profile-form .mpf-compact-profile-layout > .mpf-field:has(textarea),
+  #marriage-profile-form .mpf-choice-stack {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+/* Wider phones use three tracks; textual/narrative controls get the width
+   they need. Tablet/desktop rules take over from 768px. */
+@media (min-width: 568px) and (max-width: 767px) {
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row,
+  #marriage-profile-form .mpf-compact-profile-layout,
+  #marriage-profile-form .mpf-career-row,
+  #marriage-profile-form .mpf-lifestyle-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_identity_number),
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_mobile),
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_whatsapp_number),
+  #marriage-profile-form .mpf-four-row-layout > .mpf-row > .mpf-field:has(#id_email),
+  #marriage-profile-form .mpf-compact-profile-layout > .mpf-field:has(textarea),
+  #marriage-profile-form .mpf-choice-stack {
+    grid-column: span 2 !important;
+  }
+
+  #marriage-profile-form .mpf-compact-profile-layout > .mpf-field:has(textarea) {
+    grid-column: 1 / -1 !important;
+  }
+}

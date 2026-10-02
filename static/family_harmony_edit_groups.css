@@ -1,0 +1,67 @@
+/
+0/* Visual groups requested for the Family Harmony edit form. */
+.mpf-page-shell .mpf-upload-card.mpf-profile-card{border:2px solid #1769e0!important;background:#eef6ff!important}.mpf-page-shell .mpf-upload-card:not(.mpf-profile-card){border:2px solid #1c1c1c!important;background:#fff!important}
+.mpf-page-shell .mpf-field>.mpf-field-label{display:block;margin:0;font:500 11px/1.2 Arial,Helvetica,sans-serif;color:var(--mpf-label)}
+.mpf-page-shell .mpf-seg label.is-selected{position:relative;z-index:1;border-color:var(--mpf-teal);background:var(--mpf-teal);color:#fff}
+
+/* Compact ten-column profile details area. */
+.mpf-page-shell .mpf-compact-profile-layout{display:grid;grid-template-columns:repeat(40,minmax(0,1fr));gap:7px;align-items:start}
+.mpf-page-shell .mpf-compact-profile-layout>.mpf-field:has(textarea){grid-column:span 6;border:0;border-radius:0;padding:0;background:transparent}
+.mpf-page-shell .mpf-compact-profile-layout>.mpf-field:has(textarea)>label{display:block;margin:0 0 3px}
+.mpf-page-shell .mpf-compact-profile-layout textarea{height:72px;min-height:72px;resize:vertical}
+.mpf-page-shell .mpf-choice-stack{grid-column:span 5;min-width:0}
+.mpf-page-shell .mpf-choice-stack .mpf-multi,.mpf-page-shell .mpf-choice-stack .mpf-multi>summary{width:100%!important;max-width:none!important}
+.mpf-page-shell .mpf-choice-values{display:grid;grid-template-rows:repeat(2,22px);gap:3px;margin-top:3px}
+.mpf-page-shell .mpf-choice-values output{overflow:hidden;padding:4px 5px;border:1px solid #d7e1e8;border-radius:4px;background:#f7fafc;color:#47617a;font:10px/1.2 Arial,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.mpf-page-shell .mpf-lifestyle-stack{grid-column:span 7;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:5px 4px;min-width:0}
+.mpf-page-shell .mpf-lifestyle-stack .mpf-field{min-width:0;margin:0}.mpf-page-shell .mpf-lifestyle-stack .mpf-field>label,.mpf-page-shell .mpf-lifestyle-stack .mpf-field>.mpf-field-label{display:block;margin:0;font:500 9px/1.2 Arial,Helvetica,sans-serif;color:var(--mpf-label)}.mpf-page-shell .mpf-lifestyle-stack .mpf-seg-group{height:27px!important;min-height:27px!important;max-height:27px!important}.mpf-page-shell .mpf-lifestyle-stack .mpf-seg-btn{height:27px!important;min-height:27px!important;max-height:27px!important;padding:0 3px;font-size:9px}
+.mpf-page-shell .mpf-career-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;align-items:end;margin-top:8px}.mpf-page-shell .mpf-career-row .mpf-field{min-width:0;margin:0}.mpf-page-shell .mpf-career-row .mpf-multi,.mpf-page-shell .mpf-career-row .mpf-multi>summary{max-width:none}.mpf-page-shell .mpf-career-row .mpf-field:has(#id_physical_status) select{width:100%;max-width:none}
+
+/* Tablet: keep the personal-information controls legible without changing desktop. */
+@media(min-width:768px) and (max-width:1023px){
+  .mpf-page-shell .mpf-compact-profile-layout{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field:has(textarea),.mpf-page-shell .mpf-choice-stack{grid-column:span 1}
+  .mpf-page-shell .mpf-lifestyle-stack{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr}
+  .mpf-page-shell .mpf-career-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* Phone: these new groups must be full-width flex items inside Personal Information. */
+@media(max-width:767px){
+  /* Reset the dense desktop personal-information grid to a dependable phone layout. */
+  .mpf-page-shell .mpf-four-row-layout{display:block!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;margin-bottom:8px}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field{width:100%!important;min-width:0!important;padding-right:0!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field input,.mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field select,.mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field textarea,.mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi,.mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi>summary{width:100%!important;max-width:none!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-compact-profile-layout,.mpf-page-shell .mpf-four-row-layout>.mpf-career-row{display:grid!important;flex:0 0 100%!important;width:100%!important;box-sizing:border-box!important;padding-right:0!important}
+  .mpf-page-shell .mpf-compact-profile-layout,.mpf-page-shell .mpf-career-row{grid-template-columns:1fr!important}
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field,.mpf-page-shell .mpf-choice-stack,.mpf-page-shell .mpf-lifestyle-stack{grid-column:1/-1!important;padding-right:0!important}
+  .mpf-page-shell .mpf-compact-profile-layout textarea{height:72px!important;min-height:72px!important}
+  .mpf-page-shell .mpf-lifestyle-stack{grid-template-columns:repeat(2,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important}
+  .mpf-page-shell .mpf-lifestyle-stack .mpf-seg-group,.mpf-page-shell .mpf-lifestyle-stack .mpf-seg-btn{height:34px!important;min-height:34px!important;max-height:34px!important}
+}
+
+/* Final phone-only cascade: keep all desktop rules above intact.  This comes last
+   because marriage_form.css also supplies positional phone rules for this form. */
+@media(max-width:767px){
+  .mpf-page-shell .mpf-four-row-layout{display:block!important;width:100%!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:9px!important;margin:0 0 9px!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field{display:block!important;grid-column:auto!important;grid-row:auto!important;order:initial!important;flex:none!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field input,
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field select,
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field textarea,
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi,
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-field .mpf-multi>summary{box-sizing:border-box!important;width:100%!important;max-width:100%!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair>div{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair>div>span{display:grid!important;grid-template-columns:1fr!important;gap:3px!important}
+  .mpf-page-shell .mpf-four-row-layout>.mpf-row>.mpf-sibling-pair input{width:100%!important;min-width:0!important}
+  .mpf-page-shell .mpf-compact-profile-layout,
+  .mpf-page-shell .mpf-career-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;width:100%!important;gap:9px!important;margin:0 0 9px!important;padding:0!important}
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field,
+  .mpf-page-shell .mpf-career-row>.mpf-field{display:block!important;grid-column:auto!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important}
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field input,
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field select,
+  .mpf-page-shell .mpf-compact-profile-layout>.mpf-field textarea,
+  .mpf-page-shell .mpf-career-row>.mpf-field input,
+  .mpf-page-shell .mpf-career-row>.mpf-field select{box-sizing:border-box!important;width:100%!important;max-width:100%!important}
+  .mpf-page-shell .mpf-lifestyle-stack{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%!important;gap:9px 8px!important}
+}

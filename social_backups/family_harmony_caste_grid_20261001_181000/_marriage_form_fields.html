@@ -37,11 +37,11 @@
       {% include "./_marriage_form_field.html" with field=person_form.last_name %}
       {% include "./_marriage_form_field.html" with field=person_form.gender css="mpf-seg mpf-gender" %}
       {% include "./_marriage_form_field.html" with field=person_form.date_of_birth %}
-      <div class="mpf-field"><label>{{ profile_form.caste_tribe.label }}</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.caste_tribe }}</div></details>{{ profile_form.caste_tribe.errors }}</div>
 
       {% include "./_marriage_form_field.html" with field=person_form.nationality %}
       {% include "./_marriage_form_field.html" with field=person_form.identity_type %}
       {% include "./_marriage_form_field.html" with field=person_form.identity_number status_id="id-status" %}
+      <div class="mpf-field"><label>{{ profile_form.caste_tribe.label }}</label><details class="mpf-multi"><summary>Choose</summary><div class="mpf-multi-menu">{{ profile_form.caste_tribe }}</div></details>{{ profile_form.caste_tribe.errors }}</div>
     </div>
     <div class="mpf-row mpf-row-10">
       {% include "./_marriage_form_field.html" with field=person_form.mobile %}

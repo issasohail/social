@@ -21,6 +21,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
     height_feet = forms.IntegerField(required=False, min_value=3, max_value=8, label='Height (ft)')
     height_inches = forms.IntegerField(required=False, min_value=0, max_value=11, label='Height (in)')
     known_diseases = forms.MultipleChoiceField(required=False, label='Known disease(s)')
+    disability_status = forms.MultipleChoiceField(required=False, label='Disability status')
     languages = forms.MultipleChoiceField(required=False, label='Languages')
     caste_tribe = forms.MultipleChoiceField(required=False, label='Caste / tribe')
     marital_status = forms.ChoiceField(required=False, label='Marital status')
@@ -49,9 +50,9 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         self.fields['physical_status'].widget = forms.Select(
             choices=[('', '')] + [(v, v) for v in cfg.physical_status_options]
         )
-        self.fields['disability_status'].widget = forms.Select(
-            choices=[('', '')] + [(v, v) for v in cfg.disability_options]
-        )
+        disability_choices = [(v, v) for v in cfg.disability_options]
+        self.fields['disability_status'].choices = disability_choices
+        self.fields['disability_status'].widget = forms.CheckboxSelectMultiple(choices=disability_choices)
         disease_choices = [(v, v) for v in cfg.known_disease_options]
         self.fields['known_diseases'].choices = disease_choices
         self.fields['known_diseases'].widget = forms.CheckboxSelectMultiple(choices=disease_choices)
@@ -63,6 +64,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         self.fields['sisters_count'].widget.attrs.update({'min': '0', 'max': '30', 'placeholder': '0'})
         if self.instance and self.instance.pk:
             self.initial['known_diseases'] = self.instance.known_diseases or []
+            self.initial['disability_status'] = [value.strip() for value in (self.instance.disability_status or '').split(',') if value.strip()]
             self.initial['languages'] = [value.strip() for value in (self.instance.languages or '').split(',') if value.strip()]
             self.initial['caste_tribe'] = [value.strip() for value in (self.instance.caste_tribe or '').split(',') if value.strip()]
             self.initial['marital_status'] = (self.instance.marital_status or '').split(',')[0].strip()
@@ -82,6 +84,7 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
         elif not self.cleaned_data.get('height_inches'):
             obj.height_cm = None
         obj.known_diseases = self.cleaned_data.get('known_diseases') or []
+        obj.disability_status = ', '.join(self.cleaned_data.get('disability_status') or [])
         obj.languages = ', '.join(self.cleaned_data.get('languages') or [])
         obj.caste_tribe = ', '.join(self.cleaned_data.get('caste_tribe') or [])
         obj.marital_status = self.cleaned_data.get('marital_status') or ''
