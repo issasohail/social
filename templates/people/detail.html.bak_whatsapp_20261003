@@ -10,12 +10,12 @@
       <p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p>
       <h1>{{ person.full_name }}</h1>
       <div class="biodata-badges"><span>{{ person.age|default:'—' }} yrs</span><span>{{ person.gender|default:'—' }}</span><span>{{ person.marital_status|default:'—' }}</span><span>{{ person.serial_number }}</span></div>
-      {% if person.whatsapp_number or person.mobile %}<a class="harmony-primary-phone" target="_blank" rel="noopener" href="https://wa.me/{{ person.whatsapp_number|default:person.mobile|cut:'+'|cut:'-'|cut:' ' }}?text=Hello%20{{ person.full_name|urlencode }}">{% include "partials/whatsapp_icon.html" %} {{ person.whatsapp_number|default:person.mobile }}</a>{% endif %}
+      {% if person.whatsapp_number or person.mobile %}<a class="harmony-primary-phone" target="_blank" rel="noopener" href="https://wa.me/{{ person.whatsapp_number|default:person.mobile|cut:'+'|cut:'-'|cut:' ' }}?text=Hello%20{{ person.full_name|urlencode }}">◉ {{ person.whatsapp_number|default:person.mobile }}</a>{% endif %}
     </div>
     <div class="harmony-head-right">
       <div class="biodata-actions">
         <a class="primary" href="{% url 'person_edit' person.id %}">Edit</a>
-        <a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank" rel="noopener" title="Share a secure read-only profile link on WhatsApp">{% include "partials/whatsapp_icon.html" %} WhatsApp</a>
+        <a class="action-button whatsapp" href="{% url 'create_person_share' person.id %}" target="_blank" rel="noopener" title="Share a secure read-only profile link on WhatsApp">WhatsApp</a>
         <a class="action-button pdf" href="{% url 'person_export' person.id 'pdf' %}" download>PDF</a>
         <a class="secondary biodata-jpg" href="{% url 'person_export' person.id 'jpg' %}" download>Export JPG</a>
         {% if person.harmony_profile %}<a class="secondary" href="{% url 'harmony_detail' person.harmony_profile.id %}">Family Harmony</a>{% endif %}

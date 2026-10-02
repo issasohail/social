@@ -424,32 +424,25 @@ def _profile_pdf_filename(person, jamatkhana):
 
 @login_required
 def person_export(request, person_id, export_format):
-    person=get_object_or_404(Person,pk=person_id)
-    if export_format == 'pdf' and hasattr(person, 'harmony_profile'):
-        return harmony_export(request, person.harmony_profile.pk, 'pdf')
-    if export_format=='pdf':
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.utils import ImageReader
-        output=BytesIO(); W,H=letter; c=canvas.Canvas(output,pagesize=letter); c.setTitle(f'Person - {person.full_name}')
-        green=(.07,.42,.41); c.setFillColorRGB(*green); c.rect(0,H-78,W,78,fill=1,stroke=0); c.setFillColorRGB(1,1,1); c.setFont('Helvetica-Bold',18); c.drawString(34,H-36,'Social Welfare Center'); c.setFont('Helvetica',10); c.drawString(34,H-56,f'Person Detail · {person.serial_number}')
-        y=H-112
-        if person.photo:
-            try: c.drawImage(ImageReader(person.photo.path),W-128,H-188,88,88,preserveAspectRatio=True,mask='auto')
-            except Exception: pass
-        c.setFillColorRGB(.1,.18,.2); c.setFont('Helvetica-Bold',17); c.drawString(34,y,person.full_name); y-=28
-        sections=[('Personal Information',[('Title',person.title),('Gender',person.gender),('Date of Birth',person.date_of_birth),('Age',person.age),('Marital Status',person.marital_status),('Nationality',person.nationality)]),('Contact & Residence',[('Mobile',person.mobile),('WhatsApp',person.whatsapp_number),('Email',person.email),('City / Province',f'{person.city} / {person.province}'),('Country',person.country),('Current Address',person.current_address)]),('Organization',[('Regional Council',person.region),('Local Council',person.local_council),('Jamatkhana',person.jamatkhana)]),('Education & Career',[('Education',person.education),('Education Details',person.education_details),('Occupation',person.occupation),('Employer / Business',person.employer_or_business),('Income Range',person.income_range),('Languages',person.languages)])]
-        for heading,items in sections:
-            c.setFillColorRGB(.88,.94,.91); c.rect(30,y-4,W-60,18,fill=1,stroke=0); c.setFillColorRGB(*green); c.setFont('Helvetica-Bold',9); c.drawString(35,y+1,heading); y-=20
-            for label,value in items:
-                text=str(value or '—').replace('\n',' ')[:115]; c.setFillColorRGB(.2,.25,.25); c.setFont('Helvetica-Bold',7.5); c.drawString(35,y,label+':'); c.setFont('Helvetica',7.5); c.drawString(135,y,text); y-=13
-            y-=5
-        c.setStrokeColorRGB(.75,.8,.78); c.line(30,34,W-30,34); c.setFont('Helvetica',6.5); c.setFillColorRGB(.35,.4,.4); c.drawString(32,22,'Confidential Social Welfare record'); c.drawRightString(W-32,22,'US Letter · Page 1 of 1'); c.save()
-        filename = _profile_pdf_filename(person, person.jamatkhana)
-        r=HttpResponse(output.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{filename}"'; return r
-    rows=[(person.serial_number,person.full_name,person.age or '',person.gender or '—',person.city or '—',person.mobile or '—',person.occupation or '—',person.masked_identity_number() or '—')]
-    export=_export_response(request,rows,['Serial','Name','Age','Gender','City','Phone','Occupation','CNIC'],f'Person: {person.full_name}','Person detail',export_format=export_format)
-    if export is not None:return export
+    from reports.profile_exports import person_pdf_bytes, profile_jpg_bytes
+
+    person = get_object_or_404(
+        Person.objects.select_related('region', 'local_council', 'jamatkhana'),
+        pk=person_id,
+    )
+    if export_format == 'pdf':
+        response = HttpResponse(person_pdf_bytes(person), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(person, person.jamatkhana)}"'
+        return response
+    if export_format == 'jpg':
+        filename = f'{slugify(person.full_name) or person.serial_number.lower()}-people-profile.jpg'
+        response = HttpResponse(profile_jpg_bytes(person), content_type='image/jpeg')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    rows = [(person.serial_number, person.full_name, person.age or '', person.gender or '—', person.city or '—', person.mobile or '—', person.occupation or '—', person.masked_identity_number() or '—')]
+    export = _export_response(request, rows, ['Serial', 'Name', 'Age', 'Gender', 'City', 'Phone', 'Occupation', 'CNIC'], f'Person: {person.full_name}', 'Person detail', export_format=export_format)
+    if export is not None:
+        return export
     raise Http404()
 
 @login_required
@@ -724,8 +717,10 @@ def harmony_export(request, profile_id, export_format):
     if export_format == 'pdf':
         return _marriage_profile_pdf_response(profile)
     if export_format == 'jpg':
-        from PIL import Image, ImageDraw
-        image=Image.new('RGB',(1275,1650),'white'); draw=ImageDraw.Draw(image); draw.text((50,40),f'Marriage Profile - {person.full_name}',fill='black'); draw.text((50,90),'Use the PDF export for the designed one-page Letter profile.',fill='black'); output=BytesIO(); image.save(output,format='JPEG',quality=92); response=HttpResponse(output.getvalue(),content_type='image/jpeg'); response['Content-Disposition']=f'attachment; filename="{serial.lower()}-marriage-profile.jpg"'; return response
+        from reports.profile_exports import profile_jpg_bytes
+        response = HttpResponse(profile_jpg_bytes(person, profile=profile, family_harmony=True), content_type='image/jpeg')
+        response['Content-Disposition'] = f'attachment; filename="{serial.lower()}-marriage-profile.jpg"'
+        return response
     raise Http404()
 
 
@@ -737,7 +732,7 @@ def create_profile_share(request, profile_id):
     expiry_days = max(settings.minimum_expiry_days, min(settings.default_expiry_days, settings.maximum_expiry_days))
     share = ProfileShare.objects.create(profile=profile, created_by=request.user, token_hash=hashlib.sha256(raw_token.encode()).hexdigest(), expires_at=timezone.now() + timedelta(days=expiry_days), max_views=settings.default_max_views, require_last_four=settings.require_last_four_cnic)
     share_url = request.build_absolute_uri(reverse('shared_profile', kwargs={'token': raw_token}))
-    whatsapp_text = quote(f'Family Harmony profile: {profile.person.full_name}\nPlease review this confidential profile: {share_url}\nLink expires in {expiry_days} days.')
+    whatsapp_text = quote(f'Family Harmony profile: {profile.person.full_name}\nPlease use this secure read-only link: {share_url}\nNo username or password is required. Link expires in {expiry_days} days.')
     if request.GET.get('redirect') == 'whatsapp':
         return redirect(f'https://wa.me/?text={whatsapp_text}')
     return render(request, 'family_harmony/share_created.html', {'profile': profile, 'share': share, 'share_url': share_url, 'whatsapp_url': f'https://wa.me/?text={whatsapp_text}'})
@@ -757,11 +752,12 @@ def create_person_share(request, person_id):
         max_views=settings.default_max_views,
     )
     share_url = request.build_absolute_uri(reverse('shared_person', kwargs={'token': raw_token}))
-    phone = normalize_phone_number(getattr(getattr(request.user, 'profile', None), 'phone_number', ''))
-    recipient = ''.join(character for character in phone if character.isdigit())
-    whatsapp_text = quote(f'Person detail: {person.full_name}\nPlease review this confidential detail: {share_url}\nLink expires in {expiry_days} days.')
-    whatsapp_url = f'https://wa.me/{recipient}?text={whatsapp_text}' if recipient else f'https://wa.me/?text={whatsapp_text}'
-    return redirect(whatsapp_url)
+    whatsapp_text = quote(
+        f'People profile: {person.full_name}\n'
+        f'Please use this secure read-only link: {share_url}\n'
+        f'No username or password is required. Link expires in {expiry_days} days.'
+    )
+    return redirect(f'https://wa.me/?text={whatsapp_text}')
 
 
 @login_required

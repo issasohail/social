@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import path
+from django.urls import include, path
 
 from boards.views import board_dashboard
 from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users, my_profile
@@ -69,6 +69,7 @@ urlpatterns = [
     path('family-harmony/form-invitation/new/', create_form_invitation, name='create_form_invitation'),
     path('family-harmony/share/<str:token>/', shared_profile, name='shared_profile'),
     path('boards/<str:code>/', board_dashboard, name='board_dashboard'),
+    path('teams/', include('teams.urls')),
     path('staff-admin/users/', staff_users, name='staff_users'),
     path('staff-admin/users/new/', staff_user_create, name='staff_user_create'),
     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),

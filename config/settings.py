@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'audit',
     'reports',
     'settings_app',
+    'teams',
 ]
 
 MIDDLEWARE = [
