@@ -1,0 +1,254 @@
+diff --git a/accounts/forms.py b/accounts/forms.py
+index 84d6260..ed7fcea 100644
+--- a/accounts/forms.py
++++ b/accounts/forms.py
+@@ -1,5 +1,5 @@
+ from django import forms
+-from django.contrib.auth.models import Group, User
++from django.contrib.auth.models import Group, Permission, User
+ from django.db.models import Q
+ 
+ from boards.models import Board
+@@ -21,7 +21,7 @@ class StaffUserForm(forms.ModelForm):
+     password = forms.CharField(widget=forms.PasswordInput, min_length=8, label='Initial password')
+     groups = forms.ModelMultipleChoiceField(
+         queryset=Group.objects.all().order_by('name'), required=False,
+-        widget=forms.CheckboxSelectMultiple, label='Optional Django groups'
++        widget=forms.CheckboxSelectMultiple, label='Group permissions'
+     )
+ 
+     class Meta:
+@@ -67,6 +67,33 @@ class StaffUserForm(forms.ModelForm):
+         return user
+ 
+ 
++class PermissionChoiceField(forms.ModelMultipleChoiceField):
++    def label_from_instance(self, permission):
++        action = permission.codename.split('_', 1)[0].replace('_', ' ').title()
++        model = permission.content_type.model.replace('_', ' ').title()
++        app = permission.content_type.app_label.replace('_', ' ').title()
++        return f'{app} — {model} — {action}'
++
++
++class GroupPermissionForm(forms.ModelForm):
++    permissions = PermissionChoiceField(
++        queryset=Permission.objects.select_related('content_type').order_by(
++            'content_type__app_label', 'content_type__model', 'codename'
++        ),
++        required=False,
++        widget=forms.SelectMultiple(attrs={
++            'data-searchable': 'true',
++            'data-placeholder': 'Search permissions by app, model or action',
++            'size': '14',
++        }),
++        label='Permissions',
++    )
++
++    class Meta:
++        model = Group
++        fields = ('name', 'permissions')
++
++
+ class UserProfileForm(forms.ModelForm):
+     class Meta:
+         model = UserProfile
+diff --git a/accounts/views.py b/accounts/views.py
+index c2b3370..08ae5df 100644
+--- a/accounts/views.py
++++ b/accounts/views.py
+@@ -1,7 +1,7 @@
+ from functools import wraps
+ 
+ from django.contrib import messages
+-from django.contrib.auth.models import User
++from django.contrib.auth.models import Group, User
+ from django.db import transaction
+ from django.db.models import Q
+ from django.http import HttpResponseForbidden
+@@ -12,7 +12,7 @@ from boards.models import Board
+ from organization.models import Jamatkhana, LocalCouncil, NationalCouncil, RegionalCouncil, UserJurisdictionAccess
+ from organization.access import active_accesses, can_delegate_access, user_has_capability, visible_access_q
+ 
+-from .forms import JurisdictionAccessForm, StaffUserForm
++from .forms import GroupPermissionForm, JurisdictionAccessForm, StaffUserForm
+ 
+ 
+ def staff_admin_required(view):
+@@ -194,3 +194,33 @@ def my_profile(request):
+         messages.success(request, 'Profile updated.')
+         return redirect('my_profile')
+     return render(request, 'accounts/profile.html', {'profile_user': user, 'person': person})
++
++
++@staff_admin_required
++def group_permissions(request):
++    # Django Groups are global permission bundles, so only the Super Admin may redefine them.
++    if not request.user.is_superuser:
++        return HttpResponseForbidden('Only a Super Admin can change global group permissions.')
++
++    groups = Group.objects.prefetch_related('permissions__content_type').order_by('name')
++    edit_id = request.GET.get('edit', '').strip()
++    selected = Group.objects.filter(pk=edit_id).first() if edit_id.isdigit() else None
++    if selected is None and groups.exists():
++        selected = groups.first()
++
++    if request.method == 'POST':
++        group_id = request.POST.get('group_id', '').strip()
++        selected = get_object_or_404(Group, pk=group_id) if group_id.isdigit() else None
++        form = GroupPermissionForm(request.POST, instance=selected)
++        if form.is_valid():
++            group = form.save()
++            messages.success(request, f'Group permission "{group.name}" updated.')
++            return redirect(f'{request.path}?edit={group.pk}')
++    else:
++        form = GroupPermissionForm(instance=selected) if selected else GroupPermissionForm()
++
++    return render(request, 'accounts/group_permissions.html', {
++        'groups': groups,
++        'selected_group': selected,
++        'form': form,
++    })
+diff --git a/config/urls.py b/config/urls.py
+index 45357c2..972a022 100644
+--- a/config/urls.py
++++ b/config/urls.py
+@@ -21,7 +21,7 @@ from django.conf.urls.static import static
+ from django.urls import include, path
+ 
+ from boards.views import board_dashboard
+-from accounts.views import staff_access_create, staff_access_delete, staff_user_create, staff_users, my_profile
++from accounts.views import group_permissions, staff_access_create, staff_access_delete, staff_user_create, staff_users, my_profile
+ from settings_app.views import settings_page, setting_list_crud
+ from settings_app.tool_views import backup_center, backup_download, backup_delete, suggestion_list, suggestion_create, suggestion_detail, suggestion_delete, suggestion_status_update
+ from .views import (create_form_invitation, create_profile_share, dashboard, harmony_create, harmony_delete,
+@@ -71,7 +71,8 @@ urlpatterns = [
+     path('boards/<str:code>/', board_dashboard, name='board_dashboard'),
+     path('teams/', include('teams.urls')),
+     path('staff-admin/users/', staff_users, name='staff_users'),
+-    path('staff-admin/users/new/', staff_user_create, name='staff_user_create'),
++    path('staff-admin/users/new/', staff_user_create, name='staff_user_create'),
++    path('staff-admin/group-permissions/', group_permissions, name='group_permissions'),
+     path('staff-admin/users/<int:user_id>/access/new/', staff_access_create, name='staff_access_create'),
+     path('staff-admin/access/<int:access_id>/remove/', staff_access_delete, name='staff_access_delete'),
+     path('settings/', settings_page, name='settings'),
+diff --git a/static/app.css b/static/app.css
+index 7fbe868..25ce652 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -130,3 +130,27 @@
+ .compact-head{padding-bottom:12px}.staff-user-form{max-width:1480px;margin:0 auto 36px;display:grid;gap:14px}.staff-card{padding:18px 20px}.staff-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:14px}.staff-card-head h2{margin:0}.staff-account-grid,.staff-access-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px 14px}.staff-account-grid .span-2{grid-column:span 2}.compact-check{align-content:end}.compact-check>label{display:flex!important;align-items:center;gap:8px;min-height:42px;text-transform:none!important;letter-spacing:0!important;font-size:14px!important;color:var(--ink)!important}.compact-check input[type=checkbox]{width:18px!important;height:18px!important}.staff-groups-details{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}.staff-groups-details summary{cursor:pointer;font-weight:700;color:var(--teal)}.staff-group-grid ul,.capability-grid ul{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px!important;margin:8px 0 0!important}.staff-group-grid li,.capability-grid li{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:#fbfdfc}.staff-group-grid label,.capability-grid label{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:600}.staff-group-grid input,.capability-grid input{width:17px!important;height:17px!important;margin-top:1px}.capability-block{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}.capability-block h3{margin:0 0 4px}.staff-form-actions{display:flex;justify-content:flex-end;gap:10px}.access-filter-grid{display:grid;grid-template-columns:minmax(230px,1.4fr) repeat(6,minmax(145px,1fr)) auto auto;gap:9px;align-items:center}.access-filter-grid .select2-lite,.access-filter-grid .select2-lite-input{width:100%;min-width:0}.user-access-filters{max-width:1480px;margin-bottom:14px}.user-access-table-wrap{max-width:1480px;margin:0 auto 36px}.user-access-table td{vertical-align:top}.access-stack{display:grid;gap:7px;min-width:430px}.access-pill{display:grid;grid-template-columns:1fr auto;gap:2px 12px;border:1px solid #cfe0dc;border-radius:7px;padding:8px 10px;background:#f8fcfb}.access-pill strong,.access-pill span,.access-pill small{grid-column:1}.access-pill form{grid-column:2;grid-row:1 / span 3;align-self:center}.access-pill.is-inactive{opacity:.55}.link-danger{border:0;background:transparent;color:#b63a2c;font-weight:700;cursor:pointer}.status-pill{display:inline-block;padding:5px 8px;border-radius:999px;background:#dff4eb;color:#087a57;font-size:12px;font-weight:700}.status-pill.inactive{background:#eef0f2;color:#667085}.mini-action{padding:7px 9px}
+ @media(max-width:1100px){.staff-account-grid,.staff-access-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.staff-group-grid ul,.capability-grid ul{grid-template-columns:repeat(2,minmax(0,1fr))}.access-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.access-filter-grid>input{grid-column:span 2}}
+ @media(max-width:720px){.staff-account-grid,.staff-access-grid,.staff-group-grid ul,.capability-grid ul,.access-filter-grid{grid-template-columns:1fr}.staff-account-grid .span-2,.access-filter-grid>input{grid-column:auto}.staff-card-head{display:block}.access-stack{min-width:260px}}
++
++
++/* Sticky directory headers + compact team columns + group permission editor */
++@media (min-width:701px){
++  .people-table-wrap,.team-page .table-scroll{max-height:calc(100vh - 265px);overflow:auto}
++  .people-table thead th,.team-page .data-table thead th{position:sticky;top:0;z-index:6;box-shadow:0 1px 0 #dbe5e9}
++}
++.team-page .data-table{min-width:1240px;table-layout:auto}
++.team-page .data-table th,.team-page .data-table td{white-space:nowrap}
++.team-page .data-table th:nth-child(5),.team-page .data-table td:nth-child(5){min-width:120px}
++.team-page .data-table th:nth-child(8),.team-page .data-table td:nth-child(8){min-width:185px}
++.team-page .data-table th:nth-child(9),.team-page .data-table td:nth-child(9){width:145px;max-width:175px}
++.team-page .data-table th:nth-child(12),.team-page .data-table td:nth-child(12){min-width:105px}
++.team-page .mini-badge{white-space:nowrap!important}
++.team-page .row-actions{white-space:nowrap;flex-wrap:nowrap}
++.group-permission-layout{max-width:1480px;margin:0 auto 36px;display:grid;grid-template-columns:minmax(270px,.75fr) minmax(620px,1.65fr);gap:16px}
++.group-permission-list,.group-permission-editor{padding:18px 20px}
++.group-permission-row{display:flex;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;margin:7px 0;text-decoration:none;color:var(--ink);background:#fff}
++.group-permission-row:hover,.group-permission-row.active{background:#ecf8f6;border-color:#9dcfc7}
++.group-permission-row span{color:#64748b;font-size:12px;white-space:nowrap}
++.group-permission-editor .form-field{margin-bottom:14px}
++.group-permission-picker select{width:100%;min-height:300px}
++.permission-help{margin:8px 0 16px}
++@media(max-width:900px){.group-permission-layout{grid-template-columns:1fr}.group-permission-picker select{min-height:240px}}
+diff --git a/teams/views.py b/teams/views.py
+index a618d4c..e50d0f9 100644
+--- a/teams/views.py
++++ b/teams/views.py
+@@ -164,9 +164,8 @@ def team_edit(request, pk):
+ 
+ 
+ def _coverage_label(jk):
+-    lc = jk.local_council
+-    rc = lc.regional_council if lc else None
+-    return f'{jk.name} — {lc.name if lc else "—"} — {rc.name if rc else "—"}'
++    # Jurisdiction already carries council hierarchy; coverage only needs the Jamatkhana name.
++    return jk.name
+ 
+ 
+ def _export_rows(qs):
+diff --git a/templates/accounts/group_permissions.html b/templates/accounts/group_permissions.html
+new file mode 100644
+index 0000000..a7d2eac
+--- /dev/null
++++ b/templates/accounts/group_permissions.html
+@@ -0,0 +1,26 @@
++{% extends 'base.html' %}
++{% block title %}Group permissions | Social Welfare{% endblock %}
++{% block content %}
++<section class="page-head inline compact-head">
++  <div><p class="eyebrow">ADMINISTRATION</p><h1>Group permissions</h1><p class="muted">Rename reusable permission groups and control which Django permissions each group grants. Jurisdiction and board scope are managed separately under User Access.</p></div>
++  <a class="secondary" href="{% url 'staff_users' %}">← Back to User Access</a>
++</section>
++<div class="group-permission-layout">
++  <section class="panel group-permission-list">
++    <div class="staff-card-head"><h2>Permission groups</h2><span class="muted">{{ groups|length }} configured</span></div>
++    {% for group in groups %}
++      <a class="group-permission-row{% if selected_group and group.id == selected_group.id %} active{% endif %}" href="?edit={{ group.id }}"><strong>{{ group.name }}</strong><span>{{ group.permissions.count }} permission{{ group.permissions.count|pluralize }}</span></a>
++    {% empty %}<p class="muted">No permission groups configured.</p>{% endfor %}
++  </section>
++  <section class="panel group-permission-editor">
++    <div class="staff-card-head"><h2>{% if selected_group %}Edit group permission{% else %}Add group permission{% endif %}</h2></div>
++    <form method="post">{% csrf_token %}{% if selected_group %}<input type="hidden" name="group_id" value="{{ selected_group.id }}">{% endif %}
++      {{ form.non_field_errors }}
++      <div class="form-field">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
++      <div class="form-field group-permission-picker">{{ form.permissions.label_tag }}{{ form.permissions }}{{ form.permissions.errors }}</div>
++      <p class="muted permission-help">Checked permissions are <b>included</b>; unchecked permissions are <b>excluded</b>. Effective Django permissions are the union of all permission groups assigned to the user plus any direct user permissions.</p>
++      <div class="staff-form-actions"><a class="secondary" href="{% url 'staff_users' %}">Cancel</a><button class="primary" type="submit">Save group permission</button></div>
++    </form>
++  </section>
++</div>
++{% endblock %}
+diff --git a/templates/accounts/user_form.html b/templates/accounts/user_form.html
+index 197446d..13d8867 100644
+--- a/templates/accounts/user_form.html
++++ b/templates/accounts/user_form.html
+@@ -21,8 +21,8 @@
+       <div class="form-field compact-check"><label>{{ form.is_active }} Active account</label>{{ form.is_active.errors }}</div>
+     </div>
+     <details class="staff-groups-details">
+-      <summary>Optional Django groups</summary>
+-      <p class="muted">Jurisdiction and board scope are controlled below. Groups are only for additional Django permission bundles.</p>
++      <summary>Group permissions (optional)</summary>
++      <p class="muted">Reusable permission bundles. Jurisdiction and board scope are still controlled by Initial access below. {% if request.user.is_superuser %}<a href="{% url 'group_permissions' %}">Manage group permissions</a>.{% endif %}</p>
+       <div class="staff-group-grid">{{ form.groups }}</div>
+       {{ form.groups.errors }}
+     </details>
+diff --git a/templates/accounts/users.html b/templates/accounts/users.html
+index 426a478..1152697 100644
+--- a/templates/accounts/users.html
++++ b/templates/accounts/users.html
+@@ -3,7 +3,7 @@
+ {% block content %}
+ <section class="page-head inline compact-head">
+   <div><p class="eyebrow">ADMINISTRATION</p><h1>User access</h1><p class="muted">Council admins delegate across boards below them. Board admins delegate only within their board.</p></div>
+-  <a class="primary" href="{% url 'staff_user_create' %}">+ Create user</a>
++  <div class="toolbar">{% if request.user.is_superuser %}<a class="secondary" href="{% url 'group_permissions' %}">Group permissions</a>{% endif %}<a class="primary" href="{% url 'staff_user_create' %}">+ Create user</a></div>
+ </section>
+ <section class="panel form-panel user-access-filters">
+   <form method="get" class="access-filter-grid">
+diff --git a/templates/teams/list.html b/templates/teams/list.html
+index b6512fc..e81a9f9 100644
+--- a/templates/teams/list.html
++++ b/templates/teams/list.html
+@@ -17,7 +17,7 @@
+   </div></form>
+   <div class="card"><div class="card-head"><h2>{% if selected_board %}{{ selected_board.short_name|default:selected_board.name }}{% else %}Team{% endif %} appointments ({{ appointments|length }})</h2><div class="toolbar team-export-toolbar"><a class="btn small export-csv" href="{% url 'team_export' 'csv' %}?{{ request.GET.urlencode }}">CSV</a><a class="btn small export-xlsx" href="{% url 'team_export' 'xlsx' %}?{{ request.GET.urlencode }}">Excel</a><a class="btn small export-pdf" href="{% url 'team_export' 'pdf' %}?{{ request.GET.urlencode }}">PDF</a><a class="btn small export-jpg" href="{% url 'team_export' 'jpg' %}?{{ request.GET.urlencode }}">JPG</a></div></div>
+     <div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Term</th><th>Board</th><th>Position</th><th>Portfolio</th><th>Level / Jurisdiction</th><th>Coverage</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+-      {% for a in appointments %}<tr><td>{{ forloop.counter }}</td><td>{% if a.person.photo %}<img class="team-avatar" src="{{ a.person.photo.url }}">{% else %}<span class="avatar-fallback">{{ a.person.first_name|slice:':1' }}{{ a.person.last_name|slice:':1' }}</span>{% endif %}</td><td><b>{{ a.person.full_name }}</b><small>{{ a.person.email }}</small></td><td>{{ a.term.name }}</td><td>{{ a.board.short_name|default:a.board.name }}</td><td>{{ a.position }}</td><td>{% if a.portfolio %}{{ a.portfolio.name }}{% else %}—{% endif %}</td><td>{{ a.get_level_display }}<small>{{ a.jurisdiction_name }}</small></td><td>{% for jk in a.covered_jamatkhanas.all %}<span class="mini-badge">{{ jk.name }} — {{ jk.local_council.name }} — {{ jk.local_council.regional_council.name }}</span>{% empty %}—{% endfor %}</td><td>{{ a.person.mobile|default:a.person.whatsapp_number|default:'—' }}</td><td><span class="status-pill">{% if a.is_active %}Active{% else %}Inactive{% endif %}</span></td><td><div class="row-actions">{% if a.person.whatsapp_number or a.person.mobile %}<a title="WhatsApp message" target="_blank" href="https://wa.me/{{ a.person.whatsapp_number|default:a.person.mobile|cut:'+' }}" rel="noopener">{% include "partials/whatsapp_icon.html" %}</a>{% endif %}<a href="{% url 'team_detail' a.id %}" title="View">👁</a><a href="{% url 'team_edit' a.id %}" title="Edit">✎</a></div></td></tr>{% empty %}<tr><td colspan="12" class="empty">No team appointments match these filters.</td></tr>{% endfor %}
++      {% for a in appointments %}<tr><td>{{ forloop.counter }}</td><td>{% if a.person.photo %}<img class="team-avatar" src="{{ a.person.photo.url }}">{% else %}<span class="avatar-fallback">{{ a.person.first_name|slice:':1' }}{{ a.person.last_name|slice:':1' }}</span>{% endif %}</td><td><b>{{ a.person.full_name }}</b><small>{{ a.person.email }}</small></td><td>{{ a.term.name }}</td><td>{{ a.board.short_name|default:a.board.name }}</td><td>{{ a.position }}</td><td>{% if a.portfolio %}{{ a.portfolio.name }}{% else %}—{% endif %}</td><td>{{ a.get_level_display }}<small>{{ a.jurisdiction_name }}</small></td><td>{% for jk in a.covered_jamatkhanas.all %}<span class="mini-badge">{{ jk.name }}</span>{% empty %}—{% endfor %}</td><td>{{ a.person.mobile|default:a.person.whatsapp_number|default:'—' }}</td><td><span class="status-pill">{% if a.is_active %}Active{% else %}Inactive{% endif %}</span></td><td><div class="row-actions">{% if a.person.whatsapp_number or a.person.mobile %}<a title="WhatsApp message" target="_blank" href="https://wa.me/{{ a.person.whatsapp_number|default:a.person.mobile|cut:'+' }}" rel="noopener">{% include "partials/whatsapp_icon.html" %}</a>{% endif %}<a href="{% url 'team_detail' a.id %}" title="View">👁</a><a href="{% url 'team_edit' a.id %}" title="Edit">✎</a></div></td></tr>{% empty %}<tr><td colspan="12" class="empty">No team appointments match these filters.</td></tr>{% endfor %}
+     </tbody></table></div>
+   </div>
+ </div>

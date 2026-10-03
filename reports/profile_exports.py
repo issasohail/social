@@ -109,6 +109,10 @@ def profile_jpg_bytes(person, *, profile=None, family_harmony=False):
                 ('Smoking', profile.smoking), ('Willing to Relocate', 'Yes' if person.willing_to_relocate else 'No' if person.willing_to_relocate is False else '—'),
                 ('Personal Statement', profile.personal_statement), ('Family Values', profile.family_values),
             ]),
+                  ('Social Links', [
+                ('Facebook', person.facebook_url), ('Instagram', person.instagram_url),
+                ('LinkedIn', person.linkedin_url), ('Other', person.other_social_url),
+            ]),
         ]
         if pref:
             sections.append(('Preferences for Prospective Match', [
@@ -130,7 +134,7 @@ def profile_jpg_bytes(person, *, profile=None, family_harmony=False):
                 ('City / Province', f'{person.city or "—"} / {person.province or "—"}'), ('Country', person.country),
                 ('Current Address', person.current_address), ('Permanent Address', person.permanent_address),
             ]),
-            ('Organization', [
+            ('Jamatkhana', [
                 ('Regional Council', person.region), ('Local Council', person.local_council), ('Jamatkhana', person.jamatkhana),
             ]),
             ('Education & Career', [
@@ -207,22 +211,19 @@ def profile_jpg_bytes(person, *, profile=None, family_harmony=False):
     return output.getvalue()
 
 
-def person_pdf_bytes(person):
-    """Render a People profile using the same visual language as Family Harmony PDF."""
+def _shared_profile_pdf_bytes(person, *, serial, record_type, sections, footer_text, document_title, badge_marital_status=None):
+    """One PDF renderer shared by People and Family Harmony exports."""
     output = BytesIO()
     width, height = letter
     pdf = canvas.Canvas(output, pagesize=letter)
-    pdf.setTitle(f'People Profile - {person.full_name}')
+    pdf.setTitle(document_title)
     navy = (0.09, 0.20, 0.29)
     pale = (0.91, 0.94, 0.96)
     ink = (0.12, 0.20, 0.25)
     muted = (0.38, 0.46, 0.50)
 
-    def clean(value):
-        return _clean(value)
-
     def wrap(text, font='Helvetica', size=6.8, max_width=175, max_lines=2):
-        words = clean(text).replace('\n', ' ').split()
+        words = _clean(text).replace('\n', ' ').split()
         lines, line = [], ''
         for word in words:
             test = (line + ' ' + word).strip()
@@ -242,6 +243,7 @@ def person_pdf_bytes(person):
             lines[-1] = lines[-1][:-1] + '…' if len(lines[-1]) > 2 else lines[-1]
         return lines
 
+    # Header dimensions and typography are intentionally identical for both modules.
     pdf.setFillColorRGB(*navy)
     pdf.rect(0, height - 138, width, 138, fill=1, stroke=0)
     photo_x, photo_y, photo_w, photo_h = 28, height - 128, 88, 106
@@ -256,9 +258,9 @@ def person_pdf_bytes(person):
     pdf.setFont('Helvetica-Bold', 20)
     pdf.drawString(134, height - 48, person.full_name[:38])
     pdf.setFont('Helvetica', 8)
-    pdf.drawString(134, height - 68, f'{person.serial_number}   |   People Profile')
+    pdf.drawString(134, height - 68, f'{serial}   |   {record_type}')
     pdf.drawString(134, height - 84, 'Aga Khan Social Welfare Board - Central Region')
-    badges = [f'{person.age or "—"} yrs', person.gender or '—', person.marital_status or '—']
+    badges = [f'{person.age or "—"} yrs', person.gender or '—', badge_marital_status or person.marital_status or '—']
     bx = 134
     for badge in badges:
         bw = stringWidth(str(badge), 'Helvetica-Bold', 7) + 14
@@ -270,7 +272,6 @@ def person_pdf_bytes(person):
         bx += bw + 6
 
     y = height - 156
-
     def section(title, items):
         nonlocal y
         pdf.setFillColorRGB(*pale)
@@ -301,30 +302,82 @@ def person_pdf_bytes(person):
             y -= row_height
         y -= 4
 
-    section('Personal Information', [
-        ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
-        ('Marital Status', person.marital_status), ('Nationality', person.nationality),
-        ('Identity', f'{person.get_identity_type_display() if person.identity_type else "—"} · {person.masked_identity_number() or "—"}'),
-        ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
-    ])
-    section('Contact & Residence', [
-        ('Mobile', person.mobile), ('WhatsApp', person.whatsapp_number), ('Email', person.email),
-        ('Province', person.province), ('Current Address', person.current_address), ('Permanent Address', person.permanent_address),
-    ])
-    section('Organization', [
-        ('Regional Council', person.region), ('Local Council', person.local_council), ('Jamatkhana', person.jamatkhana),
-    ])
-    section('Education & Career', [
-        ('Education', person.education), ('Education Details', person.education_details), ('Occupation', person.occupation),
-        ('Employer / Business', person.employer_or_business), ('Income Range', person.income_range), ('Languages', person.languages),
-        ('Interests', person.interests), ('Relocation', 'Yes' if person.willing_to_relocate else 'No' if person.willing_to_relocate is False else '—'),
-    ])
+    for title, items in sections:
+        if y <= 58:
+            break
+        section(title, items)
 
     pdf.setStrokeColorRGB(0.78, 0.82, 0.84)
     pdf.line(26, 34, width - 26, 34)
     pdf.setFillColorRGB(*muted)
     pdf.setFont('Helvetica', 6.3)
-    pdf.drawString(28, 22, 'Confidential People profile. Identity documents are not included.')
+    pdf.drawString(28, 22, footer_text)
     pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
     pdf.save()
     return output.getvalue()
+
+
+def marriage_pdf_bytes(profile):
+    person = profile.person
+    pref = getattr(profile, 'preferences', None)
+    height_text = '—'
+    if profile.height_cm:
+        total_inches = round(profile.height_cm / 2.54)
+        height_text = f'{total_inches // 12} ft {total_inches % 12} in'
+    sections = [
+        ('Personal Information', [
+            ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
+            ('Marital Status', profile.marital_status or person.marital_status), ('Height / Weight', f'{height_text} / {profile.weight_kg or "—"} kg'),
+            ('Physical Status', profile.physical_status), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
+            ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
+        ]),
+        ('Family', [
+            ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'), ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
+            ('Brothers', profile.brothers_count), ('Sisters', profile.sisters_count), ('Family Residence', profile.family_residence), ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
+        ]),
+        ('Education & Career', [
+            ('Education', profile.qualification or profile.education_level or person.education), ('Institution', profile.institution), ('Profession', profile.profession or person.occupation),
+            ('Employer / Business', profile.employer_or_business or person.employer_or_business), ('Income', profile.income_range or person.income_range), ('Experience', profile.years_experience),
+            ('House', 'Yes' if profile.owns_house is True else 'No' if profile.owns_house is False else '—'), ('Car', 'Yes' if profile.owns_car is True else 'No' if profile.owns_car is False else '—'),
+        ]),
+        ('Health & Lifestyle', [
+            ('Disability', profile.disability_status), ('Known Diseases', profile.known_diseases), ('Smoking', profile.smoking), ('Languages', profile.languages or person.languages),
+            ('Interests', profile.interests or person.interests), ('Health Notes', profile.health_information),
+        ]),
+        ('Social Links', [
+            ('Facebook', person.facebook_url), ('Instagram', person.instagram_url),
+            ('LinkedIn', person.linkedin_url), ('Other', person.other_social_url),
+        ]),
+    ]
+    if pref:
+        sections.append(('Preferences for Prospective Match', [
+            ('Age Range', f'{pref.minimum_age or "Any"} - {pref.maximum_age or "Any"}'), ('Education', pref.preferred_education_options), ('Profession', pref.preferred_professions),
+            ('Location', pref.preferred_cities or pref.preferred_locations), ('Income', pref.preferred_income_options), ('Marital Status', pref.preferred_marital_status_options),
+            ('Languages', pref.preferred_languages), ('Relocation', 'Yes' if pref.willingness_to_relocate else 'No'),
+        ]))
+        sections.append(('About', [('Personal Statement', profile.personal_statement), ('Other Expectations', pref.other_expectations or profile.expectations)]))
+    return _shared_profile_pdf_bytes(person, serial=profile.serial_number, record_type='Marriage Profile', sections=sections, footer_text='Confidential Family Harmony profile. CNIC images and internal documents are not included.', document_title=f'Marriage Profile - {person.full_name}', badge_marital_status=profile.marital_status)
+
+
+def person_pdf_bytes(person):
+    sections = [
+        ('Personal Information', [
+            ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
+            ('Marital Status', person.marital_status), ('Nationality', person.nationality),
+            ('Identity', f'{person.get_identity_type_display() if person.identity_type else "—"} · {person.masked_identity_number() or "—"}'), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
+            ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
+        ]),
+        ('Contact & Residence', [
+            ('Mobile', person.mobile), ('WhatsApp', person.whatsapp_number), ('Alternate Mobile', person.alternate_mobile), ('Email', person.email),
+            ('Current Address', person.current_address), ('Permanent Address', person.permanent_address),
+        ]),
+        ('Jamatkhana', [('Regional Council', person.region), ('Local Council', person.local_council), ('Jamatkhana', person.jamatkhana)]),
+        ('Education & Career', [
+            ('Education', person.education), ('Education Details', person.education_details), ('Occupation', person.occupation), ('Employer / Business', person.employer_or_business),
+            ('Income Range', person.income_range), ('Languages', person.languages), ('Interests', person.interests), ('Relocation', 'Yes' if person.willing_to_relocate else 'No' if person.willing_to_relocate is False else '—'),
+        ]),
+    ]
+    social = [('Facebook', person.facebook_url), ('Instagram', person.instagram_url), ('LinkedIn', person.linkedin_url), ('Other', person.other_social_url)]
+    if any(v for _, v in social):
+        sections.append(('Social Links', social))
+    return _shared_profile_pdf_bytes(person, serial=person.serial_number, record_type='People Profile', sections=sections, footer_text='Confidential People profile. CNIC images and internal documents are not included.', document_title=f'People Profile - {person.full_name}')

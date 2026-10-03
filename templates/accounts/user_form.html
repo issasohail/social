@@ -1,1 +1,59 @@
-{% extends 'base.html' %}{% block title %}Create user | Social Welfare{% endblock %}{% block content %}<section class="page-head"><p class="eyebrow">ADMINISTRATION</p><h1>Create staff user</h1><p class="muted">Passwords are stored by Django as secure hashes. Never share them in tickets or audit notes.</p></section><section class="panel form-panel"><form method="post">{% csrf_token %}{{ form.as_p }}<h2>Initial access</h2><p class="muted">The access level controls which councils this user can manage.</p>{{ access_form.non_field_errors }}<div class="form-layout"><div class="form-row"><div class="form-field">{{ access_form.level.label_tag }} {{ access_form.level }} {{ access_form.level.errors }}</div><div class="form-field">{{ access_form.is_active.label_tag }} {{ access_form.is_active }} {{ access_form.is_active.errors }}</div></div><div class="form-row"><div class="form-field">{{ access_form.national_council.label_tag }} {{ access_form.national_council }} {{ access_form.national_council.errors }}</div><div class="form-field">{{ access_form.regional_council.label_tag }} {{ access_form.regional_council }} {{ access_form.regional_council.errors }}</div><div class="form-field">{{ access_form.local_council.label_tag }} {{ access_form.local_council }} {{ access_form.local_council.errors }}</div><div class="form-field">{{ access_form.jamatkhana.label_tag }} {{ access_form.jamatkhana }} {{ access_form.jamatkhana.errors }}</div></div></div><button class="primary">Create user</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Create user | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head inline compact-head">
+  <div>
+    <p class="eyebrow">ADMINISTRATION</p>
+    <h1>Create staff user</h1>
+    <p class="muted">Staff identity comes from People. Access may be council-wide or restricted to one board.</p>
+  </div>
+  <a class="secondary" href="{% url 'staff_users' %}">← Back</a>
+</section>
+
+<form method="post" class="staff-user-form">{% csrf_token %}
+  <section class="panel staff-card">
+    <div class="staff-card-head"><h2>1. Account</h2><span class="muted">Select the existing Person record first.</span></div>
+    {{ form.non_field_errors }}
+    <div class="staff-account-grid">
+      <div class="form-field span-2">{{ form.person.label_tag }}{{ form.person }}{{ form.person.errors }}</div>
+      <div class="form-field">{{ form.username.label_tag }}{{ form.username }}{{ form.username.errors }}</div>
+      <div class="form-field">{{ form.password.label_tag }}{{ form.password }}{{ form.password.errors }}</div>
+      <div class="form-field compact-check"><label>{{ form.is_active }} Active account</label>{{ form.is_active.errors }}</div>
+    </div>
+    <details class="staff-groups-details">
+      <summary>Group permissions (optional)</summary>
+      <p class="muted">Reusable permission bundles. Jurisdiction and board scope are still controlled by Initial access below. {% if request.user.is_superuser %}<a href="{% url 'group_permissions' %}">Manage group permissions</a>.{% endif %}</p>
+      <div class="staff-group-grid">{{ form.groups }}</div>
+      {{ form.groups.errors }}
+    </details>
+  </section>
+
+  <section class="panel staff-card">
+    <div class="staff-card-head"><h2>2. Initial access</h2><span class="muted">A Council access can manage any board in scope; a Board access is restricted to that board.</span></div>
+    {{ access_form.non_field_errors }}
+    <div class="staff-access-grid">
+      <div class="form-field">{{ access_form.level.label_tag }}{{ access_form.level }}{{ access_form.level.errors }}</div>
+      <div class="form-field">{{ access_form.role.label_tag }}{{ access_form.role }}{{ access_form.role.errors }}</div>
+      <div class="form-field">{{ access_form.board.label_tag }}{{ access_form.board }}{{ access_form.board.errors }}<small>Leave blank only for Council authority.</small></div>
+      <div class="form-field compact-check"><label>{{ access_form.is_active }} Active access</label>{{ access_form.is_active.errors }}</div>
+
+      <div class="form-field">{{ access_form.national_council.label_tag }}{{ access_form.national_council }}{{ access_form.national_council.errors }}</div>
+      <div class="form-field">{{ access_form.regional_council.label_tag }}{{ access_form.regional_council }}{{ access_form.regional_council.errors }}</div>
+      <div class="form-field">{{ access_form.local_council.label_tag }}{{ access_form.local_council }}{{ access_form.local_council.errors }}</div>
+      <div class="form-field">{{ access_form.jamatkhana.label_tag }}{{ access_form.jamatkhana }}{{ access_form.jamatkhana.errors }}</div>
+
+      <div class="form-field">{{ access_form.start_date.label_tag }}{{ access_form.start_date }}{{ access_form.start_date.errors }}</div>
+      <div class="form-field">{{ access_form.end_date.label_tag }}{{ access_form.end_date }}{{ access_form.end_date.errors }}</div>
+    </div>
+
+    <div class="capability-block">
+      <h3>Capabilities</h3>
+      <p class="muted">These permissions apply only inside this access assignment's jurisdiction and board scope.</p>
+      <div class="capability-grid">{{ access_form.capabilities }}</div>
+      {{ access_form.capabilities.errors }}
+    </div>
+  </section>
+
+  <div class="staff-form-actions"><a class="secondary" href="{% url 'staff_users' %}">Cancel</a><button class="primary" type="submit">Create user</button></div>
+</form>
+{% endblock %}

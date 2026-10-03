@@ -1,4 +1,4 @@
 from django.contrib import admin
-from .models import Portfolio, TeamAppointment, TeamPosition, Term
+from .models import Portfolio, TeamAppointment, TeamCategory, TeamPosition, Term
 
-admin.site.register([Term, TeamPosition, Portfolio, TeamAppointment])
+admin.site.register([Term, TeamCategory, TeamPosition, Portfolio, TeamAppointment])

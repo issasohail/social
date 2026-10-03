@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Group permissions | Social Welfare{% endblock %}
+{% block content %}
+<section class="page-head inline compact-head group-permission-head">
+  <div>
+    <p class="eyebrow">ADMINISTRATION</p>
+    <h1>Group permissions</h1>
+    <p class="muted">Rename reusable permission groups and control which Django permissions each group grants. Jurisdiction and board scope are managed separately under User Access.</p>
+  </div>
+  <a class="secondary" href="{% url 'staff_users' %}">← Back to User Access</a>
+</section>
+<div class="group-permission-layout group-permission-layout-wide">
+  <section class="panel group-permission-list">
+    <div class="staff-card-head">
+      <h2>Permission groups</h2>
+      <span class="muted">{{ groups|length }} configured</span>
+    </div>
+    {% for group in groups %}
+      <a class="group-permission-row{% if selected_group and group.id == selected_group.id %} active{% endif %}" href="?edit={{ group.id }}">
+        <strong>{{ group.name }}</strong>
+        <span>{{ group.permissions.count }} permission{{ group.permissions.count|pluralize }}</span>
+      </a>
+    {% empty %}
+      <p class="muted">No permission groups configured.</p>
+    {% endfor %}
+  </section>
+
+  <section class="panel group-permission-editor">
+    <div class="staff-card-head"><h2>{% if selected_group %}Edit group permission{% else %}Add group permission{% endif %}</h2></div>
+    <form method="post">
+      {% csrf_token %}
+      {% if selected_group %}<input type="hidden" name="group_id" value="{{ selected_group.id }}">{% endif %}
+      {{ form.non_field_errors }}
+
+      <div class="form-field">
+        {{ form.name.label_tag }}
+        {{ form.name }}
+        {{ form.name.errors }}
+      </div>
+
+      <div class="form-field group-permission-checkbox-picker">
+        <label>{{ form.permissions.label }}</label>
+        {{ form.permissions.errors }}
+        <p class="muted permission-help">Checked permissions are <b>included</b>; unchecked permissions are <b>excluded</b>. Effective Django permissions are the union of all permission groups assigned to the user plus any direct user permissions.</p>
+
+        <div class="permission-section-grid">
+          {% for section in permission_sections %}
+            <section class="permission-card">
+              <h3>{{ section.title }}</h3>
+              <div class="permission-card-body">
+                {% for item in section.items %}
+                  <label class="permission-check-row">
+                    <input type="checkbox" name="permissions" value="{{ item.id }}" {% if item.checked %}checked{% endif %}>
+                    <span class="permission-check-text">
+                      <span class="permission-check-label">{{ item.label }}</span>
+                      <small>{{ item.meta }}</small>
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="staff-form-actions">
+        <a class="secondary" href="{% url 'staff_users' %}">Cancel</a>
+        <button class="primary" type="submit">Save group permission</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

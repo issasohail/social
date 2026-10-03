@@ -1,0 +1,42 @@
+diff --git a/static/app.css b/static/app.css
+index 1bcb031..2b5ff17 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -171,3 +171,37 @@
+ @media(max-width:1400px){.permission-section-grid{grid-template-columns:repeat(3,minmax(220px,1fr))}}
+ @media(max-width:1100px){.group-permission-layout{grid-template-columns:1fr}.permission-section-grid{grid-template-columns:repeat(2,minmax(220px,1fr))}}
+ @media(max-width:760px){.group-permission-layout-wide{width:min(100%,calc(100% - 14px))}.group-permission-list,.group-permission-editor{padding:14px}.permission-section-grid{grid-template-columns:1fr}.group-permission-row{align-items:flex-start;flex-direction:column}.group-permission-row strong{max-width:100%}}
++
++/* Group permissions: desktop matrix layout matching the approved mockup. */
++.group-permission-head{width:min(1720px,calc(100% - 32px));padding-left:0!important;padding-right:0!important;padding-top:34px!important;margin:0 auto 18px!important;align-items:flex-end!important}
++.group-permission-head h1{margin-bottom:8px}
++.group-permission-layout.group-permission-layout-wide{width:min(1720px,calc(100% - 32px));max-width:none!important;margin:0 auto 40px!important;grid-template-columns:320px minmax(0,1fr)!important;gap:18px!important}
++.group-permission-layout .panel{margin:0!important;box-shadow:0 8px 28px rgba(24,49,59,.06)}
++.group-permission-list{padding:18px!important;align-self:start}
++.group-permission-editor{padding:20px!important;min-width:0}
++.group-permission-list .staff-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
++.group-permission-list .staff-card-head h2,.group-permission-editor .staff-card-head h2{font-size:24px;margin:0}
++.group-permission-row{padding:11px 12px!important;margin:7px 0!important;border-radius:7px!important}
++.group-permission-row strong{font-size:14px;line-height:1.25;max-width:76%!important}
++.group-permission-row span{font-size:11px!important}
++.group-permission-editor form>.form-field:first-of-type{margin-bottom:12px}
++.group-permission-editor form>.form-field:first-of-type>label{display:block;margin-bottom:5px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
++.group-permission-editor form>.form-field:first-of-type input{width:100%;min-height:38px}
++.group-permission-checkbox-picker{display:block!important;gap:0!important}
++.group-permission-checkbox-picker>label{display:block!important;margin:0 0 7px!important;font-size:11px!important;font-weight:700!important;letter-spacing:.06em!important;text-transform:uppercase!important;color:var(--muted)!important}
++.permission-help{font-size:13px;line-height:1.35;margin:0 0 14px!important;max-width:1050px}
++.permission-section-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:12px!important;align-items:start!important}
++.permission-card{border:1px solid #d8e4e3!important;border-radius:7px!important;background:#fff!important;overflow:hidden!important;box-shadow:none!important;min-width:0}
++.permission-card h3{margin:0!important;padding:8px 11px!important;background:#eaf4f3!important;color:#17324a!important;font:700 15px/1.25 Georgia,serif!important}
++.permission-card-body{padding:8px 11px 10px!important;display:grid!important;gap:2px!important}
++.group-permission-checkbox-picker .permission-check-row{display:grid!important;grid-template-columns:18px minmax(0,1fr)!important;gap:7px!important;align-items:start!important;padding:4px 0!important;margin:0!important;background:transparent!important;border:0!important;border-radius:0!important;cursor:pointer!important;font:400 12px/1.28 Georgia,serif!important;letter-spacing:0!important;text-transform:none!important;color:var(--ink)!important}
++.group-permission-checkbox-picker .permission-check-row:hover{background:#f7fbfa!important}
++.group-permission-checkbox-picker .permission-check-row input[type=checkbox]{appearance:auto!important;-webkit-appearance:checkbox!important;width:15px!important;height:15px!important;min-height:0!important;margin:1px 0 0!important;padding:0!important;accent-color:#16867f!important;box-shadow:none!important}
++.group-permission-checkbox-picker .permission-check-text{display:block!important;min-width:0!important;text-transform:none!important;letter-spacing:0!important;color:var(--ink)!important}
++.group-permission-checkbox-picker .permission-check-label{display:block!important;font:400 12px/1.28 Georgia,serif!important;text-transform:none!important;letter-spacing:0!important;color:var(--ink)!important;overflow-wrap:anywhere}
++.group-permission-checkbox-picker .permission-check-text small{display:none!important}
++.group-permission-editor .staff-form-actions{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
++.group-permission-editor .staff-form-actions .secondary,.group-permission-editor .staff-form-actions .primary{min-height:38px;padding:9px 16px}
++@media(max-width:1450px){.permission-section-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.group-permission-layout.group-permission-layout-wide{grid-template-columns:285px minmax(0,1fr)!important}}
++@media(max-width:1120px){.group-permission-layout.group-permission-layout-wide{grid-template-columns:1fr!important}.group-permission-list{position:static}.permission-section-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
++@media(max-width:760px){.group-permission-head,.group-permission-layout.group-permission-layout-wide{width:calc(100% - 16px)!important}.group-permission-head{display:block!important;padding-top:20px!important}.group-permission-head .secondary{margin-top:12px}.permission-section-grid{grid-template-columns:1fr!important}.group-permission-list,.group-permission-editor{padding:12px!important}.group-permission-editor .staff-form-actions{position:sticky;bottom:0;background:#fff;padding:10px 0 0}}

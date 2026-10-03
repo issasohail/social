@@ -27,9 +27,22 @@ class Term(models.Model):
         return self.name
 
 
+class TeamCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+        verbose_name_plural = 'Team categories'
+
+    def __str__(self):
+        return self.name
+
+
 class TeamPosition(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    category = models.CharField(max_length=80, blank=True)
+    category = models.ForeignKey(TeamCategory, null=True, blank=True, on_delete=models.PROTECT, related_name='positions')
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
@@ -41,16 +54,22 @@ class TeamPosition(models.Model):
 
 
 class Portfolio(models.Model):
-    name = models.CharField(max_length=120, unique=True)
-    code = models.CharField(max_length=50, unique=True)
+    board = models.ForeignKey('boards.Board', on_delete=models.PROTECT, related_name='team_portfolios')
+    name = models.CharField(max_length=120)
+    code = models.CharField(max_length=50)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ['sort_order', 'name']
+        ordering = ['board__sort_order', 'board__name', 'sort_order', 'name']
+        constraints = [
+            models.UniqueConstraint(fields=['board', 'name'], name='unique_board_portfolio_name'),
+            models.UniqueConstraint(fields=['board', 'code'], name='unique_board_portfolio_code'),
+        ]
 
     def __str__(self):
-        return self.name
+        board = self.board.short_name or self.board.name
+        return f'{board} — {self.name}'
 
 
 class TeamAppointment(models.Model):
@@ -80,7 +99,7 @@ class TeamAppointment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['term', 'board', 'level', 'position__sort_order', 'person__full_name']
+        ordering = ['position__sort_order', 'position__name', 'person__full_name']
         indexes = [
             models.Index(fields=['term', 'board', 'level', 'is_active']),
             models.Index(fields=['regional_council', 'local_council', 'jamatkhana']),
@@ -98,6 +117,8 @@ class TeamAppointment(models.Model):
             errors['local_council'] = 'Local council is required.'
         if self.level == self.Level.JK and not self.jamatkhana_id:
             errors['jamatkhana'] = 'Jamatkhana is required.'
+        if self.portfolio_id and self.board_id and self.portfolio.board_id != self.board_id:
+            errors['portfolio'] = 'Portfolio must belong to the selected board.'
         if errors:
             raise ValidationError(errors)
 

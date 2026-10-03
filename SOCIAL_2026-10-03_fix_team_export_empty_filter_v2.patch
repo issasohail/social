@@ -1,0 +1,16 @@
+diff --git a/teams/views.py b/teams/views.py
+--- a/teams/views.py
++++ b/teams/views.py
+@@ -185,8 +185,10 @@ def _export_rows(qs):
+ 
+ 
+ def _export_title(filters):
+-    term=Term.objects.filter(pk=filters.get('term')).first()
+-    board=Board.objects.filter(pk=filters.get('board')).first()
++    term_id = filters.get('term') or None
++    board_id = filters.get('board') or None
++    term = Term.objects.filter(pk=term_id).first() if term_id else None
++    board = Board.objects.filter(pk=board_id).first() if board_id else None
+     board_name=(board.short_name or board.name) if board else 'Teams & Contacts'
+     title=f'{board_name} Contact List'
+     if term:

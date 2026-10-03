@@ -1,0 +1,191 @@
+diff --git a/accounts/views.py b/accounts/views.py
+index 08ae5df..9824b28 100644
+--- a/accounts/views.py
++++ b/accounts/views.py
+@@ -1,3 +1,4 @@
++from collections import OrderedDict
+ from functools import wraps
+ 
+ from django.contrib import messages
+@@ -15,6 +16,47 @@ from organization.access import active_accesses, can_delegate_access, user_has_c
+ from .forms import GroupPermissionForm, JurisdictionAccessForm, StaffUserForm
+ 
+ 
++
++
++GROUP_PERMISSION_SECTION_TITLES = OrderedDict([
++    ('people', 'People'),
++    ('family_harmony', 'Family Harmony'),
++    ('teams', 'Teams & Contacts'),
++    ('accounts', 'User Access'),
++    ('organization', 'Jamatkhana'),
++    ('settings_app', 'Settings'),
++    ('reports', 'Reports / Exports'),
++    ('audit', 'Audit / Logs'),
++    ('misc', 'System / Django'),
++])
++
++
++def _permission_label(permission):
++    label = permission.name or permission.codename.replace('_', ' ')
++    if label.lower().startswith('can '):
++        label = label[4:]
++    return label[:1].upper() + label[1:]
++
++
++def _permission_section_key(permission):
++    app_label = permission.content_type.app_label
++    return app_label if app_label in GROUP_PERMISSION_SECTION_TITLES else 'misc'
++
++
++def _permission_sections(form):
++    raw_selected = form['permissions'].value() or []
++    selected_ids = {int(value) for value in raw_selected if str(value).isdigit()}
++    buckets = OrderedDict((key, {'key': key, 'title': title, 'items': []}) for key, title in GROUP_PERMISSION_SECTION_TITLES.items())
++    for permission in form.fields['permissions'].queryset:
++        section_key = _permission_section_key(permission)
++        buckets[section_key]['items'].append({
++            'id': permission.pk,
++            'label': _permission_label(permission),
++            'checked': permission.pk in selected_ids,
++            'meta': f"{permission.content_type.model.replace('_', ' ').title()} · {permission.content_type.app_label.replace('_', ' ').title()}",
++        })
++    return [section for section in buckets.values() if section['items']]
++
+ def staff_admin_required(view):
+     @wraps(view)
+     def wrapped(request, *args, **kwargs):
+@@ -223,4 +265,5 @@ def group_permissions(request):
+         'groups': groups,
+         'selected_group': selected,
+         'form': form,
++        'permission_sections': _permission_sections(form),
+     })
+diff --git a/static/app.css b/static/app.css
+index 25ce652..1bcb031 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -145,12 +145,29 @@
+ .team-page .data-table th:nth-child(12),.team-page .data-table td:nth-child(12){min-width:105px}
+ .team-page .mini-badge{white-space:nowrap!important}
+ .team-page .row-actions{white-space:nowrap;flex-wrap:nowrap}
+-.group-permission-layout{max-width:1480px;margin:0 auto 36px;display:grid;grid-template-columns:minmax(270px,.75fr) minmax(620px,1.65fr);gap:16px}
++
++
++
++.group-permission-head{max-width:1720px;margin-left:auto;margin-right:auto}
++.group-permission-layout{max-width:1720px;margin:0 auto 36px;display:grid;grid-template-columns:minmax(290px,.75fr) minmax(780px,2.2fr);gap:16px;align-items:start}
++.group-permission-layout-wide{width:min(1720px,calc(100% - 28px))}
+ .group-permission-list,.group-permission-editor{padding:18px 20px}
+-.group-permission-row{display:flex;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;margin:7px 0;text-decoration:none;color:var(--ink);background:#fff}
+-.group-permission-row:hover,.group-permission-row.active{background:#ecf8f6;border-color:#9dcfc7}
++.group-permission-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:10px;margin:8px 0;text-decoration:none;color:var(--ink);background:#fff}
++.group-permission-row strong{display:block;max-width:72%}
++.group-permission-row:hover,.group-permission-row.active{background:#ecf8f6;border-color:#9dcfc7;box-shadow:inset 3px 0 0 #16867f}
+ .group-permission-row span{color:#64748b;font-size:12px;white-space:nowrap}
+ .group-permission-editor .form-field{margin-bottom:14px}
+-.group-permission-picker select{width:100%;min-height:300px}
+-.permission-help{margin:8px 0 16px}
+-@media(max-width:900px){.group-permission-layout{grid-template-columns:1fr}.group-permission-picker select{min-height:240px}}
++.group-permission-checkbox-picker>label{display:block;margin-bottom:8px;font-weight:700}
++.permission-help{margin:0 0 14px}
++.permission-section-grid{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:14px;align-items:start}
++.permission-card{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
++.permission-card h3{margin:0;padding:10px 14px;background:#edf6f5;color:#17324a;font-size:18px}
++.permission-card-body{padding:10px 12px;display:grid;gap:8px}
++.permission-check-row{display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:start;padding:4px 0;cursor:pointer}
++.permission-check-row input{margin-top:3px;width:16px;height:16px;accent-color:#16867f}
++.permission-check-text{display:block;min-width:0}
++.permission-check-label{display:block;color:#183247;line-height:1.25}
++.permission-check-text small{display:block;margin-top:2px;color:#6b7b86;font-size:11px;line-height:1.25}
++@media(max-width:1400px){.permission-section-grid{grid-template-columns:repeat(3,minmax(220px,1fr))}}
++@media(max-width:1100px){.group-permission-layout{grid-template-columns:1fr}.permission-section-grid{grid-template-columns:repeat(2,minmax(220px,1fr))}}
++@media(max-width:760px){.group-permission-layout-wide{width:min(100%,calc(100% - 14px))}.group-permission-list,.group-permission-editor{padding:14px}.permission-section-grid{grid-template-columns:1fr}.group-permission-row{align-items:flex-start;flex-direction:column}.group-permission-row strong{max-width:100%}}
+diff --git a/templates/accounts/group_permissions.html b/templates/accounts/group_permissions.html
+index a7d2eac..718169c 100644
+--- a/templates/accounts/group_permissions.html
++++ b/templates/accounts/group_permissions.html
+@@ -1,25 +1,72 @@
+ {% extends 'base.html' %}
+ {% block title %}Group permissions | Social Welfare{% endblock %}
+ {% block content %}
+-<section class="page-head inline compact-head">
+-  <div><p class="eyebrow">ADMINISTRATION</p><h1>Group permissions</h1><p class="muted">Rename reusable permission groups and control which Django permissions each group grants. Jurisdiction and board scope are managed separately under User Access.</p></div>
++<section class="page-head inline compact-head group-permission-head">
++  <div>
++    <p class="eyebrow">ADMINISTRATION</p>
++    <h1>Group permissions</h1>
++    <p class="muted">Rename reusable permission groups and control which Django permissions each group grants. Jurisdiction and board scope are managed separately under User Access.</p>
++  </div>
+   <a class="secondary" href="{% url 'staff_users' %}">← Back to User Access</a>
+ </section>
+-<div class="group-permission-layout">
++<div class="group-permission-layout group-permission-layout-wide">
+   <section class="panel group-permission-list">
+-    <div class="staff-card-head"><h2>Permission groups</h2><span class="muted">{{ groups|length }} configured</span></div>
++    <div class="staff-card-head">
++      <h2>Permission groups</h2>
++      <span class="muted">{{ groups|length }} configured</span>
++    </div>
+     {% for group in groups %}
+-      <a class="group-permission-row{% if selected_group and group.id == selected_group.id %} active{% endif %}" href="?edit={{ group.id }}"><strong>{{ group.name }}</strong><span>{{ group.permissions.count }} permission{{ group.permissions.count|pluralize }}</span></a>
+-    {% empty %}<p class="muted">No permission groups configured.</p>{% endfor %}
++      <a class="group-permission-row{% if selected_group and group.id == selected_group.id %} active{% endif %}" href="?edit={{ group.id }}">
++        <strong>{{ group.name }}</strong>
++        <span>{{ group.permissions.count }} permission{{ group.permissions.count|pluralize }}</span>
++      </a>
++    {% empty %}
++      <p class="muted">No permission groups configured.</p>
++    {% endfor %}
+   </section>
++
+   <section class="panel group-permission-editor">
+     <div class="staff-card-head"><h2>{% if selected_group %}Edit group permission{% else %}Add group permission{% endif %}</h2></div>
+-    <form method="post">{% csrf_token %}{% if selected_group %}<input type="hidden" name="group_id" value="{{ selected_group.id }}">{% endif %}
++    <form method="post">
++      {% csrf_token %}
++      {% if selected_group %}<input type="hidden" name="group_id" value="{{ selected_group.id }}">{% endif %}
+       {{ form.non_field_errors }}
+-      <div class="form-field">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
+-      <div class="form-field group-permission-picker">{{ form.permissions.label_tag }}{{ form.permissions }}{{ form.permissions.errors }}</div>
+-      <p class="muted permission-help">Checked permissions are <b>included</b>; unchecked permissions are <b>excluded</b>. Effective Django permissions are the union of all permission groups assigned to the user plus any direct user permissions.</p>
+-      <div class="staff-form-actions"><a class="secondary" href="{% url 'staff_users' %}">Cancel</a><button class="primary" type="submit">Save group permission</button></div>
++
++      <div class="form-field">
++        {{ form.name.label_tag }}
++        {{ form.name }}
++        {{ form.name.errors }}
++      </div>
++
++      <div class="form-field group-permission-checkbox-picker">
++        <label>{{ form.permissions.label }}</label>
++        {{ form.permissions.errors }}
++        <p class="muted permission-help">Checked permissions are <b>included</b>; unchecked permissions are <b>excluded</b>. Effective Django permissions are the union of all permission groups assigned to the user plus any direct user permissions.</p>
++
++        <div class="permission-section-grid">
++          {% for section in permission_sections %}
++            <section class="permission-card">
++              <h3>{{ section.title }}</h3>
++              <div class="permission-card-body">
++                {% for item in section.items %}
++                  <label class="permission-check-row">
++                    <input type="checkbox" name="permissions" value="{{ item.id }}" {% if item.checked %}checked{% endif %}>
++                    <span class="permission-check-text">
++                      <span class="permission-check-label">{{ item.label }}</span>
++                      <small>{{ item.meta }}</small>
++                    </span>
++                  </label>
++                {% endfor %}
++              </div>
++            </section>
++          {% endfor %}
++        </div>
++      </div>
++
++      <div class="staff-form-actions">
++        <a class="secondary" href="{% url 'staff_users' %}">Cancel</a>
++        <button class="primary" type="submit">Save group permission</button>
++      </div>
+     </form>
+   </section>
+ </div>

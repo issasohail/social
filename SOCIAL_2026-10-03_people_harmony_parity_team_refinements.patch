@@ -1,0 +1,1219 @@
+diff --git a/config/views.py b/config/views.py
+index c2f8f20..cb54de5 100644
+--- a/config/views.py
++++ b/config/views.py
+@@ -552,162 +552,9 @@ def harmony_detail(request, profile_id):
+ 
+ 
+ def _marriage_profile_pdf_response(profile):
+-    from reportlab.lib.pagesizes import letter
+-    from reportlab.lib.utils import ImageReader
+-    from reportlab.pdfbase.pdfmetrics import stringWidth
+-    from reportlab.pdfgen import canvas
+-
+-    person = profile.person
+-    pref = getattr(profile, 'preferences', None)
+-    output = BytesIO()
+-    width, height = letter
+-    pdf = canvas.Canvas(output, pagesize=letter)
+-    pdf.setTitle(f'Marriage Profile - {person.full_name}')
+-    navy = (0.09, 0.20, 0.29)
+-    pale = (0.91, 0.94, 0.96)
+-    ink = (0.12, 0.20, 0.25)
+-    muted = (0.38, 0.46, 0.50)
+-
+-    def clean(value):
+-        if value in (None, '', []):
+-            return '—'
+-        if isinstance(value, (list, tuple)):
+-            return ', '.join(str(v) for v in value) or '—'
+-        return str(value)
+-
+-    def wrap(text, font='Helvetica', size=6.8, max_width=175, max_lines=2):
+-        words = clean(text).replace('\n', ' ').split()
+-        lines, line = [], ''
+-        for word in words:
+-            test = (line + ' ' + word).strip()
+-            if stringWidth(test, font, size) <= max_width:
+-                line = test
+-            else:
+-                if line:
+-                    lines.append(line)
+-                line = word
+-                if len(lines) >= max_lines:
+-                    break
+-        if line and len(lines) < max_lines:
+-            lines.append(line)
+-        if not lines:
+-            lines = ['—']
+-        if len(lines) == max_lines and len(words) > sum(len(x.split()) for x in lines):
+-            lines[-1] = lines[-1][:-1] + '…' if len(lines[-1]) > 2 else lines[-1]
+-        return lines
+-
+-    # Header mirrors the desktop biodata card.
+-    pdf.setFillColorRGB(*navy)
+-    pdf.rect(0, height - 138, width, 138, fill=1, stroke=0)
+-    photo_x, photo_y, photo_w, photo_h = 28, height - 128, 88, 106
+-    if person.photo:
+-        try:
+-            pdf.drawImage(ImageReader(person.photo.path), photo_x, photo_y, photo_w, photo_h,
+-                          preserveAspectRatio=True, anchor='c', mask='auto')
+-        except (OSError, ValueError):
+-            pass
+-    pdf.setStrokeColorRGB(0.75, 0.83, 0.87)
+-    pdf.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
+-    pdf.setFillColorRGB(1, 1, 1)
+-    pdf.setFont('Helvetica-Bold', 20)
+-    pdf.drawString(134, height - 48, person.full_name[:38])
+-    pdf.setFont('Helvetica', 8)
+-    pdf.drawString(134, height - 68, f'{profile.serial_number}   |   Marriage Profile')
+-    pdf.drawString(134, height - 84, 'Aga Khan Social Welfare Board - Central Region')
+-    badges = [f'{person.age or "—"} yrs', person.gender or '—', profile.marital_status or person.marital_status or '—']
+-    bx = 134
+-    for badge in badges:
+-        bw = stringWidth(str(badge), 'Helvetica-Bold', 7) + 14
+-        pdf.setFillColorRGB(1, 1, 1)
+-        pdf.roundRect(bx, height - 112, bw, 18, 9, fill=1, stroke=0)
+-        pdf.setFillColorRGB(*navy)
+-        pdf.setFont('Helvetica-Bold', 7)
+-        pdf.drawCentredString(bx + bw / 2, height - 106, str(badge))
+-        bx += bw + 6
+-
+-    y = height - 156
+-
+-    def section(title, items):
+-        nonlocal y
+-        pdf.setFillColorRGB(*pale)
+-        pdf.roundRect(26, y - 2, width - 52, 17, 3, fill=1, stroke=0)
+-        pdf.setFillColorRGB(*navy)
+-        pdf.setFont('Helvetica-Bold', 8.5)
+-        pdf.drawString(32, y + 3, title)
+-        y -= 16
+-        col_w = (width - 64) / 2
+-        row_height = 22
+-        for index in range(0, len(items), 2):
+-            pair = items[index:index + 2]
+-            max_lines = 1
+-            rendered = []
+-            for label, value in pair:
+-                lines = wrap(value, max_width=col_w - 82, max_lines=2)
+-                max_lines = max(max_lines, len(lines))
+-                rendered.append((label, lines))
+-            row_height = 10 + (max_lines * 7)
+-            for col, (label, lines) in enumerate(rendered):
+-                x = 32 + col * col_w
+-                pdf.setFillColorRGB(*muted)
+-                pdf.setFont('Helvetica-Bold', 6.3)
+-                pdf.drawString(x, y, label.upper())
+-                pdf.setFillColorRGB(*ink)
+-                pdf.setFont('Helvetica', 6.8)
+-                for line_no, line in enumerate(lines):
+-                    pdf.drawString(x + 76, y - (line_no * 7), line)
+-            y -= row_height
+-        y -= 4
+-
+-    height_text = '—'
+-    if profile.height_cm:
+-        total_inches = round(profile.height_cm / 2.54)
+-        height_text = f'{total_inches // 12} ft {total_inches % 12} in'
+-    section('Personal Information', [
+-        ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'),
+-        ('Gender', person.gender), ('Marital Status', profile.marital_status or person.marital_status),
+-        ('Height / Weight', f'{height_text} / {profile.weight_kg or "—"} kg'),
+-        ('Physical Status', profile.physical_status), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
+-        ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
+-    ])
+-    section('Family', [
+-        ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'),
+-        ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
+-        ('Brothers', profile.brothers_count), ('Sisters', profile.sisters_count), ('Family Residence', profile.family_residence),
+-        ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
+-    ])
+-    section('Education & Career', [
+-        ('Education', profile.qualification or profile.education_level or person.education),
+-        ('Institution', profile.institution), ('Profession', profile.profession or person.occupation),
+-        ('Employer / Business', profile.employer_or_business or person.employer_or_business),
+-        ('Income', profile.income_range or person.income_range), ('Experience', profile.years_experience),
+-        ('House', 'Yes' if profile.owns_house is True else 'No' if profile.owns_house is False else '—'),
+-        ('Car', 'Yes' if profile.owns_car is True else 'No' if profile.owns_car is False else '—'),
+-    ])
+-    section('Health & Lifestyle', [
+-        ('Disability', profile.disability_status), ('Known Diseases', profile.known_diseases),
+-        ('Smoking', profile.smoking), ('Languages', profile.languages or person.languages),
+-        ('Interests', profile.interests or person.interests), ('Health Notes', profile.health_information),
+-    ])
+-    if pref:
+-        section('Preferences for Prospective Match', [
+-            ('Age Range', f'{pref.minimum_age or "Any"} - {pref.maximum_age or "Any"}'),
+-            ('Education', pref.preferred_education_options), ('Profession', pref.preferred_professions),
+-            ('Location', pref.preferred_cities or pref.preferred_locations), ('Income', pref.preferred_income_options),
+-            ('Marital Status', pref.preferred_marital_status_options), ('Languages', pref.preferred_languages),
+-            ('Relocation', 'Yes' if pref.willingness_to_relocate else 'No'),
+-        ])
+-    if y > 62:
+-        section('About', [('Personal Statement', profile.personal_statement), ('Other Expectations', pref.other_expectations if pref else profile.expectations)])
+-
+-    pdf.setStrokeColorRGB(0.78, 0.82, 0.84)
+-    pdf.line(26, 34, width - 26, 34)
+-    pdf.setFillColorRGB(*muted)
+-    pdf.setFont('Helvetica', 6.3)
+-    pdf.drawString(28, 22, 'Confidential Family Harmony profile. CNIC images and internal documents are not included.')
+-    pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
+-    pdf.save()
+-    response = HttpResponse(output.getvalue(), content_type='application/pdf')
+-    response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(person, person.jamatkhana)}"'
++    from reports.profile_exports import marriage_pdf_bytes
++    response = HttpResponse(marriage_pdf_bytes(profile), content_type='application/pdf')
++    response['Content-Disposition'] = f'attachment; filename="{_profile_pdf_filename(profile.person, profile.person.jamatkhana)}"'
+     return response
+ 
+ @login_required
+diff --git a/people/forms.py b/people/forms.py
+index edef40c..00996ba 100644
+--- a/people/forms.py
++++ b/people/forms.py
+@@ -11,7 +11,7 @@ class PersonForm(forms.ModelForm):
+         super().__init__(*args, **kwargs)
+         cfg = FamilyHarmonySettings.current()
+         self.fields['title'].widget = forms.Select(choices=[('', 'Select title')] + [(v, v) for v in cfg.title_options])
+-        self.fields['gender'].widget = forms.Select(choices=[('', 'Select gender'), ('Male', 'M'), ('Female', 'F')])
++        self.fields['gender'].widget = forms.RadioSelect(choices=[('Male', 'M'), ('Female', 'F')])
+         select_lists = [
+             ('nationality', cfg.nationality_options), ('country', cfg.country_options),
+             ('marital_status', cfg.marital_status_options), ('education', cfg.education_levels),
+diff --git a/reports/profile_exports.py b/reports/profile_exports.py
+index fd82d04..8fce849 100644
+--- a/reports/profile_exports.py
++++ b/reports/profile_exports.py
+@@ -207,22 +207,19 @@ def profile_jpg_bytes(person, *, profile=None, family_harmony=False):
+     return output.getvalue()
+ 
+ 
+-def person_pdf_bytes(person):
+-    """Render a People profile using the same visual language as Family Harmony PDF."""
++def _shared_profile_pdf_bytes(person, *, serial, record_type, sections, footer_text, document_title, badge_marital_status=None):
++    """One PDF renderer shared by People and Family Harmony exports."""
+     output = BytesIO()
+     width, height = letter
+     pdf = canvas.Canvas(output, pagesize=letter)
+-    pdf.setTitle(f'People Profile - {person.full_name}')
++    pdf.setTitle(document_title)
+     navy = (0.09, 0.20, 0.29)
+     pale = (0.91, 0.94, 0.96)
+     ink = (0.12, 0.20, 0.25)
+     muted = (0.38, 0.46, 0.50)
+ 
+-    def clean(value):
+-        return _clean(value)
+-
+     def wrap(text, font='Helvetica', size=6.8, max_width=175, max_lines=2):
+-        words = clean(text).replace('\n', ' ').split()
++        words = _clean(text).replace('\n', ' ').split()
+         lines, line = [], ''
+         for word in words:
+             test = (line + ' ' + word).strip()
+@@ -242,6 +239,7 @@ def person_pdf_bytes(person):
+             lines[-1] = lines[-1][:-1] + '…' if len(lines[-1]) > 2 else lines[-1]
+         return lines
+ 
++    # Header dimensions and typography are intentionally identical for both modules.
+     pdf.setFillColorRGB(*navy)
+     pdf.rect(0, height - 138, width, 138, fill=1, stroke=0)
+     photo_x, photo_y, photo_w, photo_h = 28, height - 128, 88, 106
+@@ -256,9 +254,9 @@ def person_pdf_bytes(person):
+     pdf.setFont('Helvetica-Bold', 20)
+     pdf.drawString(134, height - 48, person.full_name[:38])
+     pdf.setFont('Helvetica', 8)
+-    pdf.drawString(134, height - 68, f'{person.serial_number}   |   People Profile')
++    pdf.drawString(134, height - 68, f'{serial}   |   {record_type}')
+     pdf.drawString(134, height - 84, 'Aga Khan Social Welfare Board - Central Region')
+-    badges = [f'{person.age or "—"} yrs', person.gender or '—', person.marital_status or '—']
++    badges = [f'{person.age or "—"} yrs', person.gender or '—', badge_marital_status or person.marital_status or '—']
+     bx = 134
+     for badge in badges:
+         bw = stringWidth(str(badge), 'Helvetica-Bold', 7) + 14
+@@ -270,7 +268,6 @@ def person_pdf_bytes(person):
+         bx += bw + 6
+ 
+     y = height - 156
+-
+     def section(title, items):
+         nonlocal y
+         pdf.setFillColorRGB(*pale)
+@@ -301,30 +298,78 @@ def person_pdf_bytes(person):
+             y -= row_height
+         y -= 4
+ 
+-    section('Personal Information', [
+-        ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
+-        ('Marital Status', person.marital_status), ('Nationality', person.nationality),
+-        ('Identity', f'{person.get_identity_type_display() if person.identity_type else "—"} · {person.masked_identity_number() or "—"}'),
+-        ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
+-    ])
+-    section('Contact & Residence', [
+-        ('Mobile', person.mobile), ('WhatsApp', person.whatsapp_number), ('Email', person.email),
+-        ('Province', person.province), ('Current Address', person.current_address), ('Permanent Address', person.permanent_address),
+-    ])
+-    section('Organization', [
+-        ('Regional Council', person.region), ('Local Council', person.local_council), ('Jamatkhana', person.jamatkhana),
+-    ])
+-    section('Education & Career', [
+-        ('Education', person.education), ('Education Details', person.education_details), ('Occupation', person.occupation),
+-        ('Employer / Business', person.employer_or_business), ('Income Range', person.income_range), ('Languages', person.languages),
+-        ('Interests', person.interests), ('Relocation', 'Yes' if person.willing_to_relocate else 'No' if person.willing_to_relocate is False else '—'),
+-    ])
++    for title, items in sections:
++        if y <= 58:
++            break
++        section(title, items)
+ 
+     pdf.setStrokeColorRGB(0.78, 0.82, 0.84)
+     pdf.line(26, 34, width - 26, 34)
+     pdf.setFillColorRGB(*muted)
+     pdf.setFont('Helvetica', 6.3)
+-    pdf.drawString(28, 22, 'Confidential People profile. Identity documents are not included.')
++    pdf.drawString(28, 22, footer_text)
+     pdf.drawRightString(width - 28, 22, 'US Letter · Page 1 of 1')
+     pdf.save()
+     return output.getvalue()
++
++
++def marriage_pdf_bytes(profile):
++    person = profile.person
++    pref = getattr(profile, 'preferences', None)
++    height_text = '—'
++    if profile.height_cm:
++        total_inches = round(profile.height_cm / 2.54)
++        height_text = f'{total_inches // 12} ft {total_inches % 12} in'
++    sections = [
++        ('Personal Information', [
++            ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
++            ('Marital Status', profile.marital_status or person.marital_status), ('Height / Weight', f'{height_text} / {profile.weight_kg or "—"} kg'),
++            ('Physical Status', profile.physical_status), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
++            ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
++        ]),
++        ('Family', [
++            ('Father', f'{profile.father_name or "—"} / {profile.father_occupation or "—"}'), ('Mother', f'{profile.mother_name or "—"} / {profile.mother_occupation or "—"}'),
++            ('Brothers', profile.brothers_count), ('Sisters', profile.sisters_count), ('Family Residence', profile.family_residence), ('Family Type', profile.family_type), ('Caste / Tribe', profile.caste_tribe),
++        ]),
++        ('Education & Career', [
++            ('Education', profile.qualification or profile.education_level or person.education), ('Institution', profile.institution), ('Profession', profile.profession or person.occupation),
++            ('Employer / Business', profile.employer_or_business or person.employer_or_business), ('Income', profile.income_range or person.income_range), ('Experience', profile.years_experience),
++            ('House', 'Yes' if profile.owns_house is True else 'No' if profile.owns_house is False else '—'), ('Car', 'Yes' if profile.owns_car is True else 'No' if profile.owns_car is False else '—'),
++        ]),
++        ('Health & Lifestyle', [
++            ('Disability', profile.disability_status), ('Known Diseases', profile.known_diseases), ('Smoking', profile.smoking), ('Languages', profile.languages or person.languages),
++            ('Interests', profile.interests or person.interests), ('Health Notes', profile.health_information),
++        ]),
++    ]
++    if pref:
++        sections.append(('Preferences for Prospective Match', [
++            ('Age Range', f'{pref.minimum_age or "Any"} - {pref.maximum_age or "Any"}'), ('Education', pref.preferred_education_options), ('Profession', pref.preferred_professions),
++            ('Location', pref.preferred_cities or pref.preferred_locations), ('Income', pref.preferred_income_options), ('Marital Status', pref.preferred_marital_status_options),
++            ('Languages', pref.preferred_languages), ('Relocation', 'Yes' if pref.willingness_to_relocate else 'No'),
++        ]))
++        sections.append(('About', [('Personal Statement', profile.personal_statement), ('Other Expectations', pref.other_expectations or profile.expectations)]))
++    return _shared_profile_pdf_bytes(person, serial=profile.serial_number, record_type='Marriage Profile', sections=sections, footer_text='Confidential Family Harmony profile. CNIC images and internal documents are not included.', document_title=f'Marriage Profile - {person.full_name}', badge_marital_status=profile.marital_status)
++
++
++def person_pdf_bytes(person):
++    sections = [
++        ('Personal Information', [
++            ('Age / DOB', f'{person.age or "—"} / {person.date_of_birth or "—"}'), ('Gender', person.gender),
++            ('Marital Status', person.marital_status), ('Nationality', person.nationality),
++            ('Identity', f'{person.get_identity_type_display() if person.identity_type else "—"} · {person.masked_identity_number() or "—"}'), ('City / Country', f'{person.city or "—"}, {person.country or "—"}'),
++            ('Jamatkhana', person.jamatkhana), ('Local Council', person.local_council),
++        ]),
++        ('Contact & Residence', [
++            ('Mobile', person.mobile), ('WhatsApp', person.whatsapp_number), ('Alternate Mobile', person.alternate_mobile), ('Email', person.email),
++            ('Current Address', person.current_address), ('Permanent Address', person.permanent_address),
++        ]),
++        ('Organization', [('Regional Council', person.region), ('Local Council', person.local_council), ('Jamatkhana', person.jamatkhana)]),
++        ('Education & Career', [
++            ('Education', person.education), ('Education Details', person.education_details), ('Occupation', person.occupation), ('Employer / Business', person.employer_or_business),
++            ('Income Range', person.income_range), ('Languages', person.languages), ('Interests', person.interests), ('Relocation', 'Yes' if person.willing_to_relocate else 'No' if person.willing_to_relocate is False else '—'),
++        ]),
++    ]
++    social = [('Facebook', person.facebook_url), ('Instagram', person.instagram_url), ('LinkedIn', person.linkedin_url), ('Other', person.other_social_url)]
++    if any(v for _, v in social):
++        sections.append(('Social Links', social))
++    return _shared_profile_pdf_bytes(person, serial=person.serial_number, record_type='People Profile', sections=sections, footer_text='Confidential People profile. CNIC images and internal documents are not included.', document_title=f'People Profile - {person.full_name}')
+diff --git a/static/app.css b/static/app.css
+index e9eff08..fe883ed 100644
+--- a/static/app.css
++++ b/static/app.css
+@@ -120,3 +120,8 @@
+ .public-marriage-icon.whatsapp-public .whatsapp-brand-icon{width:17px;height:17px}
+ .whatsapp-inline-button{display:inline-flex;align-items:center;gap:7px}
+ .whatsapp-inline-button .whatsapp-brand-icon{width:16px;height:16px}
++
++/* Teams & Contacts refinements 2026-10-03 */
++.team-appointment-page{max-width:1480px!important}.team-appointment-form{padding:18px}.team-appointment-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 16px}.team-appointment-grid .team-field{display:grid;gap:6px;min-width:0}.team-appointment-grid .team-field>span{font-weight:700}.team-appointment-grid .team-field-wide{grid-column:span 2}.team-appointment-grid textarea{min-height:86px}.team-appointment-grid .select2-lite,.team-appointment-grid .select2-lite-input{width:100%;min-width:0}.team-filters .select2-lite,.team-filters .select2-lite-input{width:100%;min-width:0}.select2-lite-option.is-selected{background:#d9f2e7;font-weight:700}.team-export-toolbar .export-csv{background:#475569;color:#fff;border-color:#475569}.team-export-toolbar .export-xlsx{background:#217346;color:#fff;border-color:#217346}.team-export-toolbar .export-pdf{background:#c0392b;color:#fff;border-color:#c0392b}.team-export-toolbar .export-jpg{background:#6d4aa5;color:#fff;border-color:#6d4aa5}.team-clear{background:#fff;border-color:#94a3b8}.team-page .mini-badge{white-space:normal;line-height:1.25;margin:2px 2px 2px 0}.team-page .data-table td{vertical-align:top}
++@media(max-width:1050px){.team-appointment-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
++@media(max-width:640px){.team-appointment-grid{grid-template-columns:1fr}.team-appointment-grid .team-field-wide{grid-column:auto}}
+diff --git a/static/app.js b/static/app.js
+index 52bb3b7..0f3826d 100644
+--- a/static/app.js
++++ b/static/app.js
+@@ -89,16 +89,29 @@
+   });
+ 
+   document.querySelectorAll('select[data-searchable="true"]').forEach((select) => {
++    if (select.dataset.searchEnhanced === '1') return;
++    select.dataset.searchEnhanced = '1';
+     const wrapper = document.createElement('div');
+     wrapper.className = 'select2-lite';
+     const input = document.createElement('input');
+     input.type = 'search';
+     input.className = 'select2-lite-input';
+     input.placeholder = select.options[0]?.text || 'Search';
+-    input.value = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
+     input.autocomplete = 'off';
+     const menu = document.createElement('div');
+     menu.className = 'select2-lite-menu';
++    const multiple = select.multiple;
++
++    const syncInput = () => {
++      if (multiple) {
++        const selected = Array.from(select.selectedOptions).filter(o => o.value);
++        input.value = '';
++        input.placeholder = selected.length ? `${selected.length} selected — type to search` : (select.options[0]?.text || 'Type to search');
++      } else {
++        input.value = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
++      }
++    };
++
+     Array.from(select.options).forEach((option) => {
+       if (!option.value) return;
+       const item = document.createElement('button');
+@@ -106,12 +119,22 @@
+       item.className = 'select2-lite-option';
+       item.dataset.value = option.value;
+       item.textContent = option.text;
++      const syncSelected = () => item.classList.toggle('is-selected', option.selected);
++      syncSelected();
+       item.addEventListener('mousedown', (event) => event.preventDefault());
+       item.addEventListener('click', () => {
+-        select.value = option.value;
+-        input.value = option.text;
+-        menu.classList.remove('is-open');
+-        select.dispatchEvent(new Event('change', {bubbles: true}));
++        if (multiple) {
++          option.selected = !option.selected;
++          syncSelected();
++          syncInput();
++          select.dispatchEvent(new Event('change', {bubbles: true}));
++          input.focus();
++        } else {
++          select.value = option.value;
++          syncInput();
++          menu.classList.remove('is-open');
++          select.dispatchEvent(new Event('change', {bubbles: true}));
++        }
+       });
+       menu.appendChild(item);
+     });
+@@ -120,7 +143,13 @@
+     wrapper.appendChild(menu);
+     wrapper.appendChild(select);
+     select.classList.add('select2-native');
+-    input.addEventListener('focus', () => menu.classList.add('is-open'));
++    syncInput();
++    const openMenu = () => {
++      menu.classList.add('is-open');
++      window.setTimeout(() => input.focus(), 0);
++    };
++    input.addEventListener('focus', openMenu);
++    input.addEventListener('click', openMenu);
+     input.addEventListener('input', () => {
+       const needle = input.value.toLowerCase();
+       menu.classList.add('is-open');
+@@ -128,6 +157,16 @@
+         item.hidden = !item.textContent.toLowerCase().includes(needle);
+       });
+     });
++    select.addEventListener('change', () => {
++      syncInput();
++      if (multiple) {
++        Array.from(select.options).forEach((option) => {
++          if (!option.value) return;
++          const item = menu.querySelector(`.select2-lite-option[data-value="${CSS.escape(option.value)}"]`);
++          if (item) item.classList.toggle('is-selected', option.selected);
++        });
++      }
++    });
+     document.addEventListener('click', (event) => {
+       if (!wrapper.contains(event.target)) menu.classList.remove('is-open');
+     });
+diff --git a/teams/admin.py b/teams/admin.py
+index 760af0a..38b75cf 100644
+--- a/teams/admin.py
++++ b/teams/admin.py
+@@ -1,4 +1,4 @@
+ from django.contrib import admin
+-from .models import Portfolio, TeamAppointment, TeamPosition, Term
++from .models import Portfolio, TeamAppointment, TeamCategory, TeamPosition, Term
+ 
+-admin.site.register([Term, TeamPosition, Portfolio, TeamAppointment])
++admin.site.register([Term, TeamCategory, TeamPosition, Portfolio, TeamAppointment])
+diff --git a/teams/forms.py b/teams/forms.py
+index cd0ed58..8dff9ea 100644
+--- a/teams/forms.py
++++ b/teams/forms.py
+@@ -2,7 +2,20 @@ from django import forms
+ from boards.models import Board
+ from organization.models import Jamatkhana, LocalCouncil, NationalCouncil, RegionalCouncil
+ from people.models import Person
+-from .models import Portfolio, TeamAppointment, TeamPosition, Term
++from .models import Portfolio, TeamAppointment, TeamCategory, TeamPosition, Term
++
++
++def _jk_label(obj):
++    lc = obj.local_council
++    rc = lc.regional_council if lc else None
++    return f'{obj.name} — {lc.name if lc else "—"} — {rc.name if rc else "—"}'
++
++
++def _person_label(obj):
++    phone = obj.whatsapp_number or obj.mobile or 'No phone'
++    jk = obj.jamatkhana.name if obj.jamatkhana else 'No JK'
++    lc = obj.local_council.name if obj.local_council else 'No LC'
++    return f'{obj.full_name} — {phone} — {jk} — {lc}'
+ 
+ 
+ class TeamAppointmentForm(forms.ModelForm):
+@@ -10,7 +23,7 @@ class TeamAppointmentForm(forms.ModelForm):
+         model = TeamAppointment
+         fields = ['term','board','person','position','portfolio','level','national_council','regional_council','local_council','jamatkhana','covered_jamatkhanas','appointment_date','end_date','is_active','notes']
+         widgets = {
+-            'covered_jamatkhanas': forms.SelectMultiple(attrs={'size': 8}),
++            'covered_jamatkhanas': forms.SelectMultiple(),
+             'appointment_date': forms.DateInput(attrs={'type':'date'}),
+             'end_date': forms.DateInput(attrs={'type':'date'}),
+             'notes': forms.Textarea(attrs={'rows':3}),
+@@ -19,17 +32,33 @@ class TeamAppointmentForm(forms.ModelForm):
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+         self.fields['term'].queryset = Term.objects.filter(is_active=True)
+-        self.fields['board'].queryset = Board.objects.filter(is_active=True)
+-        self.fields['person'].queryset = Person.objects.filter(is_active=True).order_by('full_name')
+-        self.fields['position'].queryset = TeamPosition.objects.filter(is_active=True)
+-        self.fields['portfolio'].queryset = Portfolio.objects.filter(is_active=True)
+-        self.fields['national_council'].queryset = NationalCouncil.objects.filter(is_active=True)
+-        self.fields['regional_council'].queryset = RegionalCouncil.objects.filter(is_active=True)
+-        self.fields['local_council'].queryset = LocalCouncil.objects.filter(is_active=True)
+-        self.fields['jamatkhana'].queryset = Jamatkhana.objects.filter(is_active=True)
+-        self.fields['covered_jamatkhanas'].queryset = Jamatkhana.objects.filter(is_active=True)
+-        for f in self.fields.values():
+-            f.widget.attrs.setdefault('class','form-control')
++        self.fields['board'].queryset = Board.objects.filter(is_active=True).order_by('sort_order','name')
++        self.fields['person'].queryset = Person.objects.filter(is_active=True).select_related('jamatkhana','local_council').order_by('full_name')
++        self.fields['person'].label_from_instance = _person_label
++        self.fields['position'].queryset = TeamPosition.objects.filter(is_active=True).select_related('category')
++        self.fields['portfolio'].queryset = Portfolio.objects.filter(is_active=True).select_related('board')
++        self.fields['national_council'].queryset = NationalCouncil.objects.filter(is_active=True).order_by('name')
++        self.fields['regional_council'].queryset = RegionalCouncil.objects.filter(is_active=True).select_related('national_council').order_by('name')
++        self.fields['local_council'].queryset = LocalCouncil.objects.filter(is_active=True).select_related('regional_council__national_council').order_by('name')
++        self.fields['jamatkhana'].queryset = Jamatkhana.objects.filter(is_active=True).select_related('local_council__regional_council').order_by('name')
++        self.fields['jamatkhana'].label_from_instance = _jk_label
++        self.fields['covered_jamatkhanas'].queryset = Jamatkhana.objects.filter(is_active=True).select_related('local_council__regional_council').order_by('local_council__regional_council__name','local_council__name','name')
++        self.fields['covered_jamatkhanas'].label_from_instance = _jk_label
++        searchable = ['term','board','person','position','portfolio','level','national_council','regional_council','local_council','jamatkhana','covered_jamatkhanas']
++        for name, field in self.fields.items():
++            field.widget.attrs.setdefault('class','form-control')
++            if name in searchable:
++                field.widget.attrs['data-searchable'] = 'true'
++                field.widget.attrs['data-autofocus-search'] = 'true'
++
++    def clean(self):
++        cleaned = super().clean()
++        board = cleaned.get('board')
++        portfolio = cleaned.get('portfolio')
++        if board and portfolio and portfolio.board_id != board.id:
++            self.add_error('portfolio', 'Choose a portfolio for the selected board.')
++        return cleaned
++
+ 
+ class TermForm(forms.ModelForm):
+     class Meta:
+@@ -37,12 +66,30 @@ class TermForm(forms.ModelForm):
+         fields = ['name','start_date','end_date','is_current','is_active','notes']
+         widgets={'start_date':forms.DateInput(attrs={'type':'date'}),'end_date':forms.DateInput(attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':2})}
+ 
++
++class TeamCategoryForm(forms.ModelForm):
++    class Meta:
++        model = TeamCategory
++        fields = ['name','sort_order','is_active']
++
++
+ class TeamPositionForm(forms.ModelForm):
+     class Meta:
+         model = TeamPosition
+         fields = ['name','category','sort_order','is_active']
+ 
++    def __init__(self,*args,**kwargs):
++        super().__init__(*args,**kwargs)
++        self.fields['category'].queryset = TeamCategory.objects.filter(is_active=True)
++        self.fields['category'].widget.attrs['data-searchable'] = 'true'
++
++
+ class PortfolioForm(forms.ModelForm):
+     class Meta:
+         model = Portfolio
+-        fields = ['name','code','sort_order','is_active']
++        fields = ['board','name','code','sort_order','is_active']
++
++    def __init__(self,*args,**kwargs):
++        super().__init__(*args,**kwargs)
++        self.fields['board'].queryset = Board.objects.filter(is_active=True).order_by('sort_order','name')
++        self.fields['board'].widget.attrs['data-searchable'] = 'true'
+diff --git a/teams/migrations/0003_categories_board_portfolios.py b/teams/migrations/0003_categories_board_portfolios.py
+new file mode 100644
+index 0000000..a2daabe
+--- /dev/null
++++ b/teams/migrations/0003_categories_board_portfolios.py
+@@ -0,0 +1,99 @@
++from django.db import migrations, models
++import django.db.models.deletion
++
++
++def forward_fill(apps, schema_editor):
++    TeamCategory = apps.get_model('teams', 'TeamCategory')
++    TeamPosition = apps.get_model('teams', 'TeamPosition')
++    Portfolio = apps.get_model('teams', 'Portfolio')
++    Board = apps.get_model('boards', 'Board')
++
++    # Convert the legacy free-text category into managed CRUD categories.
++    categories = {}
++    for pos in TeamPosition.objects.all():
++        legacy = (getattr(pos, 'category_name', '') or '').strip()
++        if not legacy:
++            continue
++        category, _ = TeamCategory.objects.get_or_create(
++            name=legacy,
++            defaults={'sort_order': {'Leadership': 10, 'Board': 20, 'Portfolio': 30}.get(legacy, 100)},
++        )
++        categories[legacy] = category
++        pos.category_id = category.id
++        pos.save(update_fields=['category'])
++
++    # Existing portfolios were global. Attach them to the Social Welfare board
++    # (prefer SWB; otherwise the first active board) before making board required.
++    board = Board.objects.filter(code='SWB').first() or Board.objects.filter(is_active=True).order_by('sort_order', 'name').first() or Board.objects.order_by('id').first()
++    if board:
++        Portfolio.objects.filter(board__isnull=True).update(board=board)
++
++
++def reverse_fill(apps, schema_editor):
++    TeamPosition = apps.get_model('teams', 'TeamPosition')
++    for pos in TeamPosition.objects.select_related('category').all():
++        pos.category_name = pos.category.name if pos.category_id else ''
++        pos.save(update_fields=['category_name'])
++
++
++class Migration(migrations.Migration):
++    dependencies = [
++        ('teams', '0002_seed_demo_term_2026_2027'),
++        ('boards', '0001_initial'),
++    ]
++
++    operations = [
++        migrations.CreateModel(
++            name='TeamCategory',
++            fields=[
++                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('name', models.CharField(max_length=100, unique=True)),
++                ('sort_order', models.PositiveIntegerField(default=0)),
++                ('is_active', models.BooleanField(default=True)),
++            ],
++            options={'verbose_name_plural': 'Team categories', 'ordering': ['sort_order', 'name']},
++        ),
++        migrations.RenameField(
++            model_name='teamposition',
++            old_name='category',
++            new_name='category_name',
++        ),
++        migrations.AddField(
++            model_name='teamposition',
++            name='category',
++            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='positions', to='teams.teamcategory'),
++        ),
++        migrations.AddField(
++            model_name='portfolio',
++            name='board',
++            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='team_portfolios', to='boards.board'),
++        ),
++        migrations.AlterField(
++            model_name='portfolio',
++            name='name',
++            field=models.CharField(max_length=120),
++        ),
++        migrations.AlterField(
++            model_name='portfolio',
++            name='code',
++            field=models.CharField(max_length=50),
++        ),
++        migrations.RunPython(forward_fill, reverse_fill),
++        migrations.AlterField(
++            model_name='portfolio',
++            name='board',
++            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='team_portfolios', to='boards.board'),
++        ),
++        migrations.AddConstraint(
++            model_name='portfolio',
++            constraint=models.UniqueConstraint(fields=('board', 'name'), name='unique_board_portfolio_name'),
++        ),
++        migrations.AddConstraint(
++            model_name='portfolio',
++            constraint=models.UniqueConstraint(fields=('board', 'code'), name='unique_board_portfolio_code'),
++        ),
++        migrations.RemoveField(
++            model_name='teamposition',
++            name='category_name',
++        ),
++    ]
+diff --git a/teams/models.py b/teams/models.py
+index 461bc8c..cf1c2c0 100644
+--- a/teams/models.py
++++ b/teams/models.py
+@@ -27,22 +27,22 @@ class Term(models.Model):
+         return self.name
+ 
+ 
+-class TeamPosition(models.Model):
++class TeamCategory(models.Model):
+     name = models.CharField(max_length=100, unique=True)
+-    category = models.CharField(max_length=80, blank=True)
+     sort_order = models.PositiveIntegerField(default=0)
+     is_active = models.BooleanField(default=True)
+ 
+     class Meta:
+         ordering = ['sort_order', 'name']
++        verbose_name_plural = 'Team categories'
+ 
+     def __str__(self):
+         return self.name
+ 
+ 
+-class Portfolio(models.Model):
+-    name = models.CharField(max_length=120, unique=True)
+-    code = models.CharField(max_length=50, unique=True)
++class TeamPosition(models.Model):
++    name = models.CharField(max_length=100, unique=True)
++    category = models.ForeignKey(TeamCategory, null=True, blank=True, on_delete=models.PROTECT, related_name='positions')
+     sort_order = models.PositiveIntegerField(default=0)
+     is_active = models.BooleanField(default=True)
+ 
+@@ -53,6 +53,25 @@ class Portfolio(models.Model):
+         return self.name
+ 
+ 
++class Portfolio(models.Model):
++    board = models.ForeignKey('boards.Board', on_delete=models.PROTECT, related_name='team_portfolios')
++    name = models.CharField(max_length=120)
++    code = models.CharField(max_length=50)
++    sort_order = models.PositiveIntegerField(default=0)
++    is_active = models.BooleanField(default=True)
++
++    class Meta:
++        ordering = ['board__sort_order', 'board__name', 'sort_order', 'name']
++        constraints = [
++            models.UniqueConstraint(fields=['board', 'name'], name='unique_board_portfolio_name'),
++            models.UniqueConstraint(fields=['board', 'code'], name='unique_board_portfolio_code'),
++        ]
++
++    def __str__(self):
++        board = self.board.short_name or self.board.name
++        return f'{board} — {self.name}'
++
++
+ class TeamAppointment(models.Model):
+     class Level(models.TextChoices):
+         NATIONAL = 'NATIONAL', 'National'
+@@ -80,7 +99,7 @@ class TeamAppointment(models.Model):
+     updated_at = models.DateTimeField(auto_now=True)
+ 
+     class Meta:
+-        ordering = ['term', 'board', 'level', 'position__sort_order', 'person__full_name']
++        ordering = ['position__sort_order', 'position__name', 'person__full_name']
+         indexes = [
+             models.Index(fields=['term', 'board', 'level', 'is_active']),
+             models.Index(fields=['regional_council', 'local_council', 'jamatkhana']),
+@@ -98,6 +117,8 @@ class TeamAppointment(models.Model):
+             errors['local_council'] = 'Local council is required.'
+         if self.level == self.Level.JK and not self.jamatkhana_id:
+             errors['jamatkhana'] = 'Jamatkhana is required.'
++        if self.portfolio_id and self.board_id and self.portfolio.board_id != self.board_id:
++            errors['portfolio'] = 'Portfolio must belong to the selected board.'
+         if errors:
+             raise ValidationError(errors)
+ 
+diff --git a/teams/views.py b/teams/views.py
+index 1418dae..7644045 100644
+--- a/teams/views.py
++++ b/teams/views.py
+@@ -1,5 +1,6 @@
++import csv
++import re
+ from io import BytesIO
+-from urllib.parse import quote
+ 
+ from django.contrib import messages
+ from django.contrib.auth.decorators import login_required
+@@ -9,18 +10,23 @@ from django.shortcuts import get_object_or_404, redirect, render
+ from django.urls import reverse
+ from django.utils import timezone
+ from openpyxl import Workbook
++from openpyxl.styles import Alignment, Font, PatternFill
+ from PIL import Image, ImageDraw, ImageFont
+ from reportlab.lib import colors
+ from reportlab.lib.pagesizes import A4, landscape
+ from reportlab.lib.styles import getSampleStyleSheet
+ from reportlab.lib.units import mm
+-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
++from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+ 
+ from boards.models import Board
+ from organization.access import active_accesses
+ from organization.models import Jamatkhana, LocalCouncil, NationalCouncil, RegionalCouncil
+ from .forms import TeamAppointmentForm
+-from .models import Portfolio, TeamAppointment, TeamPosition, Term
++from .models import Portfolio, TeamAppointment, TeamCategory, TeamPosition, Term
++
++
++def _digits(value):
++    return re.sub(r'\D', '', value or '')
+ 
+ 
+ def _scoped(qs, user):
+@@ -44,7 +50,10 @@ def _scoped(qs, user):
+ 
+ 
+ def _filtered(request):
+-    qs = TeamAppointment.objects.select_related('term','board','person','position','portfolio','national_council','regional_council','local_council','jamatkhana').prefetch_related('covered_jamatkhanas')
++    qs = TeamAppointment.objects.select_related(
++        'term','board','person','position','position__category','portfolio','national_council',
++        'regional_council','local_council','jamatkhana'
++    ).prefetch_related('covered_jamatkhanas__local_council__regional_council')
+     qs = _scoped(qs, request.user)
+     term = request.GET.get('term') or ''
+     if not term:
+@@ -75,23 +84,41 @@ def _filtered(request):
+     elif filters['status'] == 'inactive': qs = qs.filter(is_active=False)
+     if filters['q']:
+         q = filters['q']
+-        qs = qs.filter(Q(person__full_name__icontains=q)|Q(person__mobile__icontains=q)|Q(person__email__icontains=q)|Q(position__name__icontains=q)|Q(portfolio__name__icontains=q))
+-    return qs, filters
++        qs = qs.filter(
++            Q(person__full_name__icontains=q)|Q(person__mobile__icontains=q)|Q(person__whatsapp_number__icontains=q)|
++            Q(person__email__icontains=q)|Q(person__jamatkhana__name__icontains=q)|Q(person__local_council__name__icontains=q)|
++            Q(position__name__icontains=q)|Q(portfolio__name__icontains=q)|Q(board__name__icontains=q)|Q(board__short_name__icontains=q)
++        )
++    return qs.order_by('position__sort_order','position__name','person__full_name'), filters
++
++
++def _hierarchy_maps():
++    regions = RegionalCouncil.objects.filter(is_active=True).select_related('national_council')
++    locals_ = LocalCouncil.objects.filter(is_active=True).select_related('regional_council__national_council')
++    jks = Jamatkhana.objects.filter(is_active=True).select_related('local_council__regional_council__national_council')
++    return {
++        'region_map': {str(x.pk): {'national': x.national_council_id} for x in regions},
++        'local_map': {str(x.pk): {'regional': x.regional_council_id, 'national': x.regional_council.national_council_id} for x in locals_},
++        'jk_map': {str(x.pk): {'local': x.local_council_id, 'regional': x.local_council.regional_council_id, 'national': x.local_council.regional_council.national_council_id} for x in jks},
++        'portfolio_map': {str(x.pk): {'board': x.board_id} for x in Portfolio.objects.filter(is_active=True)},
++    }
+ 
+ 
+ @login_required
+ def team_list(request):
+     qs, filters = _filtered(request)
++    selected_board = Board.objects.filter(pk=filters['board']).first() if filters['board'] else None
+     ctx = {
+         'appointments': qs,
+         'filters': filters,
++        'selected_board': selected_board,
+         'terms': Term.objects.filter(is_active=True),
+         'boards': Board.objects.filter(is_active=True).order_by('sort_order','name'),
+-        'positions': TeamPosition.objects.filter(is_active=True),
+-        'portfolios': Portfolio.objects.filter(is_active=True),
+-        'regions': RegionalCouncil.objects.filter(is_active=True),
+-        'locals': LocalCouncil.objects.filter(is_active=True),
+-        'jks': Jamatkhana.objects.filter(is_active=True),
++        'positions': TeamPosition.objects.filter(is_active=True).select_related('category'),
++        'portfolios': Portfolio.objects.filter(is_active=True).select_related('board'),
++        'regions': RegionalCouncil.objects.filter(is_active=True).select_related('national_council'),
++        'locals': LocalCouncil.objects.filter(is_active=True).select_related('regional_council'),
++        'jks': Jamatkhana.objects.filter(is_active=True).select_related('local_council__regional_council'),
+         'levels': TeamAppointment.Level.choices,
+     }
+     return render(request, 'teams/list.html', ctx)
+@@ -111,10 +138,14 @@ def team_create(request):
+         return redirect('team_list')
+     form = TeamAppointmentForm(request.POST or None)
+     if form.is_valid():
+-        obj = form.save(commit=False); obj.created_by=request.user; obj.save(); form.save_m2m()
++        obj = form.save(commit=False)
++        obj.created_by=request.user
++        obj.save()
++        form.save_m2m()
+         messages.success(request, 'Team appointment added.')
+         return redirect('team_detail', pk=obj.pk)
+-    return render(request,'teams/form.html',{'form':form,'title':'Add team appointment'})
++    ctx={'form':form,'title':'Add team appointment', **_hierarchy_maps()}
++    return render(request,'teams/form.html',ctx)
+ 
+ 
+ @login_required
+@@ -125,14 +156,34 @@ def team_edit(request, pk):
+         return redirect('team_detail', pk=pk)
+     form=TeamAppointmentForm(request.POST or None, instance=obj)
+     if form.is_valid():
+-        form.save(); messages.success(request,'Team appointment updated.'); return redirect('team_detail',pk=pk)
+-    return render(request,'teams/form.html',{'form':form,'title':'Edit team appointment','appointment':obj})
++        form.save()
++        messages.success(request,'Team appointment updated.')
++        return redirect('team_detail',pk=pk)
++    ctx={'form':form,'title':'Edit team appointment','appointment':obj, **_hierarchy_maps()}
++    return render(request,'teams/form.html',ctx)
++
++
++def _coverage_label(jk):
++    lc = jk.local_council
++    rc = lc.regional_council if lc else None
++    return f'{jk.name} — {lc.name if lc else "—"} — {rc.name if rc else "—"}'
+ 
+ 
+ def _export_rows(qs):
+     for i,a in enumerate(qs,1):
+-        coverage=', '.join(str(x) for x in a.covered_jamatkhanas.all())
+-        yield [i,a.person.full_name,a.position.name,a.portfolio.name if a.portfolio else '',a.get_level_display(),str(a.jurisdiction_name or ''),coverage,a.person.mobile or a.person.whatsapp_number,a.person.email,a.term.name,'Active' if a.is_active else 'Inactive']
++        coverage=', '.join(_coverage_label(x) for x in a.covered_jamatkhanas.all())
++        phone=a.person.whatsapp_number or a.person.mobile or ''
++        yield [i,a.person.full_name,a.position.name,a.portfolio.name if a.portfolio else '',a.get_level_display(),str(a.jurisdiction_name or ''),coverage,phone,a.person.email,a.term.name,'Active' if a.is_active else 'Inactive']
++
++
++def _export_title(filters):
++    term=Term.objects.filter(pk=filters.get('term')).first()
++    board=Board.objects.filter(pk=filters.get('board')).first()
++    board_name=(board.short_name or board.name) if board else 'Teams & Contacts'
++    title=f'{board_name} Contact List'
++    if term:
++        title += f' — {term.name}'
++    return title, board
+ 
+ 
+ @login_required
+@@ -140,40 +191,87 @@ def team_export(request, export_format):
+     qs, filters = _filtered(request)
+     rows=list(_export_rows(qs))
+     stamp=timezone.localtime().strftime('%d %b %Y %H:%M')
+-    term=Term.objects.filter(pk=filters.get('term')).first()
+-    title=f'Teams & Contacts - {term.name if term else "All terms"}'
++    title, board = _export_title(filters)
+     headers=['S/N','Name','Position','Portfolio','Level','Jurisdiction','JK Coverage','Phone','Email','Term','Status']
++    filename_base=((board.code if board else 'teams') + '_contact_list').lower()
++
++    if export_format == 'csv':
++        response=HttpResponse(content_type='text/csv; charset=utf-8')
++        response['Content-Disposition']=f'attachment; filename="{filename_base}.csv"'
++        writer=csv.writer(response)
++        writer.writerow([title]); writer.writerow(['Generated',stamp]); writer.writerow([]); writer.writerow(headers)
++        writer.writerows(rows)
++        return response
++
+     if export_format == 'xlsx':
+-        wb=Workbook(); ws=wb.active; ws.title='Teams & Contacts'; ws.append([title]); ws.append(['Generated',stamp]); ws.append([]); ws.append(headers)
+-        for row in rows: ws.append(row)
+-        for col in ws.columns:
+-            letter=col[0].column_letter; ws.column_dimensions[letter].width=min(max(12,max(len(str(c.value or '')) for c in col)+2),35)
++        wb=Workbook(); ws=wb.active; ws.title='Contact List'
++        last_col=len(headers)
++        ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=last_col)
++        heading=ws.cell(1,1,title); heading.font=Font(size=16,bold=True); heading.alignment=Alignment(horizontal='center',vertical='center')
++        ws.row_dimensions[1].height=28
++        ws.merge_cells(start_row=2,start_column=1,end_row=2,end_column=last_col)
++        generated=ws.cell(2,1,f'Generated: {stamp}'); generated.font=Font(size=9,italic=True); generated.alignment=Alignment(horizontal='center')
++        for c,h in enumerate(headers,1):
++            cell=ws.cell(4,c,h); cell.font=Font(bold=True); cell.fill=PatternFill('solid',fgColor='DDEFEF'); cell.alignment=Alignment(horizontal='center',vertical='center')
++        for r_index,row in enumerate(rows,5):
++            for c_index,value in enumerate(row,1):
++                cell=ws.cell(r_index,c_index,value)
++                cell.alignment=Alignment(vertical='top',wrap_text=True)
++            phone=_digits(row[7])
++            if phone:
++                cell=ws.cell(r_index,8,row[7])
++                cell.hyperlink=f'https://wa.me/{phone}'
++                cell.style='Hyperlink'
++        widths=[7,24,22,22,16,30,44,18,32,15,12]
++        for idx,w in enumerate(widths,1): ws.column_dimensions[ws.cell(1,idx).column_letter].width=w
++        ws.freeze_panes='A5'
++        ws.sheet_view.showGridLines=False
++        ws.oddFooter.left.text=f'Generated: {stamp}'
++        ws.oddFooter.right.text='Page &[Page] of &[Pages]'
++        ws.evenFooter.left.text=f'Generated: {stamp}'
++        ws.evenFooter.right.text='Page &[Page] of &[Pages]'
++        ws.print_title_rows='1:4'
++        ws.page_setup.orientation='landscape'; ws.page_setup.fitToWidth=1; ws.page_setup.fitToHeight=0
+         out=BytesIO(); wb.save(out)
+-        r=HttpResponse(out.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); r['Content-Disposition']='attachment; filename="teams_contacts.xlsx"'; return r
++        r=HttpResponse(out.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
++        r['Content-Disposition']=f'attachment; filename="{filename_base}.xlsx"'
++        return r
++
+     if export_format == 'pdf':
+-        out=BytesIO()
++        out=BytesIO(); styles=getSampleStyleSheet()
++        pdf_title=f'{(board.code if board else "Teams")} Contact List'
+         def footer(canvas,doc):
+-            canvas.saveState(); canvas.setFont('Helvetica',8); canvas.drawString(12*mm,8*mm,f'Generated: {stamp}'); canvas.drawRightString(285*mm,8*mm,f'Page {doc.page}'); canvas.restoreState()
+-        doc=SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=9*mm,rightMargin=9*mm,topMargin=10*mm,bottomMargin=14*mm)
+-        styles=getSampleStyleSheet(); data=[[Paragraph(f'<b>{h}</b>',styles['BodyText']) for h in headers]]+[[Paragraph(str(v or ''),styles['BodyText']) for v in row] for row in rows]
+-        table=Table(data,repeatRows=1,colWidths=[9*mm,33*mm,28*mm,29*mm,19*mm,31*mm,34*mm,26*mm,37*mm,22*mm,18*mm])
+-        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eaf6f5')),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#cbd5e1')),('VALIGN',(0,0),(-1,-1),'TOP'),('FONTSIZE',(0,0),(-1,-1),7),('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3)]))
+-        doc.build([Paragraph(title,styles['Title']),Spacer(1,4*mm),table],onFirstPage=footer,onLaterPages=footer)
+-        r=HttpResponse(out.getvalue(),content_type='application/pdf'); r['Content-Disposition']='attachment; filename="teams_contacts.pdf"'; return r
++            canvas.saveState(); canvas.setTitle(pdf_title); canvas.setAuthor('Social Welfare Center')
++            canvas.setFont('Helvetica',8); canvas.drawString(12*mm,8*mm,f'Generated: {stamp}'); canvas.drawRightString(285*mm,8*mm,f'Page {doc.page}'); canvas.restoreState()
++        doc=SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=9*mm,rightMargin=9*mm,topMargin=10*mm,bottomMargin=14*mm,title=pdf_title)
++        data=[[Paragraph(f'<b>{h}</b>',styles['BodyText']) for h in headers]]
++        for row in rows:
++            rendered=[]
++            for idx,v in enumerate(row):
++                text=str(v or '')
++                if idx==7 and _digits(text):
++                    text=f'<link href="https://wa.me/{_digits(text)}" color="#128C7E"><u>{text}</u></link>'
++                rendered.append(Paragraph(text,styles['BodyText']))
++            data.append(rendered)
++        table=Table(data,repeatRows=1,colWidths=[9*mm,33*mm,28*mm,29*mm,19*mm,31*mm,50*mm,26*mm,37*mm,22*mm,18*mm])
++        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#DDEFEF')),('GRID',(0,0),(-1,-1),0.35,colors.HexColor('#cbd5e1')),('VALIGN',(0,0),(-1,-1),'TOP'),('FONTSIZE',(0,0),(-1,-1),7),('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3)]))
++        doc.build([Paragraph(title,styles['Title']),Spacer(1,2*mm),Paragraph(f'Generated {stamp}',styles['Normal']),Spacer(1,4*mm),table],onFirstPage=footer,onLaterPages=footer)
++        r=HttpResponse(out.getvalue(),content_type='application/pdf'); r['Content-Disposition']=f'attachment; filename="{filename_base}.pdf"'; return r
++
+     if export_format == 'jpg':
+-        widths=[50,260,190,190,130,220,260,170,260,120,100]; width=sum(widths)+40; rowh=42; height=max(300,160+(len(rows)+1)*rowh+55)
+-        img=Image.new('RGB',(width,height),'white'); d=ImageDraw.Draw(img); font=ImageFont.load_default(); d.text((20,20),title,fill='black',font=font); d.text((20,42),f'Generated: {stamp}',fill='black',font=font)
+-        y=80; x=20
+-        for j,h in enumerate(headers): d.rectangle((x,y,x+widths[j],y+rowh),outline='gray'); d.text((x+4,y+14),h,fill='black',font=font); x+=widths[j]
++        widths=[50,260,190,190,130,220,340,170,260,120,100]; width=sum(widths)+40; rowh=48; height=max(300,175+(len(rows)+1)*rowh+60)
++        img=Image.new('RGB',(width,height),'white'); d=ImageDraw.Draw(img); font=ImageFont.load_default(); d.text((20,20),title,fill='black',font=font); d.text((20,45),f'Generated: {stamp}',fill='black',font=font)
++        y=88; x=20
++        for j,h in enumerate(headers): d.rectangle((x,y,x+widths[j],y+rowh),outline='gray'); d.text((x+4,y+16),h,fill='black',font=font); x+=widths[j]
+         y+=rowh
+         for row in rows:
+             x=20
+             for j,v in enumerate(row):
+-                d.rectangle((x,y,x+widths[j],y+rowh),outline='lightgray'); txt=str(v or ''); maxchars=max(5,widths[j]//7); d.text((x+4,y+14),txt[:maxchars],fill='black',font=font); x+=widths[j]
++                d.rectangle((x,y,x+widths[j],y+rowh),outline='lightgray'); txt=str(v or ''); maxchars=max(5,widths[j]//7); d.text((x+4,y+16),txt[:maxchars],fill='black',font=font); x+=widths[j]
+             y+=rowh
+         d.text((20,height-25),f'Generated: {stamp}',fill='black',font=font); d.text((width-90,height-25),'Page 1',fill='black',font=font)
+         out=BytesIO(); img.save(out,'JPEG',quality=90)
+-        r=HttpResponse(out.getvalue(),content_type='image/jpeg'); r['Content-Disposition']='attachment; filename="teams_contacts.jpg"'; return r
++        r=HttpResponse(out.getvalue(),content_type='image/jpeg'); r['Content-Disposition']=f'attachment; filename="{filename_base}.jpg"'; return r
+     return HttpResponse('Unsupported format',status=400)
+ 
+ 
+@@ -183,14 +281,15 @@ def term_list(request):
+         return redirect('team_list')
+     return render(request,'teams/terms.html',{'terms':Term.objects.all()})
+ 
++
+ @login_required
+ def team_settings(request):
+     if not request.user.is_superuser:
+         return redirect('team_list')
+-    from .forms import TermForm, TeamPositionForm, PortfolioForm
++    from .forms import PortfolioForm, TeamCategoryForm, TeamPositionForm, TermForm
+     kind=request.GET.get('kind','term')
+-    forms={'term':TermForm,'position':TeamPositionForm,'portfolio':PortfolioForm}
+-    models={'term':Term,'position':TeamPosition,'portfolio':Portfolio}
++    forms={'term':TermForm,'category':TeamCategoryForm,'position':TeamPositionForm,'portfolio':PortfolioForm}
++    models={'term':Term,'category':TeamCategory,'position':TeamPosition,'portfolio':Portfolio}
+     Form=forms.get(kind,TermForm); Model=models.get(kind,Term)
+     instance=None
+     edit=request.GET.get('edit')
+@@ -198,4 +297,7 @@ def team_settings(request):
+     form=Form(request.POST or None,instance=instance)
+     if request.method=='POST' and form.is_valid():
+         form.save(); messages.success(request,'Team setting saved.'); return redirect(f"{reverse('team_settings')}?kind={kind}")
+-    return render(request,'teams/settings.html',{'kind':kind,'form':form,'items':Model.objects.all()})
++    items=Model.objects.all()
++    if kind=='portfolio': items=items.select_related('board')
++    if kind=='position': items=items.select_related('category')
++    return render(request,'teams/settings.html',{'kind':kind,'form':form,'items':items})
+diff --git a/templates/base.html b/templates/base.html
+index 4b36538..370a216 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,6 +1,6 @@
+ {% load static %}
+-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}?v=family-detail-20260930-7">{% block extra_css %}{% endblock %}</head>
++<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{% block title %}Social Welfare Center{% endblock %}</title><link rel="manifest" href="{% static 'manifest.json' %}"><link rel="stylesheet" href="{% static 'app.css' %}?v=teams-person-parity-20261003-2">{% block extra_css %}{% endblock %}</head>
+ <body><div class="shell"><aside class="sidebar" id="socialSidebar"><a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">SW</span><span>Social Welfare<br><small>Center Database</small></span></a><nav><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'organization' %}">Organization</a><a href="{% url 'people' %}">People</a><a href="{% url 'family_harmony' %}">Family Harmony</a><a href="{% url 'team_list' %}">Teams & Contacts</a>{% if request.user.is_superuser %}<a href="{% url 'staff_users' %}">User access</a><a href="{% url 'settings' %}">Settings</a><a href="{% url 'backup_center' %}">Backup & Restore</a>{% endif %}</nav></aside><button class="sidebar-scrim" id="sidebarScrim" type="button" aria-label="Close menu"></button><main class="main">
+ <header class="social-topbar"><button class="menu" id="sidebarMenuToggle" aria-label="Open menu" aria-controls="socialSidebar" aria-expanded="false">☰</button><span class="eyebrow top-title">SOCIAL WELFARE CENTER</span><div class="top-actions"><label class="view-toggle" title="Show viewport size"><span><input id="viewportToggle" type="checkbox"> View</span><small id="viewportSize">0 × 0</small></label><a class="top-btn warning" href="{% url 'pending_approvals' %}">Pending Approval{% if PENDING_APPROVAL_COUNT %} <b class="count-badge">{{ PENDING_APPROVAL_COUNT }}</b>{% endif %}</a><a class="top-btn warning" href="{% url 'suggestion_list' %}">Suggestions</a><a class="top-btn outline" href="{% url 'my_profile' %}">Profile</a><form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button class="top-btn light" type="submit">Logout</button></form></div></header>
+ 
+-{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}?v=inline-options-3" defer></script><script>(function(){const t=document.getElementById('viewportToggle'),s=document.getElementById('viewportSize'),m=document.getElementById('sidebarMenuToggle'),scrim=document.getElementById('sidebarScrim');function u(){if(s)s.textContent=window.innerWidth+' × '+window.innerHeight}if(t){function v(){s.hidden=!t.checked;u()}t.addEventListener('change',v);window.addEventListener('resize',u);v()}function menu(open){document.body.classList.toggle('sidebar-open',open);if(m)m.setAttribute('aria-expanded',open?'true':'false')}if(m)m.addEventListener('click',()=>menu(!document.body.classList.contains('sidebar-open')));if(scrim)scrim.addEventListener('click',()=>menu(false));document.addEventListener('keydown',e=>{if(e.key==='Escape')menu(false)});window.addEventListener('resize',()=>{if(window.innerWidth>760)menu(false)})})();</script>{% block extra_js %}{% endblock %}</body></html>
++{% if messages %}<div class="messages">{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main></div><script src="{% static 'app.js' %}?v=teams-person-parity-20261003-2" defer></script><script>(function(){const t=document.getElementById('viewportToggle'),s=document.getElementById('viewportSize'),m=document.getElementById('sidebarMenuToggle'),scrim=document.getElementById('sidebarScrim');function u(){if(s)s.textContent=window.innerWidth+' × '+window.innerHeight}if(t){function v(){s.hidden=!t.checked;u()}t.addEventListener('change',v);window.addEventListener('resize',u);v()}function menu(open){document.body.classList.toggle('sidebar-open',open);if(m)m.setAttribute('aria-expanded',open?'true':'false')}if(m)m.addEventListener('click',()=>menu(!document.body.classList.contains('sidebar-open')));if(scrim)scrim.addEventListener('click',()=>menu(false));document.addEventListener('keydown',e=>{if(e.key==='Escape')menu(false)});window.addEventListener('resize',()=>{if(window.innerWidth>760)menu(false)})})();</script>{% block extra_js %}{% endblock %}</body></html>
+diff --git a/templates/people/form.html b/templates/people/form.html
+index 3a74dd4..bb8eda4 100644
+--- a/templates/people/form.html
++++ b/templates/people/form.html
+@@ -1,17 +1,42 @@
+ {% extends 'base.html' %}
+ {% load static %}
+ {% block title %}{{ title }} | Social Welfare{% endblock %}
+-{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}?v=people-editor-1"><link rel="stylesheet" href="{% static 'family_harmony_form.css' %}?v=1">{% endblock %}
++{% block extra_css %}<link rel="stylesheet" href="{% static 'marriage_form.css' %}?v=people-harmony-parity-2"><link rel="stylesheet" href="{% static 'family_harmony_form.css' %}?v=1">{% endblock %}
+ {% block content %}
+ <section class="profile-editor-shell mpf-page-shell people-editor">
+-  <div class="profile-editor-head mpf-page-head"><div><p class="eyebrow">SOCIAL WELFARE CENTER</p><h1>{{ title }}</h1><div class="mpf-page-head-actions"><button class="primary" type="submit" form="person-form">Save person</button><a class="secondary" href="{% if person %}{% url 'person_detail' person.id %}{% else %}{% url 'people' %}{% endif %}">Cancel</a></div></div></div>
++  <div class="profile-editor-head mpf-page-head"><div><p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p><h1>{{ title }}</h1><div class="mpf-page-head-actions"><button class="primary" type="submit" form="person-form">Save changes</button><a class="secondary" href="{% if person %}{% url 'person_detail' person.id %}{% else %}{% url 'people' %}{% endif %}">← Back</a><a class="secondary" href="{% if person %}{% url 'person_detail' person.id %}{% else %}{% url 'people' %}{% endif %}">Cancel</a></div></div></div>
+   <form method="post" enctype="multipart/form-data" class="marriage-profile-form" id="person-form">{% csrf_token %}<datalist id="person-occupation-options">{% for item in occupation_options %}<option value="{{ item }}">{% endfor %}</datalist>
+-  {% if form.non_field_errors %}<div class="mpf-errors">{{ form.non_field_errors }}</div>{% endif %}
+-  <div class="mpf-upload-strip"><label class="mpf-upload-card mpf-profile-card{% if form.instance.photo %} is-filled{% endif %}" for="id_photo">{% if form.instance.photo %}<img id="photoPreview" class="mpf-photo-cover" src="{{ form.instance.photo.url }}" alt="Profile photo">{% else %}<img id="photoPreview" class="mpf-photo-cover" hidden alt="Profile preview">{% endif %}<span class="mpf-upload-copy"><strong>Click to upload<br>Profile photo</strong><small>JPG or PNG</small></span></label><label class="mpf-upload-card" for="id_cnic_front"><span class="mpf-upload-copy"><strong>Click to upload<br>CNIC Front</strong><small>Image file</small></span></label><label class="mpf-upload-card" for="id_cnic_back"><span class="mpf-upload-copy"><strong>Click to upload<br>CNIC Back</strong><small>Image file</small></span></label><div class="mpf-hidden-file">{{ form.photo }}{{ form.cnic_front }}{{ form.cnic_back }}</div></div>
+-  <section class="mpf-section"><button class="mpf-section-title" type="button" aria-expanded="true"><span class="mpf-section-icon">&#128100;</span><b>1. Personal Information</b><span class="mpf-chevron">⌃</span></button><div class="mpf-section-body"><div class="mpf-grid mpf-person-grid">{% for field in form %}{% if field.name in 'title first_name middle_name last_name gender date_of_birth marital_status nationality identity_type identity_number mobile alternate_mobile whatsapp_number email city province country jamatkhana current_address permanent_address' %}<div class="mpf-field{% if field.name == 'current_address' or field.name == 'permanent_address' %} mpf-col-6{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}{% if field.name == 'jamatkhana' %}<small>Local and regional councils are assigned automatically.</small>{% endif %}</div>{% endif %}{% endfor %}</div></div></section>
+-  <section class="mpf-section"><button class="mpf-section-title" type="button" aria-expanded="true"><span class="mpf-section-icon">&#127891;</span><b>2. Education &amp; Career</b><span class="mpf-chevron">⌃</span></button><div class="mpf-section-body"><div class="mpf-grid mpf-person-grid">{% for field in form %}{% if field.name in 'willing_to_relocate education education_details occupation employer_or_business income_range languages interests' %}<div class="mpf-field{% if field.name == 'education_details' or field.name == 'interests' %} mpf-col-6{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div></div></section>
+-  <section class="mpf-section mpf-collapsed"><button class="mpf-section-title" type="button" aria-expanded="false"><span class="mpf-section-icon">&#128279;</span><b>3. Social Links</b><span class="mpf-chevron">⌄</span></button><div class="mpf-section-body"><div class="mpf-grid mpf-person-grid">{% for field in form %}{% if field.name in 'facebook_url instagram_url linkedin_url other_social_url' %}<div class="mpf-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div></div></section>
+-  <div class="sticky-form-actions"><a class="secondary" href="{% if person %}{% url 'person_detail' person.id %}{% else %}{% url 'people' %}{% endif %}">Cancel</a><button class="primary" type="submit">Save person</button></div></form>
++    <div class="mpf-form">
++      {% if form.non_field_errors %}<div class="mpf-errors">{{ form.non_field_errors }}</div>{% endif %}
++      <div class="mpf-upload-strip">
++        <label class="mpf-upload-card mpf-profile-card{% if form.instance.photo %} is-filled{% endif %}" for="id_photo">{% if form.instance.photo %}<img id="photoPreview" class="mpf-photo-cover" src="{{ form.instance.photo.url }}" alt="Profile photo"><span class="mpf-photo-change">Change photo</span>{% else %}<img id="photoPreview" class="mpf-photo-cover" hidden alt="Profile preview"><span class="mpf-photo-change" hidden>Change photo</span>{% endif %}<span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><strong>Click to upload<br>Profile photo</strong><small>(JPG, PNG, max 5 MB)</small></span></label>
++        <label class="mpf-upload-card" for="id_cnic_front"><span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><strong>Click to upload<br>CNIC Front</strong><small>{% if form.instance.cnic_front %}Current front uploaded · click to replace{% else %}(max 5 MB){% endif %}</small></span></label>
++        <label class="mpf-upload-card" for="id_cnic_back"><span class="mpf-upload-copy"><svg class="mpf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><strong>Click to upload<br>CNIC Back</strong><small>{% if form.instance.cnic_back %}Current back uploaded · click to replace{% else %}(max 5 MB){% endif %}</small></span></label>
++        <div class="mpf-hidden-file">{{ form.photo }}{{ form.cnic_front }}{{ form.cnic_back }}</div>
++      </div>
++
++      <section class="mpf-section">
++        <div class="mpf-section-header"><button class="mpf-section-title" type="button" aria-expanded="true"><span class="mpf-section-icon">👤</span><b>1. Personal Information</b><span class="mpf-chevron">⌃</span></button><div class="mpf-heading-jamatkhana"><label for="{{ form.jamatkhana.id_for_label }}">Jamatkhana</label>{{ form.jamatkhana }}{{ form.jamatkhana.errors }}</div></div>
++        <div class="mpf-section-body mpf-four-row-layout">
++          <div class="mpf-row mpf-row-10">
++            {% include 'family_harmony/_marriage_form_field.html' with field=form.title %}{% include 'family_harmony/_marriage_form_field.html' with field=form.first_name %}{% include 'family_harmony/_marriage_form_field.html' with field=form.middle_name %}{% include 'family_harmony/_marriage_form_field.html' with field=form.last_name %}{% include 'family_harmony/_marriage_form_field.html' with field=form.gender css='mpf-seg mpf-gender' %}{% include 'family_harmony/_marriage_form_field.html' with field=form.date_of_birth %}{% include 'family_harmony/_marriage_form_field.html' with field=form.nationality %}{% include 'family_harmony/_marriage_form_field.html' with field=form.identity_type %}{% include 'family_harmony/_marriage_form_field.html' with field=form.identity_number %}{% include 'family_harmony/_marriage_form_field.html' with field=form.marital_status %}
++          </div>
++          <div class="mpf-row mpf-row-10">
++            {% include 'family_harmony/_marriage_form_field.html' with field=form.mobile %}{% include 'family_harmony/_marriage_form_field.html' with field=form.alternate_mobile %}{% include 'family_harmony/_marriage_form_field.html' with field=form.whatsapp_number %}{% include 'family_harmony/_marriage_form_field.html' with field=form.email %}{% include 'family_harmony/_marriage_form_field.html' with field=form.country %}{% include 'family_harmony/_marriage_form_field.html' with field=form.province %}{% include 'family_harmony/_marriage_form_field.html' with field=form.city %}
++          </div>
++          <div class="mpf-compact-profile-layout">
++            {% include 'family_harmony/_marriage_form_field.html' with field=form.permanent_address %}{% include 'family_harmony/_marriage_form_field.html' with field=form.current_address %}
++            <div class="mpf-field"><label>Regional Council</label><input type="text" value="{{ form.instance.region|default:'' }}" disabled></div><div class="mpf-field"><label>Local Council</label><input type="text" value="{{ form.instance.local_council|default:'' }}" disabled></div>
++          </div>
++        </div>
++      </section>
++
++      <section class="mpf-section"><button class="mpf-section-title" type="button" aria-expanded="true"><span class="mpf-section-icon">🎓</span><b>2. Education &amp; Career</b><span class="mpf-chevron">⌃</span></button><div class="mpf-section-body"><div class="mpf-career-row">{% include 'family_harmony/_marriage_form_field.html' with field=form.education %}{% include 'family_harmony/_marriage_form_field.html' with field=form.education_details %}{% include 'family_harmony/_marriage_form_field.html' with field=form.occupation %}{% include 'family_harmony/_marriage_form_field.html' with field=form.employer_or_business %}{% include 'family_harmony/_marriage_form_field.html' with field=form.income_range %}{% include 'family_harmony/_marriage_form_field.html' with field=form.languages %}{% include 'family_harmony/_marriage_form_field.html' with field=form.willing_to_relocate css='mpf-seg' %}</div><div class="mpf-grid" style="margin-top:10px">{% include 'family_harmony/_marriage_form_field.html' with field=form.interests css='mpf-col-9' %}</div></div></section>
++
++      <section class="mpf-section mpf-collapsed"><button class="mpf-section-title" type="button" aria-expanded="false"><span class="mpf-section-icon">🔗</span><b>3. Social Links</b><span class="mpf-chevron">⌄</span></button><div class="mpf-section-body"><div class="mpf-grid">{% include 'family_harmony/_marriage_form_field.html' with field=form.facebook_url css='mpf-col-3' %}{% include 'family_harmony/_marriage_form_field.html' with field=form.instagram_url css='mpf-col-3' %}{% include 'family_harmony/_marriage_form_field.html' with field=form.linkedin_url css='mpf-col-3' %}{% include 'family_harmony/_marriage_form_field.html' with field=form.other_social_url css='mpf-col-3' %}</div></div></section>
++    </div>
++    <div class="sticky-form-actions"><a class="secondary" href="{% if person %}{% url 'person_detail' person.id %}{% else %}{% url 'people' %}{% endif %}">Cancel</a><button class="primary" type="submit">Save changes</button></div>
++  </form>
+ </section>
+ {% endblock %}
+-{% block extra_js %}<script>(function(){document.querySelectorAll('.mpf-section-title').forEach(button=>button.addEventListener('click',()=>{const section=button.closest('.mpf-section');section.classList.toggle('mpf-collapsed');button.setAttribute('aria-expanded',section.classList.contains('mpf-collapsed')?'false':'true')}));const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview');if(photo)photo.addEventListener('change',()=>{const file=photo.files&&photo.files[0];if(!file)return;preview.src=URL.createObjectURL(file);preview.hidden=false});})();</script>{% endblock %}
++{% block extra_js %}<script>(function(){const root=document.querySelector('.people-editor');root?.querySelectorAll('.mpf-section-title').forEach(button=>button.addEventListener('click',()=>{const section=button.closest('.mpf-section');section.classList.toggle('mpf-collapsed');button.setAttribute('aria-expanded',section.classList.contains('mpf-collapsed')?'false':'true')}));const photo=document.getElementById('id_photo'),preview=document.getElementById('photoPreview');if(photo)photo.addEventListener('change',()=>{const file=photo.files&&photo.files[0];if(!file)return;preview.src=URL.createObjectURL(file);preview.hidden=false});})();</script>{% endblock %}
+diff --git a/templates/teams/form.html b/templates/teams/form.html
+index 2816f68..21b8cf9 100644
+--- a/templates/teams/form.html
++++ b/templates/teams/form.html
+@@ -1 +1,47 @@
+-{% extends 'base.html' %}{% block title %}{{ title }}{% endblock %}{% block content %}<div class="page-wrap narrow"><div class="page-heading"><div><span class="eyebrow">TEAMS & CONTACTS</span><h1>{{ title }}</h1><p>Select an existing person so contact and identity data remain in one source.</p></div></div><form method="post" class="card form-card">{% csrf_token %}{% if form.non_field_errors %}<div class="message">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">{% for field in form %}<label><span>{{ field.label }}</span>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{{ field.errors }}</label>{% endfor %}</div><div class="toolbar"><button class="btn primary" type="submit">Save appointment</button><a class="btn" href="{% url 'team_list' %}">Cancel</a></div></form></div>{% endblock %}
++{% extends 'base.html' %}
++{% block title %}{{ title }}{% endblock %}
++{% block content %}
++<div class="page-wrap team-appointment-page">
++  <div class="page-heading">
++    <div><span class="eyebrow">TEAMS &amp; CONTACTS</span><h1>{{ title }}</h1><p>Select an existing person so contact and identity data remain in one source.</p></div>
++    <div class="toolbar"><a class="btn secondary" href="{% url 'team_list' %}">← Back</a></div>
++  </div>
++  <form method="post" class="card form-card team-appointment-form">{% csrf_token %}
++    {% if form.non_field_errors %}<div class="message">{{ form.non_field_errors }}</div>{% endif %}
++    <div class="team-appointment-grid">
++      {% for field in form %}
++      <label class="team-field team-field-{{ field.name }}{% if field.name == 'covered_jamatkhanas' or field.name == 'notes' %} team-field-wide{% endif %}">
++        <span>{{ field.label }}</span>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{{ field.errors }}
++      </label>
++      {% endfor %}
++    </div>
++    <div class="toolbar"><button class="btn primary" type="submit">Save appointment</button><a class="btn" href="{% url 'team_list' %}">Cancel</a></div>
++  </form>
++</div>
++{{ region_map|json_script:"team-region-map" }}
++{{ local_map|json_script:"team-local-map" }}
++{{ jk_map|json_script:"team-jk-map" }}
++{{ portfolio_map|json_script:"team-portfolio-map" }}
++{% endblock %}
++{% block extra_js %}<script>
++(function(){
++  const parse=id=>{const el=document.getElementById(id);return el?JSON.parse(el.textContent):{}};
++  const regionMap=parse('team-region-map'), localMap=parse('team-local-map'), jkMap=parse('team-jk-map'), portfolioMap=parse('team-portfolio-map');
++  const by=id=>document.getElementById(id);
++  const setSelect=(el,value)=>{if(!el||!value)return; el.value=String(value); el.dispatchEvent(new Event('change',{bubbles:true})); const wrap=el.closest('.select2-lite'); if(wrap){const input=wrap.querySelector('.select2-lite-input'); const option=Array.from(el.options).find(o=>o.value===String(value)); if(input&&option)input.value=option.text;}};
++  const national=by('id_national_council'), regional=by('id_regional_council'), local=by('id_local_council'), jk=by('id_jamatkhana');
++  if(regional)regional.addEventListener('change',()=>{const m=regionMap[regional.value];if(m)setSelect(national,m.national)});
++  if(local)local.addEventListener('change',()=>{const m=localMap[local.value];if(m){setSelect(regional,m.regional);setSelect(national,m.national)}});
++  if(jk)jk.addEventListener('change',()=>{const m=jkMap[jk.value];if(m){setSelect(local,m.local);setSelect(regional,m.regional);setSelect(national,m.national)}});
++  const board=by('id_board'), portfolio=by('id_portfolio');
++  function filterPortfolios(){
++    if(!board||!portfolio)return;
++    const boardId=board.value;
++    Array.from(portfolio.options).forEach(o=>{if(!o.value)return;o.hidden=!!boardId&&String(portfolioMap[o.value]?.board)!==String(boardId)});
++    const wrap=portfolio.closest('.select2-lite');
++    if(wrap)wrap.querySelectorAll('.select2-lite-option').forEach(item=>{item.hidden=!!boardId&&String(portfolioMap[item.dataset.value]?.board)!==String(boardId)});
++    if(portfolio.value && boardId && String(portfolioMap[portfolio.value]?.board)!==String(boardId)){portfolio.value='';const input=wrap?.querySelector('.select2-lite-input');if(input)input.value='';}
++  }
++  if(board){board.addEventListener('change',filterPortfolios);filterPortfolios();}
++})();
++</script>{% endblock %}
+diff --git a/templates/teams/list.html b/templates/teams/list.html
+index 65681e7..574ab8c 100644
+--- a/templates/teams/list.html
++++ b/templates/teams/list.html
+@@ -1,17 +1,24 @@
+-{% extends 'base.html' %}{% block title %}Teams & Contacts{% endblock %}
++{% extends 'base.html' %}{% block title %}{% if selected_board %}{{ selected_board.short_name|default:selected_board.name }} Contacts{% else %}Teams & Contacts{% endif %}{% endblock %}
+ {% block content %}
+-<div class="page-wrap team-page"><div class="page-heading"><div><span class="eyebrow">DIRECTORY</span><h1>Teams & Contacts</h1><p>Term-based board appointments at national, regional, local council and Jamatkhana level.</p></div><div class="toolbar">{% if request.user.is_superuser %}<a class="btn secondary" href="{% url 'team_settings' %}">⚙ Team settings</a>{% endif %}<a class="btn primary" href="{% url 'team_create' %}">+ Appointment</a></div></div>
+-<form class="filter-card" method="get"><div class="team-filters">
+-<input name="q" value="{{ filters.q }}" placeholder="Search name, phone, email, position...">
+-<select name="term"><option value="">All terms</option>{% for x in terms %}<option value="{{ x.id }}" {% if filters.term == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}{% if x.is_current %} • Current{% endif %}</option>{% endfor %}</select>
+-<select name="board"><option value="">All boards</option>{% for x in boards %}<option value="{{ x.id }}" {% if filters.board == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+-<select name="level"><option value="">All levels</option>{% for v,l in levels %}<option value="{{ v }}" {% if filters.level == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+-<select name="portfolio"><option value="">All portfolios</option>{% for x in portfolios %}<option value="{{ x.id }}" {% if filters.portfolio == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+-<select name="position"><option value="">All positions</option>{% for x in positions %}<option value="{{ x.id }}" {% if filters.position == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+-<select name="regional"><option value="">All regional councils</option>{% for x in regions %}<option value="{{ x.id }}" {% if filters.regional == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+-<select name="local"><option value="">All local councils</option>{% for x in locals %}<option value="{{ x.id }}" {% if filters.local == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
+-<select name="jk"><option value="">All jamatkhanas</option>{% for x in jks %}<option value="{{ x.id }}" {% if filters.jk == x.id|stringformat:'s' %}selected{% endif %}>{{ x }}</option>{% endfor %}</select>
+-<select name="status"><option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option><option value="all" {% if filters.status == 'all' %}selected{% endif %}>All status</option><option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option></select><button class="btn primary">Filter</button></div></form>
+-<div class="card"><div class="card-head"><h2>Team appointments ({{ appointments|length }})</h2><div class="toolbar"><a class="btn small" href="{% url 'team_export' 'jpg' %}?{{ request.GET.urlencode }}">JPG</a><a class="btn small" href="{% url 'team_export' 'pdf' %}?{{ request.GET.urlencode }}">PDF</a><a class="btn small" href="{% url 'team_export' 'xlsx' %}?{{ request.GET.urlencode }}">Excel</a></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Term</th><th>Board</th><th>Position</th><th>Portfolio</th><th>Level / Jurisdiction</th><th>Coverage</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+-{% for a in appointments %}<tr><td>{{ forloop.counter }}</td><td>{% if a.person.photo %}<img class="team-avatar" src="{{ a.person.photo.url }}">{% else %}<span class="avatar-fallback">{{ a.person.first_name|slice:':1' }}{{ a.person.last_name|slice:':1' }}</span>{% endif %}</td><td><b>{{ a.person.full_name }}</b><small>{{ a.person.email }}</small></td><td>{{ a.term.name }}</td><td>{{ a.board.short_name|default:a.board.name }}</td><td>{{ a.position }}</td><td>{{ a.portfolio|default:'—' }}</td><td>{{ a.get_level_display }}<small>{{ a.jurisdiction_name }}</small></td><td>{% for jk in a.covered_jamatkhanas.all %}<span class="mini-badge">{{ jk }}</span>{% empty %}—{% endfor %}</td><td>{{ a.person.mobile|default:a.person.whatsapp_number|default:'—' }}</td><td><span class="status-pill">{% if a.is_active %}Active{% else %}Inactive{% endif %}</span></td><td><div class="row-actions">{% if a.person.whatsapp_number or a.person.mobile %}<a title="WhatsApp message" target="_blank" href="https://wa.me/{{ a.person.whatsapp_number|default:a.person.mobile|cut:'+' }}" rel="noopener">{% include "partials/whatsapp_icon.html" %}</a>{% endif %}<a href="{% url 'team_detail' a.id %}" title="View">👁</a><a href="{% url 'team_edit' a.id %}" title="Edit">✎</a></div></td></tr>{% empty %}<tr><td colspan="12" class="empty">No team appointments match these filters.</td></tr>{% endfor %}</tbody></table></div></div></div>
++<div class="page-wrap team-page">
++  <div class="page-heading"><div><span class="eyebrow">DIRECTORY</span><h1>{% if selected_board %}{{ selected_board.short_name|default:selected_board.name }} — Contact List{% else %}Teams &amp; Contacts{% endif %}</h1><p>Term-based board appointments at national, regional, local council and Jamatkhana level.</p></div><div class="toolbar">{% if request.user.is_superuser %}<a class="btn secondary" href="{% url 'team_settings' %}">⚙ Team settings</a>{% endif %}<a class="btn primary" href="{% url 'team_create' %}">+ Appointment</a></div></div>
++  <form class="filter-card" method="get"><div class="team-filters">
++    <input name="q" value="{{ filters.q }}" placeholder="Search name, phone, email, position...">
++    <select name="term" data-searchable="true"><option value="">All terms</option>{% for x in terms %}<option value="{{ x.id }}" {% if filters.term == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}{% if x.is_current %} • Current{% endif %}</option>{% endfor %}</select>
++    <select name="board" data-searchable="true"><option value="">All boards</option>{% for x in boards %}<option value="{{ x.id }}" {% if filters.board == x.id|stringformat:'s' %}selected{% endif %}>{{ x.short_name|default:x.name }}</option>{% endfor %}</select>
++    <select name="level" data-searchable="true"><option value="">All levels</option>{% for v,l in levels %}<option value="{{ v }}" {% if filters.level == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
++    <select name="portfolio" data-searchable="true"><option value="">All portfolios</option>{% for x in portfolios %}<option value="{{ x.id }}" {% if filters.portfolio == x.id|stringformat:'s' %}selected{% endif %}>{{ x.board.short_name|default:x.board.name }} — {{ x.name }}</option>{% endfor %}</select>
++    <select name="position" data-searchable="true"><option value="">All positions</option>{% for x in positions %}<option value="{{ x.id }}" {% if filters.position == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
++    <select name="regional" data-searchable="true"><option value="">All regional councils</option>{% for x in regions %}<option value="{{ x.id }}" {% if filters.regional == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }}</option>{% endfor %}</select>
++    <select name="local" data-searchable="true"><option value="">All local councils</option>{% for x in locals %}<option value="{{ x.id }}" {% if filters.local == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }} — {{ x.regional_council.name }}</option>{% endfor %}</select>
++    <select name="jk" data-searchable="true"><option value="">All jamatkhanas</option>{% for x in jks %}<option value="{{ x.id }}" {% if filters.jk == x.id|stringformat:'s' %}selected{% endif %}>{{ x.name }} — {{ x.local_council.name }} — {{ x.local_council.regional_council.name }}</option>{% endfor %}</select>
++    <select name="status" data-searchable="true"><option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option><option value="all" {% if filters.status == 'all' %}selected{% endif %}>All status</option><option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option></select>
++    <button class="btn primary">Filter</button><a class="btn team-clear" href="{% url 'team_list' %}">Clear</a>
++  </div></form>
++  <div class="card"><div class="card-head"><h2>{% if selected_board %}{{ selected_board.short_name|default:selected_board.name }}{% else %}Team{% endif %} appointments ({{ appointments|length }})</h2><div class="toolbar team-export-toolbar"><a class="btn small export-csv" href="{% url 'team_export' 'csv' %}?{{ request.GET.urlencode }}">CSV</a><a class="btn small export-xlsx" href="{% url 'team_export' 'xlsx' %}?{{ request.GET.urlencode }}">Excel</a><a class="btn small export-pdf" href="{% url 'team_export' 'pdf' %}?{{ request.GET.urlencode }}">PDF</a><a class="btn small export-jpg" href="{% url 'team_export' 'jpg' %}?{{ request.GET.urlencode }}">JPG</a></div></div>
++    <div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Term</th><th>Board</th><th>Position</th><th>Portfolio</th><th>Level / Jurisdiction</th><th>Coverage</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody>
++      {% for a in appointments %}<tr><td>{{ forloop.counter }}</td><td>{% if a.person.photo %}<img class="team-avatar" src="{{ a.person.photo.url }}">{% else %}<span class="avatar-fallback">{{ a.person.first_name|slice:':1' }}{{ a.person.last_name|slice:':1' }}</span>{% endif %}</td><td><b>{{ a.person.full_name }}</b><small>{{ a.person.email }}</small></td><td>{{ a.term.name }}</td><td>{{ a.board.short_name|default:a.board.name }}</td><td>{{ a.position }}</td><td>{% if a.portfolio %}{{ a.portfolio.name }}{% else %}—{% endif %}</td><td>{{ a.get_level_display }}<small>{{ a.jurisdiction_name }}</small></td><td>{% for jk in a.covered_jamatkhanas.all %}<span class="mini-badge">{{ jk.name }} — {{ jk.local_council.name }} — {{ jk.local_council.regional_council.name }}</span>{% empty %}—{% endfor %}</td><td>{{ a.person.mobile|default:a.person.whatsapp_number|default:'—' }}</td><td><span class="status-pill">{% if a.is_active %}Active{% else %}Inactive{% endif %}</span></td><td><div class="row-actions">{% if a.person.whatsapp_number or a.person.mobile %}<a title="WhatsApp message" target="_blank" href="https://wa.me/{{ a.person.whatsapp_number|default:a.person.mobile|cut:'+' }}" rel="noopener">{% include "partials/whatsapp_icon.html" %}</a>{% endif %}<a href="{% url 'team_detail' a.id %}" title="View">👁</a><a href="{% url 'team_edit' a.id %}" title="Edit">✎</a></div></td></tr>{% empty %}<tr><td colspan="12" class="empty">No team appointments match these filters.</td></tr>{% endfor %}
++    </tbody></table></div>
++  </div>
++</div>
+ {% endblock %}
+diff --git a/templates/teams/settings.html b/templates/teams/settings.html
+index 5e3999c..f5f1220 100644
+--- a/templates/teams/settings.html
++++ b/templates/teams/settings.html
+@@ -1 +1,4 @@
+-{% extends 'base.html' %}{% block title %}Team Settings{% endblock %}{% block content %}<div class="page-wrap"><div class="page-heading"><div><span class="eyebrow">SETTINGS</span><h1>Team Settings</h1><p>Terms create a fresh appointment cycle while preserving prior teams.</p></div></div><div class="settings-tabs"><a href="?kind=term" class="btn {% if kind == 'term' %}primary{% endif %}">Terms</a><a href="?kind=position" class="btn {% if kind == 'position' %}primary{% endif %}">Positions</a><a href="?kind=portfolio" class="btn {% if kind == 'portfolio' %}primary{% endif %}">Portfolios</a></div><div class="detail-grid"><form method="post" class="card form-card">{% csrf_token %}<h2>{% if form.instance.pk %}Edit{% else %}Add{% endif %} {{ kind }}</h2><div class="form-grid">{% for field in form %}<label><span>{{ field.label }}</span>{{ field }}{{ field.errors }}</label>{% endfor %}</div><button class="btn primary">Save</button></form><section class="card"><h2>Configured {{ kind }}s</h2><table class="data-table"><tbody>{% for item in items %}<tr><td><b>{{ item }}</b>{% if item.is_current %}<span class="mini-badge">Current</span>{% endif %}</td><td>{% if item.is_active %}Active{% else %}Inactive{% endif %}</td><td><a href="?kind={{ kind }}&edit={{ item.id }}">Edit</a></td></tr>{% empty %}<tr><td>No records yet.</td></tr>{% endfor %}</tbody></table></section></div></div>{% endblock %}
++{% extends 'base.html' %}{% block title %}Team Settings{% endblock %}
++{% block content %}<div class="page-wrap"><div class="page-heading"><div><span class="eyebrow">SETTINGS</span><h1>Team Settings</h1><p>Terms create a fresh appointment cycle while preserving prior teams.</p></div><div class="toolbar"><a class="btn secondary" href="{% url 'team_list' %}">← Back to Teams &amp; Contacts</a></div></div>
++<div class="settings-tabs"><a href="?kind=term" class="btn {% if kind == 'term' %}primary{% endif %}">Terms</a><a href="?kind=category" class="btn {% if kind == 'category' %}primary{% endif %}">Categories</a><a href="?kind=position" class="btn {% if kind == 'position' %}primary{% endif %}">Positions</a><a href="?kind=portfolio" class="btn {% if kind == 'portfolio' %}primary{% endif %}">Portfolios</a></div>
++<div class="detail-grid"><form method="post" class="card form-card">{% csrf_token %}<h2>{% if form.instance.pk %}Edit{% else %}Add{% endif %} {{ kind }}</h2><div class="form-grid">{% for field in form %}<label><span>{{ field.label }}</span>{{ field }}{{ field.errors }}</label>{% endfor %}</div><button class="btn primary">Save</button></form><section class="card"><h2>Configured {{ kind }}s</h2><table class="data-table"><tbody>{% for item in items %}<tr><td><b>{{ item }}</b>{% if item.is_current %}<span class="mini-badge">Current</span>{% endif %}{% if kind == 'position' and item.category %}<small>{{ item.category.name }}</small>{% endif %}</td><td>{% if item.is_active %}Active{% else %}Inactive{% endif %}</td><td><a href="?kind={{ kind }}&edit={{ item.id }}">Edit</a></td></tr>{% empty %}<tr><td>No records yet.</td></tr>{% endfor %}</tbody></table></section></div></div>{% endblock %}

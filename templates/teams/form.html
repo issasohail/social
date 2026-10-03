@@ -1,1 +1,47 @@
-{% extends 'base.html' %}{% block title %}{{ title }}{% endblock %}{% block content %}<div class="page-wrap narrow"><div class="page-heading"><div><span class="eyebrow">TEAMS & CONTACTS</span><h1>{{ title }}</h1><p>Select an existing person so contact and identity data remain in one source.</p></div></div><form method="post" class="card form-card">{% csrf_token %}{% if form.non_field_errors %}<div class="message">{{ form.non_field_errors }}</div>{% endif %}<div class="form-grid">{% for field in form %}<label><span>{{ field.label }}</span>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{{ field.errors }}</label>{% endfor %}</div><div class="toolbar"><button class="btn primary" type="submit">Save appointment</button><a class="btn" href="{% url 'team_list' %}">Cancel</a></div></form></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-wrap team-appointment-page">
+  <div class="page-heading">
+    <div><span class="eyebrow">TEAMS &amp; CONTACTS</span><h1>{{ title }}</h1><p>Select an existing person so contact and identity data remain in one source.</p></div>
+    <div class="toolbar"><a class="btn secondary" href="{% url 'team_list' %}">← Back</a></div>
+  </div>
+  <form method="post" class="card form-card team-appointment-form">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="message">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="team-appointment-grid">
+      {% for field in form %}
+      <label class="team-field team-field-{{ field.name }}{% if field.name == 'covered_jamatkhanas' or field.name == 'notes' %} team-field-wide{% endif %}">
+        <span>{{ field.label }}</span>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{{ field.errors }}
+      </label>
+      {% endfor %}
+    </div>
+    <div class="toolbar"><button class="btn primary" type="submit">Save appointment</button><a class="btn" href="{% url 'team_list' %}">Cancel</a></div>
+  </form>
+</div>
+{{ region_map|json_script:"team-region-map" }}
+{{ local_map|json_script:"team-local-map" }}
+{{ jk_map|json_script:"team-jk-map" }}
+{{ portfolio_map|json_script:"team-portfolio-map" }}
+{% endblock %}
+{% block extra_js %}<script>
+(function(){
+  const parse=id=>{const el=document.getElementById(id);return el?JSON.parse(el.textContent):{}};
+  const regionMap=parse('team-region-map'), localMap=parse('team-local-map'), jkMap=parse('team-jk-map'), portfolioMap=parse('team-portfolio-map');
+  const by=id=>document.getElementById(id);
+  const setSelect=(el,value)=>{if(!el||!value)return; el.value=String(value); el.dispatchEvent(new Event('change',{bubbles:true})); const wrap=el.closest('.select2-lite'); if(wrap){const input=wrap.querySelector('.select2-lite-input'); const option=Array.from(el.options).find(o=>o.value===String(value)); if(input&&option)input.value=option.text;}};
+  const national=by('id_national_council'), regional=by('id_regional_council'), local=by('id_local_council'), jk=by('id_jamatkhana');
+  if(regional)regional.addEventListener('change',()=>{const m=regionMap[regional.value];if(m)setSelect(national,m.national)});
+  if(local)local.addEventListener('change',()=>{const m=localMap[local.value];if(m){setSelect(regional,m.regional);setSelect(national,m.national)}});
+  if(jk)jk.addEventListener('change',()=>{const m=jkMap[jk.value];if(m){setSelect(local,m.local);setSelect(regional,m.regional);setSelect(national,m.national)}});
+  const board=by('id_board'), portfolio=by('id_portfolio');
+  function filterPortfolios(){
+    if(!board||!portfolio)return;
+    const boardId=board.value;
+    Array.from(portfolio.options).forEach(o=>{if(!o.value)return;o.hidden=!!boardId&&String(portfolioMap[o.value]?.board)!==String(boardId)});
+    const wrap=portfolio.closest('.select2-lite');
+    if(wrap)wrap.querySelectorAll('.select2-lite-option').forEach(item=>{item.hidden=!!boardId&&String(portfolioMap[item.dataset.value]?.board)!==String(boardId)});
+    if(portfolio.value && boardId && String(portfolioMap[portfolio.value]?.board)!==String(boardId)){portfolio.value='';const input=wrap?.querySelector('.select2-lite-input');if(input)input.value='';}
+  }
+  if(board){board.addEventListener('change',filterPortfolios);filterPortfolios();}
+})();
+</script>{% endblock %}

@@ -89,16 +89,29 @@
   });
 
   document.querySelectorAll('select[data-searchable="true"]').forEach((select) => {
+    if (select.dataset.searchEnhanced === '1') return;
+    select.dataset.searchEnhanced = '1';
     const wrapper = document.createElement('div');
     wrapper.className = 'select2-lite';
     const input = document.createElement('input');
     input.type = 'search';
     input.className = 'select2-lite-input';
     input.placeholder = select.options[0]?.text || 'Search';
-    input.value = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
     input.autocomplete = 'off';
     const menu = document.createElement('div');
     menu.className = 'select2-lite-menu';
+    const multiple = select.multiple;
+
+    const syncInput = () => {
+      if (multiple) {
+        const selected = Array.from(select.selectedOptions).filter(o => o.value);
+        input.value = '';
+        input.placeholder = selected.length ? `${selected.length} selected — type to search` : (select.options[0]?.text || 'Type to search');
+      } else {
+        input.value = select.selectedIndex > 0 ? select.options[select.selectedIndex].text : '';
+      }
+    };
+
     Array.from(select.options).forEach((option) => {
       if (!option.value) return;
       const item = document.createElement('button');
@@ -106,12 +119,22 @@
       item.className = 'select2-lite-option';
       item.dataset.value = option.value;
       item.textContent = option.text;
+      const syncSelected = () => item.classList.toggle('is-selected', option.selected);
+      syncSelected();
       item.addEventListener('mousedown', (event) => event.preventDefault());
       item.addEventListener('click', () => {
-        select.value = option.value;
-        input.value = option.text;
-        menu.classList.remove('is-open');
-        select.dispatchEvent(new Event('change', {bubbles: true}));
+        if (multiple) {
+          option.selected = !option.selected;
+          syncSelected();
+          syncInput();
+          select.dispatchEvent(new Event('change', {bubbles: true}));
+          input.focus();
+        } else {
+          select.value = option.value;
+          syncInput();
+          menu.classList.remove('is-open');
+          select.dispatchEvent(new Event('change', {bubbles: true}));
+        }
       });
       menu.appendChild(item);
     });
@@ -120,13 +143,29 @@
     wrapper.appendChild(menu);
     wrapper.appendChild(select);
     select.classList.add('select2-native');
-    input.addEventListener('focus', () => menu.classList.add('is-open'));
+    syncInput();
+    const openMenu = () => {
+      menu.classList.add('is-open');
+      window.setTimeout(() => input.focus(), 0);
+    };
+    input.addEventListener('focus', openMenu);
+    input.addEventListener('click', openMenu);
     input.addEventListener('input', () => {
       const needle = input.value.toLowerCase();
       menu.classList.add('is-open');
       menu.querySelectorAll('.select2-lite-option').forEach((item) => {
         item.hidden = !item.textContent.toLowerCase().includes(needle);
       });
+    });
+    select.addEventListener('change', () => {
+      syncInput();
+      if (multiple) {
+        Array.from(select.options).forEach((option) => {
+          if (!option.value) return;
+          const item = menu.querySelector(`.select2-lite-option[data-value="${CSS.escape(option.value)}"]`);
+          if (item) item.classList.toggle('is-selected', option.selected);
+        });
+      }
     });
     document.addEventListener('click', (event) => {
       if (!wrapper.contains(event.target)) menu.classList.remove('is-open');
