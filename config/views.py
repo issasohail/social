@@ -660,8 +660,10 @@ def harmony_inline_update(request):
     if field_name.startswith('preference_'):
         preference, _ = FamilyHarmonyPreference.objects.get_or_create(profile=profile)
         preference_field = field_name.removeprefix('preference_')
-        if preference_field in {'preferred_education_options', 'preferred_professions', 'preferred_income_options', 'preferred_cities'}:
+        if preference_field in {'preferred_education_options', 'preferred_professions', 'preferred_cities'}:
             setattr(preference, preference_field, [item.strip() for item in value.split(',') if item.strip()])
+        elif preference_field == 'preferred_income_options':
+            setattr(preference, preference_field, [value.strip()] if value.strip() else [])
         elif preference_field == 'willingness_to_relocate':
             setattr(preference, preference_field, value.lower() in {'true', 'yes', '1'})
         else:

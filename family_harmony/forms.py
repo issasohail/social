@@ -9,9 +9,18 @@ def _datalist(field, list_id, values):
     field.widget = forms.TextInput(attrs={'list': list_id, 'data-options': '|'.join(values or [])})
 
 
-def _select(field, values, placeholder):
-    """Render configured profile lists as real selects, not browser datalists."""
-    field.widget = forms.Select(choices=[('', placeholder)] + [(value, value) for value in (values or [])])
+def _select(field, values, placeholder, current_value=''):
+    """Render configured profile lists as single-value selects.
+
+    Preserve an older saved value even if Settings no longer contains it, so
+    editing an existing profile does not fail validation.
+    """
+    choices = [('', placeholder)] + [(value, value) for value in (values or [])]
+    current_value = (current_value or '').strip()
+    if current_value and current_value not in {value for value, _label in choices}:
+        choices.append((current_value, f'{current_value} (current saved value)'))
+    field.choices = choices
+    field.widget = forms.Select(choices=choices)
 
 
 YES_NO_UNKNOWN = [('', 'Not specified'), ('true', 'Yes'), ('false', 'No')]
@@ -39,7 +48,10 @@ class FamilyHarmonyProfileForm(forms.ModelForm):
             ('family_type', cfg.family_type_options, ''),
             ('income_range', cfg.income_ranges, ''),
         ]:
-            _select(self.fields[name], values, placeholder)
+            current_value = getattr(self.instance, name, '') if self.instance and self.instance.pk else ''
+            if name in {'marital_status', 'income_range'} and current_value:
+                current_value = current_value.split(',')[0].strip()
+            _select(self.fields[name], values, placeholder, current_value=current_value)
         for name, values in [
             ('languages', cfg.language_options), ('caste_tribe', cfg.caste_tribe_options),
         ]:
@@ -114,7 +126,7 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
     preferred_cities = forms.CharField(required=False)
     preferred_education_options = forms.MultipleChoiceField(required=False)
     preferred_professions = forms.MultipleChoiceField(required=False)
-    preferred_income_options = forms.MultipleChoiceField(required=False)
+    preferred_income_options = forms.ChoiceField(required=False, label='Income')
     preferred_marital_status_options = forms.MultipleChoiceField(required=False)
     preferred_languages = forms.MultipleChoiceField(required=False)
 
@@ -124,7 +136,6 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
         mapping = {
             'preferred_education_options': cfg.education_levels,
             'preferred_professions': cfg.occupation_options,
-            'preferred_income_options': cfg.income_ranges,
             'preferred_marital_status_options': cfg.marital_status_options,
             'preferred_languages': cfg.language_options,
         }
@@ -132,6 +143,21 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
             choices = [('Any', 'Any')] + [(v, v) for v in (values or []) if v != 'Any']
             self.fields[name].choices = choices
             self.fields[name].widget = forms.CheckboxSelectMultiple(choices=choices)
+
+        current_income = ''
+        if self.instance and self.instance.pk:
+            existing_income = self.instance.preferred_income_options or []
+            if isinstance(existing_income, list) and existing_income:
+                current_income = existing_income[0]
+            elif isinstance(existing_income, str):
+                current_income = existing_income
+        income_choices = [('', 'Any')] + [(v, v) for v in (cfg.income_ranges or [])]
+        if current_income and current_income not in {value for value, _label in income_choices}:
+            income_choices.append((current_income, f'{current_income} (current saved value)'))
+        self.fields['preferred_income_options'].choices = income_choices
+        self.fields['preferred_income_options'].widget = forms.Select(choices=income_choices)
+        if current_income:
+            self.initial['preferred_income_options'] = current_income
         for name in ('minimum_age', 'maximum_age'):
             self.fields[name].widget = forms.Select(choices=[('', 'Any')] + [(i, str(i)) for i in range(18, 81)])
         self.fields['willingness_to_relocate'].widget = forms.RadioSelect(choices=[(True, 'Yes'), (False, 'No')])
@@ -145,12 +171,24 @@ class FamilyHarmonyPreferenceForm(forms.ModelForm):
             value = (self.data.get(name) or '').strip()
             cleaned[name] = [x.strip() for x in value.replace('\n', ',').split(',') if x.strip()]
         for name in (
-            'preferred_education_options', 'preferred_professions', 'preferred_income_options',
+            'preferred_education_options', 'preferred_professions',
             'preferred_marital_status_options', 'preferred_languages'
         ):
             values = self.data.getlist(name)
             cleaned[name] = ['Any'] if 'Any' in values else values
+        income = (self.data.get('preferred_income_options') or '').strip()
+        cleaned['preferred_income_options'] = [income] if income else []
         return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        income = self.cleaned_data.get('preferred_income_options') or []
+        if isinstance(income, str):
+            income = [income] if income else []
+        obj.preferred_income_options = income[:1]
+        if commit:
+            obj.save()
+        return obj
 
     class Meta:
         model = FamilyHarmonyPreference

@@ -103,7 +103,7 @@
       <div class="mpf-field"><label>Marital Status</label><details class="mpf-multi"><summary>Select marital status</summary><div class="mpf-multi-menu">{{ preference_form.preferred_marital_status_options }}</div></details>{{ preference_form.preferred_marital_status_options.errors }}</div>
       <div class="mpf-field"><label>Education</label><details class="mpf-multi"><summary>Select education</summary><div class="mpf-multi-menu">{{ preference_form.preferred_education_options }}</div></details>{{ preference_form.preferred_education_options.errors }}</div>
       <div class="mpf-field"><label>Profession</label><details class="mpf-multi"><summary>Select profession</summary><div class="mpf-multi-menu">{{ preference_form.preferred_professions }}</div></details>{{ preference_form.preferred_professions.errors }}</div>
-      <div class="mpf-field"><label>Income</label><details class="mpf-multi"><summary>Select income range</summary><div class="mpf-multi-menu">{{ preference_form.preferred_income_options }}</div></details>{{ preference_form.preferred_income_options.errors }}</div>
+      {% include "./_marriage_form_field.html" with field=preference_form.preferred_income_options label="Income" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_family_type label="Family Type" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_caste_tribe label="Caste / Tribe" %}
       {% include "./_marriage_form_field.html" with field=preference_form.preferred_country label="Country" %}

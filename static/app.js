@@ -227,7 +227,7 @@
   const csrf = document.cookie.split('; ').find(x => x.startsWith('csrftoken='))?.split('=')[1] || '';
   const optionNode = document.getElementById('harmony-inline-options');
   const options = optionNode ? JSON.parse(optionNode.textContent) : {};
-  const multiFields = new Set(['disability_status', 'caste_tribe', 'known_diseases', 'languages', 'preference_preferred_education_options', 'preference_preferred_professions', 'preference_preferred_income_options']);
+  const multiFields = new Set(['disability_status', 'caste_tribe', 'known_diseases', 'languages', 'preference_preferred_education_options', 'preference_preferred_professions']);
   const typeableFields = new Set(['profession']);
   const headerRows = detail.querySelectorAll('.harmony-head-contact span');
   if (headerRows[0]) {
