@@ -20,7 +20,41 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 .\backup_social_for_chatgpt.ps1 -VenvMode No
 
 # LOCAL
-python manage.py migrate
-git add .
+cd E:\social
+
+
+
+git status --short
+git add -A
 git commit -m "fix"
-git push
+git push origin main
+
+
+#on production server
+
+cd /home/ivs/apps/social
+git pull --ff-only origin main
+source .venv/bin/activate
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+python manage.py check --deploy
+sudo systemctl restart social-welfare.service
+sudo systemctl status social-welfare.service --no-pager
+
+git log --oneline -5
+git status
+sudo journalctl -u social-welfare.service -n 100 --no-pager
+
+if you want to confirm which commit is running:
+git rev-parse --short HEAD
+
+A safe pattern before every push is:
+git status --short
+git diff
+git add -A
+git diff --cached
+git commit -m "your message"
+git push origin main
+
+And before every production pull:
+git status --short
