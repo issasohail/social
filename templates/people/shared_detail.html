@@ -1,21 +1,82 @@
-{% extends 'base.html' %}
-{% block title %}Shared person detail | Social Welfare{% endblock %}
-{% block content %}
-<section class="page-head">
-  <p class="eyebrow">SECURE SHARED DETAIL</p>
-  <h1>{{ person.full_name }}</h1>
-  <p class="muted">This link expires {{ share.expires_at|date:'j M Y, H:i' }}.</p>
-</section>
-<section class="panel detail-hero">
-  {% if person.photo %}<img src="{{ person.photo.url }}" alt="Photo of {{ person.full_name }}">{% endif %}
-  <div><h2>{{ person.full_name }}</h2><p>{{ person.title|default:'Person' }} · {{ person.city|default:'Location not recorded' }}</p></div>
-</section>
-<section class="panel"><h2>Profile details</h2><div class="detail-grid">
-  <div><small>Gender</small><strong>{{ person.gender|default:'—' }}</strong></div>
-  <div><small>Age</small><strong>{{ person.age|default:'—' }}</strong></div>
-  <div><small>Nationality</small><strong>{{ person.nationality|default:'—' }}</strong></div>
-  <div><small>Occupation</small><strong>{{ person.occupation|default:'—' }}</strong></div>
-  <div><small>Education</small><strong>{{ person.education|default:'—' }}</strong></div>
-  <div><small>City</small><strong>{{ person.city|default:'—' }}</strong></div>
-</div></section>
-{% endblock %}
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>{{ person.full_name }} | Shared People Profile</title>
+  <link rel="stylesheet" href="{% static 'family_harmony_detail.css' %}">
+  <link rel="stylesheet" href="{% static 'public_shared_profile.css' %}?v=20261003-1">
+</head>
+<body>
+<main class="public-share-page">
+  <div class="public-share-notice">
+    <span><strong>Secure read-only profile</strong> · This page cannot be edited.</span>
+    <span class="expiry">Link expires {{ share.expires_at|date:'j M Y, H:i' }}.</span>
+  </div>
+
+  <article class="marriage-biodata harmony-detail people-detail">
+    <header class="marriage-biodata-head">
+      {% if person.photo %}<img class="marriage-biodata-photo" src="{{ person.photo.url }}" alt="{{ person.full_name }}">{% else %}<div class="marriage-biodata-photo placeholder">{{ person.first_name|first }}</div>{% endif %}
+      <div class="harmony-head-name">
+        <p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p>
+        <h1>{{ person.full_name }}</h1>
+        <div class="biodata-badges"><span>{{ person.age|default:'—' }} yrs</span><span>{{ person.gender|default:'—' }}</span><span>{{ person.marital_status|default:'—' }}</span><span>{{ person.serial_number }}</span></div>
+      </div>
+      <div class="harmony-head-right">
+        <div class="harmony-head-contact">
+          <strong>{% if person.jamatkhana %}{{ person.jamatkhana.name }}{% else %}Jamatkhana not set{% endif %}{% if person.local_council %} · {{ person.local_council.name }}{% endif %}{% if person.region %} · {{ person.region.name }}{% endif %}</strong>
+          <span>DOB: {{ person.date_of_birth|date:'j M Y'|default:'—' }} · {{ person.city|default:'—' }} / {{ person.country|default:'—' }}</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="biodata-section personal-detail-section"><h2>Personal Information</h2><div class="biodata-grid">
+      <div class="biodata-item"><small>Date of Birth</small><strong>{{ person.date_of_birth|date:'Y-m-d'|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Gender</small><strong>{{ person.gender|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Marital Status</small><strong>{{ person.marital_status|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Nationality</small><strong>{{ person.nationality|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Identity Type</small><strong>{{ person.get_identity_type_display|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Identity Number</small><strong>{{ person.masked_identity_number|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Mobile</small><strong>{{ person.mobile|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>WhatsApp</small><strong>{{ person.whatsapp_number|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Email</small><strong>{{ person.email|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>City</small><strong>{{ person.city|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Country</small><strong>{{ person.country|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Jamatkhana</small><strong>{{ person.jamatkhana|default:'—' }}</strong></div>
+      <div class="biodata-item wide"><small>Current Address</small><strong>{{ person.current_address|default:'—' }}</strong></div>
+      <div class="biodata-item wide"><small>Permanent Address</small><strong>{{ person.permanent_address|default:'—' }}</strong></div>
+    </div></section>
+
+    <section class="biodata-section"><h2>Jamatkhana</h2><div class="biodata-grid">
+      <div class="biodata-item"><small>Regional Council</small><strong>{{ person.region|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Local Council</small><strong>{{ person.local_council|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Jamatkhana</small><strong>{{ person.jamatkhana|default:'—' }}</strong></div>
+    </div></section>
+
+    <section class="biodata-section"><h2>Education &amp; Career</h2><div class="biodata-grid">
+      <div class="biodata-item"><small>Education</small><strong>{{ person.education|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Occupation</small><strong>{{ person.occupation|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Employer / Business</small><strong>{{ person.employer_or_business|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Income Range</small><strong>{{ person.income_range|default:'—' }}</strong></div>
+      <div class="biodata-item"><small>Willing to Relocate</small><strong>{{ person.willing_to_relocate|yesno:'Yes,No,—' }}</strong></div>
+      <div class="biodata-item wide"><small>Education Details</small><strong>{{ person.education_details|default:'—' }}</strong></div>
+      <div class="biodata-item wide"><small>Languages</small><strong>{{ person.languages|default:'—' }}</strong></div>
+      <div class="biodata-item wide"><small>Interests</small><strong>{{ person.interests|default:'—' }}</strong></div>
+    </div></section>
+
+    {% if person.facebook_url or person.instagram_url or person.linkedin_url or person.other_social_url %}
+    <section class="biodata-section"><h2>Social Links</h2><div class="public-share-links">
+      {% if person.facebook_url %}<a href="{{ person.facebook_url }}" target="_blank" rel="noopener noreferrer">Facebook</a>{% endif %}
+      {% if person.instagram_url %}<a href="{{ person.instagram_url }}" target="_blank" rel="noopener noreferrer">Instagram</a>{% endif %}
+      {% if person.linkedin_url %}<a href="{{ person.linkedin_url }}" target="_blank" rel="noopener noreferrer">LinkedIn</a>{% endif %}
+      {% if person.other_social_url %}<a href="{{ person.other_social_url }}" target="_blank" rel="noopener noreferrer">Other link</a>{% endif %}
+    </div></section>
+    {% endif %}
+  </article>
+  <p class="public-share-footer">Secure shared profile · Read only</p>
+</main>
+</body>
+</html>

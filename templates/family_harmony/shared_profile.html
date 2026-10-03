@@ -1,1 +1,57 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta http-equiv="Cache-Control" content="no-store"><title>Family Harmony Profile</title><link rel="stylesheet" href="/static/app.css"></head><body class="login-page"><section class="login-card"><p class="eyebrow">FAMILY HARMONY</p><h1>{{ profile.person.full_name }}</h1><p>{{ profile.person.age|default:'Age not provided' }} · {{ profile.person.city|default:'Location not provided' }}</p><p><strong>Education:</strong> {{ profile.qualification|default:profile.education_level|default:'Not provided' }}</p><p><strong>Profession:</strong> {{ profile.profession|default:'Not provided' }}</p><p><strong>About:</strong> {{ profile.personal_statement|default:'Not provided' }}</p><p class="muted">This secure link expires {{ share.expires_at|date:'j M Y, H:i' }}.</p></section></body></html>
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>{{ profile.person.full_name }} | Shared Family Harmony Profile</title>
+  <link rel="stylesheet" href="{% static 'family_harmony_detail.css' %}">
+  <link rel="stylesheet" href="{% static 'public_shared_profile.css' %}?v=20261003-1">
+</head>
+<body>
+<main class="public-share-page">
+  <div class="public-share-notice">
+    <span><strong>Secure read-only Family Harmony profile</strong> · This page cannot be edited.</span>
+    <span class="expiry">Link expires {{ share.expires_at|date:'j M Y, H:i' }}.</span>
+  </div>
+
+  <article class="marriage-biodata harmony-detail">
+    <header class="marriage-biodata-head">
+      {% if profile.person.photo %}<img class="marriage-biodata-photo" src="{{ profile.person.photo.url }}" alt="{{ profile.person.full_name }}">{% else %}<div class="marriage-biodata-photo placeholder">{{ profile.person.first_name|first }}</div>{% endif %}
+      <div class="harmony-head-name">
+        <p class="eyebrow">AGA KHAN SOCIAL WELFARE BOARD · CENTRAL REGION</p>
+        <h1>{{ profile.person.full_name }}</h1>
+        <div class="biodata-badges"><span>{{ profile.person.age|default:'—' }} yrs</span><span>{{ profile.person.gender|default:'—' }}</span><span>{{ profile.marital_status|default:profile.person.marital_status|default:'—' }}</span><span>{{ profile.serial_number }}</span></div>
+      </div>
+      <div class="harmony-head-right"><div class="harmony-head-contact">
+        <strong>{% if profile.person.jamatkhana %}{{ profile.person.jamatkhana.name }}{% else %}Jamatkhana not set{% endif %}{% if profile.person.local_council %} · {{ profile.person.local_council.name }}{% endif %}{% if profile.person.region %} · {{ profile.person.region.name }}{% endif %}</strong>
+        <span>DOB: {{ profile.person.date_of_birth|date:'j M Y'|default:'—' }} · Height / Weight: {{ profile.height_cm|default:'—' }} cm / {{ profile.weight_kg|default:'—' }} kg</span>
+        <span>City / Country: {{ profile.person.city|default:'—' }} / {{ profile.person.country|default:'—' }}</span>
+      </div></div>
+    </header>
+
+    <section class="biodata-section personal-detail-section"><h2>Personal Information</h2><div class="biodata-grid">
+      <div class="biodata-item"><small>Date of Birth</small><strong>{{ profile.person.date_of_birth|date:'Y-m-d'|default:'—' }}</strong></div><div class="biodata-item"><small>Gender</small><strong>{{ profile.person.gender|default:'—' }}</strong></div><div class="biodata-item"><small>Nationality</small><strong>{{ profile.person.nationality|default:'—' }}</strong></div><div class="biodata-item"><small>Identity Type</small><strong>{{ profile.person.get_identity_type_display|default:'—' }}</strong></div><div class="biodata-item"><small>Identity Number</small><strong>{{ profile.person.masked_identity_number|default:'—' }}</strong></div><div class="biodata-item"><small>Mobile</small><strong>{{ profile.person.mobile|default:'—' }}</strong></div><div class="biodata-item"><small>WhatsApp</small><strong>{{ profile.person.whatsapp_number|default:'—' }}</strong></div><div class="biodata-item"><small>Email</small><strong>{{ profile.person.email|default:'—' }}</strong></div><div class="biodata-item"><small>City</small><strong>{{ profile.person.city|default:'—' }}</strong></div><div class="biodata-item"><small>Country</small><strong>{{ profile.person.country|default:'—' }}</strong></div><div class="biodata-item"><small>Jamatkhana</small><strong>{{ profile.person.jamatkhana|default:'—' }}</strong></div><div class="biodata-item wide"><small>Current Address</small><strong>{{ profile.person.current_address|default:'—' }}</strong></div><div class="biodata-item wide"><small>Permanent Address</small><strong>{{ profile.person.permanent_address|default:'—' }}</strong></div>
+    </div></section>
+
+    <section class="biodata-section"><h2>Physical &amp; Health</h2><div class="biodata-grid"><div class="biodata-item"><small>Physical Status</small><strong>{{ profile.physical_status|default:'—' }}</strong></div><div class="biodata-item"><small>Disability</small><strong>{{ profile.disability_status|default:'—' }}</strong></div><div class="biodata-item"><small>Known Diseases</small><strong>{{ profile.known_diseases|join:', '|default:'—' }}</strong></div><div class="biodata-item wide"><small>Health</small><strong>{{ profile.health_information|default:'—' }}</strong></div></div></section>
+
+    <section class="biodata-section"><h2>Family</h2><div class="biodata-grid"><div class="biodata-item"><small>Father</small><strong>{{ profile.father_name|default:'—' }}</strong></div><div class="biodata-item"><small>Father Occupation</small><strong>{{ profile.father_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Mother</small><strong>{{ profile.mother_name|default:'—' }}</strong></div><div class="biodata-item"><small>Mother Occupation</small><strong>{{ profile.mother_occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Brothers</small><strong>{{ profile.brothers_count|default:'—' }}</strong></div><div class="biodata-item"><small>Sisters</small><strong>{{ profile.sisters_count|default:'—' }}</strong></div><div class="biodata-item"><small>Family Residence</small><strong>{{ profile.family_residence|default:'—' }}</strong></div><div class="biodata-item"><small>Family Type</small><strong>{{ profile.family_type|default:'—' }}</strong></div><div class="biodata-item"><small>Caste / Tribe</small><strong>{{ profile.caste_tribe|default:'—' }}</strong></div><div class="biodata-item wide"><small>Family Background</small><strong>{{ profile.family_background|default:'—' }}</strong></div></div></section>
+
+    <section class="biodata-section"><h2>Education, Career &amp; Lifestyle</h2><div class="biodata-grid"><div class="biodata-item"><small>Education</small><strong>{{ profile.qualification|default:profile.education_level|default:profile.person.education|default:'—' }}</strong></div><div class="biodata-item"><small>Institution</small><strong>{{ profile.institution|default:'—' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ profile.profession|default:profile.person.occupation|default:'—' }}</strong></div><div class="biodata-item"><small>Employer / Business</small><strong>{{ profile.employer_or_business|default:profile.person.employer_or_business|default:'—' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ profile.income_range|default:profile.person.income_range|default:'—' }}</strong></div><div class="biodata-item"><small>House</small><strong>{{ profile.owns_house|yesno:'Yes,No,—' }}</strong></div><div class="biodata-item"><small>Car</small><strong>{{ profile.owns_car|yesno:'Yes,No,—' }}</strong></div><div class="biodata-item"><small>Smoking</small><strong>{{ profile.smoking|default:'—' }}</strong></div><div class="biodata-item"><small>Willing to Relocate</small><strong>{{ profile.person.willing_to_relocate|yesno:'Willing to relocate,Not willing to relocate' }}</strong></div><div class="biodata-item"><small>Languages</small><strong>{{ profile.languages|default:profile.person.languages|default:'—' }}</strong></div><div class="biodata-item"><small>Interests</small><strong>{{ profile.interests|default:profile.person.interests|default:'—' }}</strong></div><div class="biodata-item span-2"><small>Personal Statement</small><strong>{{ profile.personal_statement|default:'—' }}</strong></div><div class="biodata-item span-2"><small>Family Values</small><strong>{{ profile.family_values|default:'—' }}</strong></div></div></section>
+
+    {% if profile.preferences %}<section class="biodata-section"><h2>Preferences for Prospective Match</h2>{% with p=profile.preferences %}<div class="biodata-grid"><div class="biodata-item"><small>Min Age</small><strong>{{ p.minimum_age|default:'Any' }}</strong></div><div class="biodata-item"><small>Max Age</small><strong>{{ p.maximum_age|default:'Any' }}</strong></div><div class="biodata-item"><small>Education</small><strong>{{ p.preferred_education_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Profession</small><strong>{{ p.preferred_professions|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Location</small><strong>{{ p.preferred_cities|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Income</small><strong>{{ p.preferred_income_options|join:', '|default:'Any' }}</strong></div><div class="biodata-item"><small>Willing to Relocate</small><strong>{{ p.willingness_to_relocate|yesno:'Yes,No' }}</strong></div></div>{% endwith %}</section>{% endif %}
+
+    {% if profile.facebook_url or profile.instagram_url or profile.linkedin_url or profile.person.facebook_url or profile.person.instagram_url or profile.person.linkedin_url or profile.person.other_social_url %}<section class="biodata-section"><h2>Social Links</h2><div class="public-share-links">
+      {% if profile.facebook_url %}<a href="{{ profile.facebook_url }}" target="_blank" rel="noopener noreferrer">Facebook</a>{% elif profile.person.facebook_url %}<a href="{{ profile.person.facebook_url }}" target="_blank" rel="noopener noreferrer">Facebook</a>{% endif %}
+      {% if profile.instagram_url %}<a href="{{ profile.instagram_url }}" target="_blank" rel="noopener noreferrer">Instagram</a>{% elif profile.person.instagram_url %}<a href="{{ profile.person.instagram_url }}" target="_blank" rel="noopener noreferrer">Instagram</a>{% endif %}
+      {% if profile.linkedin_url %}<a href="{{ profile.linkedin_url }}" target="_blank" rel="noopener noreferrer">LinkedIn</a>{% elif profile.person.linkedin_url %}<a href="{{ profile.person.linkedin_url }}" target="_blank" rel="noopener noreferrer">LinkedIn</a>{% endif %}
+      {% if profile.person.other_social_url %}<a href="{{ profile.person.other_social_url }}" target="_blank" rel="noopener noreferrer">Other link</a>{% endif %}
+    </div></section>{% endif %}
+  </article>
+  <p class="public-share-footer">Secure shared profile · Read only</p>
+</main>
+</body>
+</html>
