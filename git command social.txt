@@ -23,7 +23,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 cd E:\social
 
 
-
+git add .
 git status --short
 git add -A
 git commit -m "fix"
